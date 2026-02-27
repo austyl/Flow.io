@@ -36,7 +36,7 @@ constexpr uint8_t EventQueueLen = 16;
 namespace Mqtt {
 
 /** @brief MQTT module task stack size returned by `MQTTModule::taskStackSize`. */
-constexpr uint16_t TaskStackSize = 4608;
+constexpr uint16_t TaskStackSize = 4352;
 
 /** @brief MQTT static capacities (queues, tables). */
 namespace Capacity {

@@ -122,6 +122,7 @@ public:
     const char* moduleId() const override { return "io"; }
     const char* taskName() const override { return "io"; }
     BaseType_t taskCore() const override { return 1; }
+    uint16_t taskStackSize() const override { return 2560; }
 
 #if defined(FLOW_PROFILE_SUPERVISOR)
     uint8_t dependencyCount() const override { return 2; }
