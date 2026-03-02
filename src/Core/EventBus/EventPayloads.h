@@ -89,18 +89,4 @@ using DataKey = uint16_t;
 struct DataChangedPayload {
     DataKey id;
 };
-
-/** @brief Dirty flags for snapshot payloads. */
-enum DirtyFlags : uint32_t {
-    DIRTY_NONE    = 0,
-    DIRTY_NETWORK = 1 << 0,
-    DIRTY_TIME    = 1 << 1,
-    DIRTY_MQTT    = 1 << 2,
-    DIRTY_SENSORS = 1 << 3,
-    DIRTY_ACTUATORS = 1 << 4,
-};
-
-/** @brief Payload indicating a new data snapshot. */
-struct DataSnapshotPayload {
-    uint32_t dirtyFlags;
-};
+static_assert(sizeof(DataChangedPayload) <= 48, "DataChangedPayload too large for EventBus queue");

@@ -226,15 +226,7 @@ void MQTTModule::onConnect_(bool) {
     statusOnlineNextTryMs_ = millis();
     MQTT_DLOG("status publish deferred until startup bursts complete");
 
-    if (sensorsTopic && sensorsBuild) {
-        sensorsPending = true;
-        sensorsPendingDirtyMask = (DIRTY_SENSORS | DIRTY_ACTUATORS);
-        sensorsActiveDirtyMask = 0;
-        lastSensorsPublishMs = 0;
-    }
-
-    // Defer cfg/* publication to loop() so actuator runtime snapshots can be
-    // flushed first and avoid stale HA state immediately after reconnect.
+    // Defer cfg/* publication to loop() to avoid contention with runtime bursts.
     _pendingPublish = true;
     alarmsMetaPending_ = true;
     alarmsFullSyncPending_ = true;
@@ -751,8 +743,8 @@ bool MQTTModule::publish(const char* topic, const char* payload, int qos, bool r
     if (state != MQTTState::Connected) return false;
     if (!client_) return false;
 
-    constexpr uint32_t kMinFreeHeapForPublish = 8192U;
-    constexpr uint32_t kMinLargestBlockForPublish = 4096U;
+    constexpr uint32_t kMinFreeHeapForPublish = Limits::NetworkPublish::MinFreeHeapBytes;
+    constexpr uint32_t kMinLargestBlockForPublish = Limits::NetworkPublish::MinLargestBlockBytes;
     const uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     const uint32_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     if (freeHeap < kMinFreeHeapForPublish || largest < kMinLargestBlockForPublish) {
@@ -1093,7 +1085,6 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     cfg.registerVar(passVar, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(baseTopicVar, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(enabledVar, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(sensorMinVar, kCfgModuleId, kCfgBranchId);
 
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
@@ -1135,7 +1126,6 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
 
     if (eventBus) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
-        eventBus->subscribe(EventId::DataSnapshotAvailable, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::ConfigChanged, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::AlarmRaised, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::AlarmCleared, &MQTTModule::onEventStatic, this);
@@ -1274,43 +1264,6 @@ void MQTTModule::loop() {
                 alarmsRetryNextMs_ = 0U;
             }
         }
-        if (sensorsPending && sensorsTopic && sensorsBuild) {
-            const uint32_t relevantMask = (DIRTY_SENSORS | DIRTY_ACTUATORS);
-            if ((sensorsPendingDirtyMask & relevantMask) == 0U) {
-                sensorsPendingDirtyMask = relevantMask;
-            }
-            uint32_t minMs = cfgData.sensorMinPublishMs;
-            uint32_t elapsed = (uint32_t)(now - lastSensorsPublishMs);
-            bool withinThrottle = (minMs != 0U) && (elapsed < minMs);
-            bool hasActuators = (sensorsPendingDirtyMask & DIRTY_ACTUATORS) != 0U;
-            bool hasSensors = (sensorsPendingDirtyMask & DIRTY_SENSORS) != 0U;
-
-            if (hasActuators && withinThrottle) {
-                sensorsActiveDirtyMask = DIRTY_ACTUATORS;
-                if (sensorsBuild(this, publishBuf, sizeof(publishBuf))) {
-                    publish(sensorsTopic, publishBuf, 0, false);
-                }
-                sensorsActiveDirtyMask = 0;
-                const bool keepActuatorRetries = ((uint32_t)(now - stateTs) < Limits::Mqtt::Timing::StartupActuatorRetryMs);
-                if (!keepActuatorRetries) {
-                    sensorsPendingDirtyMask &= ~DIRTY_ACTUATORS;
-                }
-                if (!hasSensors && !keepActuatorRetries) {
-                    sensorsPending = false;
-                    sensorsPendingDirtyMask = 0;
-                }
-            } else if (!withinThrottle || minMs == 0U) {
-                sensorsActiveDirtyMask = sensorsPendingDirtyMask & relevantMask;
-                if (sensorsActiveDirtyMask == 0U) sensorsActiveDirtyMask = relevantMask;
-                if (sensorsBuild(this, publishBuf, sizeof(publishBuf))) {
-                    publish(sensorsTopic, publishBuf, 0, false);
-                }
-                sensorsActiveDirtyMask = 0;
-                lastSensorsPublishMs = now;
-                sensorsPending = false;
-                sensorsPendingDirtyMask = 0;
-            }
-        }
         if (_pendingPublish) {
             _pendingPublish = false;
             if (cfgRampActive_) cfgRampRestartRequested_ = true;
@@ -1421,16 +1374,6 @@ void MQTTModule::onEvent(const Event& e)
             stopClient_(true);
             setState(MQTTState::WaitingNetwork);
         }
-        return;
-    }
-
-    if (e.id == EventId::DataSnapshotAvailable) {
-        const DataSnapshotPayload* p = (const DataSnapshotPayload*)e.payload;
-        if (!p) return;
-        uint32_t relevant = p->dirtyFlags & (DIRTY_SENSORS | DIRTY_ACTUATORS);
-        if (relevant == 0U) return;
-        sensorsPending = true;
-        sensorsPendingDirtyMask |= relevant;
         return;
     }
 

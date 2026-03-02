@@ -248,6 +248,29 @@ const char* PoolDeviceModule::runtimeSnapshotSuffix(uint8_t idx) const
     return suffix;
 }
 
+RuntimeRouteClass PoolDeviceModule::runtimeSnapshotClass(uint8_t idx) const
+{
+    uint8_t slotIdx = 0xFF;
+    bool metrics = false;
+    if (!snapshotRouteFromIndex_(idx, slotIdx, metrics)) {
+        return RuntimeRouteClass::NumericThrottled;
+    }
+    (void)slotIdx;
+    return metrics ? RuntimeRouteClass::NumericThrottled : RuntimeRouteClass::ActuatorImmediate;
+}
+
+bool PoolDeviceModule::runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const
+{
+    uint8_t slotIdx = 0xFF;
+    bool metrics = false;
+    if (!snapshotRouteFromIndex_(idx, slotIdx, metrics)) return false;
+
+    const DataKey expected = metrics
+        ? (DataKey)(DATAKEY_POOL_DEVICE_METRICS_BASE + slotIdx)
+        : (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + slotIdx);
+    return key == expected;
+}
+
 bool PoolDeviceModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const
 {
     uint8_t slotIdx = 0xFF;

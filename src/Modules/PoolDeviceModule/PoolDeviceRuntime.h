@@ -33,8 +33,7 @@ static inline bool poolDeviceRuntimeMetrics(const DataStore& ds, uint8_t idx, Po
 }
 
 static inline bool setPoolDeviceRuntimeState(DataStore& ds, uint8_t idx,
-                                             const PoolDeviceRuntimeStateEntry& in,
-                                             uint32_t dirtyMask = DIRTY_ACTUATORS)
+                                             const PoolDeviceRuntimeStateEntry& in)
 {
     if (idx >= POOL_DEVICE_MAX) return false;
 
@@ -43,13 +42,12 @@ static inline bool setPoolDeviceRuntimeState(DataStore& ds, uint8_t idx,
     if (memcmp(&cur, &in, sizeof(PoolDeviceRuntimeStateEntry)) == 0) return false;
 
     cur = in;
-    ds.notifyChanged((DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + idx), dirtyMask);
+    ds.notifyChanged((DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + idx));
     return true;
 }
 
 static inline bool setPoolDeviceRuntimeMetrics(DataStore& ds, uint8_t idx,
-                                               const PoolDeviceRuntimeMetricsEntry& in,
-                                               uint32_t dirtyMask = DIRTY_SENSORS)
+                                               const PoolDeviceRuntimeMetricsEntry& in)
 {
     if (idx >= POOL_DEVICE_MAX) return false;
 
@@ -58,6 +56,6 @@ static inline bool setPoolDeviceRuntimeMetrics(DataStore& ds, uint8_t idx,
     if (memcmp(&cur, &in, sizeof(PoolDeviceRuntimeMetricsEntry)) == 0) return false;
 
     cur = in;
-    ds.notifyChanged((DataKey)(DATAKEY_POOL_DEVICE_METRICS_BASE + idx), dirtyMask);
+    ds.notifyChanged((DataKey)(DATAKEY_POOL_DEVICE_METRICS_BASE + idx));
     return true;
 }

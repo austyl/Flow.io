@@ -1,9 +1,9 @@
 {
   "_meta": {
     "generated": true,
-    "total": 252,
-    "decl_total": 207,
-    "decl_with_cfgdoc": 94,
+    "total": 251,
+    "decl_total": 206,
+    "decl_with_cfgdoc": 93,
     "missing_cfgdoc_count": 113,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
@@ -1356,16 +1356,6 @@
       "help": "Port TCP utilisé pour la connexion au broker.",
       "var": "portVar",
       "source": "cfgdoc"
-    },
-    "mqtt/sens_min_pub_ms": {
-      "module": "mqtt",
-      "name": "sens_min_pub_ms",
-      "type": "Int32",
-      "label": "Période mini capteurs (ms)",
-      "help": "Intervalle minimal entre deux publications capteurs.",
-      "var": "sensorMinVar",
-      "source": "cfgdoc",
-      "unit": "ms"
     },
     "mqtt/user": {
       "module": "mqtt",

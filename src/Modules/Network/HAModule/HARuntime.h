@@ -36,7 +36,7 @@ static inline void setHaAutoconfigPublished(DataStore& ds, bool published)
     RuntimeData& rt = ds.dataMutable();
     if (rt.ha.autoconfigPublished == published) return;
     rt.ha.autoconfigPublished = published;
-    ds.notifyChanged(DATAKEY_HA_PUBLISHED, DIRTY_MQTT);
+    ds.notifyChanged(DATAKEY_HA_PUBLISHED);
 }
 
 static inline void setHaVendor(DataStore& ds, const char* vendor)
@@ -46,7 +46,7 @@ static inline void setHaVendor(DataStore& ds, const char* vendor)
     if (strncmp(rt.ha.vendor, vendor, sizeof(rt.ha.vendor)) == 0) return;
     strncpy(rt.ha.vendor, vendor, sizeof(rt.ha.vendor) - 1);
     rt.ha.vendor[sizeof(rt.ha.vendor) - 1] = '\0';
-    ds.notifyChanged(DATAKEY_HA_VENDOR, DIRTY_MQTT);
+    ds.notifyChanged(DATAKEY_HA_VENDOR);
 }
 
 static inline void setHaDeviceId(DataStore& ds, const char* deviceId)
@@ -56,5 +56,5 @@ static inline void setHaDeviceId(DataStore& ds, const char* deviceId)
     if (strncmp(rt.ha.deviceId, deviceId, sizeof(rt.ha.deviceId)) == 0) return;
     strncpy(rt.ha.deviceId, deviceId, sizeof(rt.ha.deviceId) - 1);
     rt.ha.deviceId[sizeof(rt.ha.deviceId) - 1] = '\0';
-    ds.notifyChanged(DATAKEY_HA_DEVICE_ID, DIRTY_MQTT);
+    ds.notifyChanged(DATAKEY_HA_DEVICE_ID);
 }

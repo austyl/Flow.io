@@ -5,6 +5,8 @@
 
 #include "PoolLogicModule.h"
 #include "Modules/PoolLogicModule/FiltrationWindow.h"
+#include "Modules/IOModule/IORuntime.h"
+#include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
 #include "Core/MqttTopics.h"
 #include "Core/ErrorCodes.h"
 #include "Core/SystemLimits.h"
@@ -504,6 +506,21 @@ const char* PoolLogicModule::runtimeSnapshotSuffix(uint8_t idx) const
     if (idx == 0) return "rt/poollogic/ph";
     if (idx == 1) return "rt/poollogic/orp";
     return nullptr;
+}
+
+RuntimeRouteClass PoolLogicModule::runtimeSnapshotClass(uint8_t idx) const
+{
+    (void)idx;
+    return RuntimeRouteClass::NumericThrottled;
+}
+
+bool PoolLogicModule::runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const
+{
+    if (idx > 1) return false;
+    if (key >= DATAKEY_IO_BASE && key < (DataKey)(DATAKEY_IO_BASE + IO_MAX_ENDPOINTS)) return true;
+    if (key >= DATAKEY_POOL_DEVICE_STATE_BASE &&
+        key < (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + POOL_DEVICE_MAX)) return true;
+    return false;
 }
 
 bool PoolLogicModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const

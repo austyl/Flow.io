@@ -100,10 +100,8 @@ Publications:
 Écritures via `PoolDeviceRuntime.h`:
 - état: `setPoolDeviceRuntimeState(ds, slot, ...)`
   - clé `DataKeys::PoolDeviceStateBase + slot` (`80..87`)
-  - dirty flag `DIRTY_ACTUATORS`
 - métriques: `setPoolDeviceRuntimeMetrics(ds, slot, ...)`
   - clé `DataKeys::PoolDeviceMetricsBase + slot` (`88..95`)
-  - dirty flag `DIRTY_SENSORS`
 
 Données runtime:
 - state: `enabled`, `desiredOn`, `actualOn`, `type`, `blockReason`, `tsMs`

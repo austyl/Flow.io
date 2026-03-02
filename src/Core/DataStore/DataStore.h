@@ -27,22 +27,13 @@ public:
     /** @brief Mutable access for module-owned setters. */
     RuntimeData& dataMutable() { return _rt; }
 
-    /** @brief Notify a data change with dirty flags. */
-    void notifyChanged(DataKey key, uint32_t dirtyMask);
-
-    /** @brief Current dirty flags bitmask. */
-    uint32_t dirtyFlags() const { return _dirtyFlags; }
-    /** @brief Consume and clear dirty flags. */
-    uint32_t consumeDirtyFlags();
+    /** @brief Notify a data key change. */
+    void notifyChanged(DataKey key);
 
 private:
     RuntimeData _rt{};
     EventBus* _bus = nullptr;
 
-    volatile uint32_t _dirtyFlags = DIRTY_NONE;
-
 private:
-    void markDirty(uint32_t mask);
     void publishChanged(DataKey key);
-    void publishSnapshot();
 };

@@ -14,7 +14,6 @@ enum class EventId : uint16_t {
 
     // ✅ DataStore (runtime model changes)
     DataChanged = 50,
-    DataSnapshotAvailable = 51,
 
     // Configuration
     ConfigChanged = 100,

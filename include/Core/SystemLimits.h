@@ -153,9 +153,17 @@ constexpr size_t JsonCmdBuf = 256;
 namespace Ha {
 namespace Timing {
 /** @brief Delay in ms between each HA discovery entity publish in `HAModule`. */
-constexpr uint32_t DiscoveryStepMs = 40;
+constexpr uint32_t DiscoveryStepMs = 200;
 }  // namespace Timing
 }  // namespace Ha
+
+/** @brief Shared heap guards before network publishes (MQTT and HA discovery). */
+namespace NetworkPublish {
+/** @brief Minimum free 8-bit heap (bytes) required before attempting publish. */
+constexpr uint32_t MinFreeHeapBytes = 4000U;
+/** @brief Minimum largest 8-bit free block (bytes) required before attempting publish. */
+constexpr uint32_t MinLargestBlockBytes = 4096U;
+}  // namespace NetworkPublish
 
 /** @brief Boot orchestration timings used in `main.cpp` staged startup. */
 namespace Boot {

@@ -346,6 +346,48 @@ const char* IOModule::runtimeSnapshotSuffix(uint8_t idx) const
     return suffix;
 }
 
+RuntimeRouteClass IOModule::runtimeSnapshotClass(uint8_t idx) const
+{
+    static constexpr uint8_t ROUTE_DIGITAL_OUTPUT = 2;
+
+    uint8_t routeType = 0;
+    uint8_t slotIdx = 0xFF;
+    if (!runtimeSnapshotRouteFromIndex_(idx, routeType, slotIdx)) {
+        return RuntimeRouteClass::NumericThrottled;
+    }
+    (void)slotIdx;
+    return (routeType == ROUTE_DIGITAL_OUTPUT)
+        ? RuntimeRouteClass::ActuatorImmediate
+        : RuntimeRouteClass::NumericThrottled;
+}
+
+bool IOModule::runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const
+{
+    if (key < DATAKEY_IO_BASE || key >= (DataKey)(DATAKEY_IO_BASE + IO_MAX_ENDPOINTS)) return false;
+
+    static constexpr uint8_t ROUTE_ANALOG = 0;
+    static constexpr uint8_t ROUTE_DIGITAL_INPUT = 1;
+    static constexpr uint8_t ROUTE_DIGITAL_OUTPUT = 2;
+
+    uint8_t routeType = 0;
+    uint8_t slotIdx = 0xFF;
+    if (!runtimeSnapshotRouteFromIndex_(idx, routeType, slotIdx)) return false;
+
+    IOEndpoint* ep = nullptr;
+    if (routeType == ROUTE_ANALOG) {
+        ep = static_cast<IOEndpoint*>(analogSlots_[slotIdx].endpoint);
+    } else if (routeType == ROUTE_DIGITAL_INPUT || routeType == ROUTE_DIGITAL_OUTPUT) {
+        ep = digitalSlots_[slotIdx].endpoint;
+    } else {
+        return false;
+    }
+    if (!ep || !ep->id()) return false;
+
+    uint8_t endpointIdx = 0;
+    if (!endpointIndexFromId_(ep->id(), endpointIdx)) return false;
+    return key == (DataKey)(DATAKEY_IO_BASE + endpointIdx);
+}
+
 bool IOModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const
 {
     static constexpr uint8_t ROUTE_ANALOG = 0;
@@ -495,9 +537,11 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
         const bool isDsSource =
             (slot.def.source == IO_SRC_DS18_WATER) || (slot.def.source == IO_SRC_DS18_AIR);
         if (isDsSource) {
-            // Surface DS18 disconnect/failure as an invalid runtime point (value=null in snapshots).
-            slot.endpoint->update(slot.lastRoundedValid ? slot.lastRounded : 0.0f, false, nowMs);
-            slot.lastRoundedValid = false;
+            // Surface DS18 disconnect/failure once on transition to invalid; keep timestamp stable while invalid.
+            if (slot.lastRoundedValid) {
+                slot.endpoint->update(slot.lastRounded, false, nowMs);
+                slot.lastRoundedValid = false;
+            }
         }
         return false;
     }
@@ -514,8 +558,11 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     }
 
     if (raw < slot.def.minValid || raw > slot.def.maxValid) {
-        slot.endpoint->update(raw, false, nowMs);
-        slot.lastRoundedValid = false;
+        // Transition to invalid only once; avoid timestamp churn while value stays unavailable.
+        if (slot.lastRoundedValid) {
+            slot.endpoint->update(raw, false, nowMs);
+            slot.lastRoundedValid = false;
+        }
         return false;
     }
 
@@ -570,8 +617,11 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
 
     bool on = false;
     if (!slot.driver->read(on)) {
-        inputEp->update(false, false, nowMs);
-        slot.lastValid = false;
+        // Transition to invalid only once; avoid timestamp churn while input remains unreadable.
+        if (slot.lastValid) {
+            inputEp->update(false, false, nowMs);
+            slot.lastValid = false;
+        }
         return false;
     }
 
@@ -687,7 +737,7 @@ void IOModule::forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs)
     float republished = ioRoundToPrecision(v.v.f, slot.def.precision);
     slot.endpoint->update(republished, true, nowMs);
     if (dataStore_) {
-        (void)setIoEndpointFloat(*dataStore_, analogIdx, republished, nowMs, DIRTY_SENSORS);
+        (void)setIoEndpointFloat(*dataStore_, analogIdx, republished, nowMs);
     }
 }
 
@@ -933,7 +983,7 @@ IoStatus IOModule::ioWriteDigital_(IoId id, uint8_t on, uint32_t tsMs)
     if (dataStore_) {
         uint8_t rtIdx = 0;
         if (endpointIndexFromId_(s.endpointId, rtIdx)) {
-            (void)setIoEndpointBool(*dataStore_, rtIdx, in.v.b, in.timestampMs, DIRTY_ACTUATORS);
+            (void)setIoEndpointBool(*dataStore_, rtIdx, in.v.b, in.timestampMs);
         }
     }
 

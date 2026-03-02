@@ -23,5 +23,5 @@ static inline void setTimeReady(DataStore& ds, bool ready)
     RuntimeData& rt = ds.dataMutable();
     if (rt.time.timeReady == ready) return;
     rt.time.timeReady = ready;
-    ds.notifyChanged(DATAKEY_TIME_READY, DIRTY_TIME);
+    ds.notifyChanged(DATAKEY_TIME_READY);
 }

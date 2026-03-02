@@ -314,9 +314,11 @@ bool HAModule::publishDiscovery(const char* component, const char* objectId, con
     if (!component || !objectId || !payload || !mqttSvc || !mqttSvc->publish) return false;
     lastDiscoveryFailureRetryable_ = false;
 
+    constexpr uint32_t kMinFreeHeapForPublish = Limits::NetworkPublish::MinFreeHeapBytes;
+    constexpr uint32_t kMinLargestBlockForPublish = Limits::NetworkPublish::MinLargestBlockBytes;
     const uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     const uint32_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    if (freeHeap < MIN_FREE_HEAP_FOR_PUBLISH || largest < MIN_LARGEST_BLOCK_FOR_PUBLISH) {
+    if (freeHeap < kMinFreeHeapForPublish || largest < kMinLargestBlockForPublish) {
         lastDiscoveryFailureRetryable_ = true;
         const uint32_t now = millis();
         if ((now - lastLowHeapLogMs_) >= 2000U) {
@@ -324,8 +326,8 @@ bool HAModule::publishDiscovery(const char* component, const char* objectId, con
             LOGW("Skip HA discovery publish (low heap free=%lu largest=%lu need_free=%lu need_largest=%lu)",
                  (unsigned long)freeHeap,
                  (unsigned long)largest,
-                 (unsigned long)MIN_FREE_HEAP_FOR_PUBLISH,
-                 (unsigned long)MIN_LARGEST_BLOCK_FOR_PUBLISH);
+                 (unsigned long)kMinFreeHeapForPublish,
+                 (unsigned long)kMinLargestBlockForPublish);
         }
         return false;
     }

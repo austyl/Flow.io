@@ -47,7 +47,7 @@ static inline void setMqttReady(DataStore& ds, bool ready)
     RuntimeData& rt = ds.dataMutable();
     if (rt.mqtt.mqttReady == ready) return;
     rt.mqtt.mqttReady = ready;
-    ds.notifyChanged(DATAKEY_MQTT_READY, DIRTY_MQTT);
+    ds.notifyChanged(DATAKEY_MQTT_READY);
 }
 
 static inline void setMqttRxDrop(DataStore& ds, uint32_t v, bool notify = false)
@@ -55,7 +55,7 @@ static inline void setMqttRxDrop(DataStore& ds, uint32_t v, bool notify = false)
     RuntimeData& rt = ds.dataMutable();
     if (rt.mqtt.rxDrop == v) return;
     rt.mqtt.rxDrop = v;
-    if (notify) ds.notifyChanged(DATAKEY_MQTT_RX_DROP, DIRTY_MQTT);
+    if (notify) ds.notifyChanged(DATAKEY_MQTT_RX_DROP);
 }
 
 static inline void setMqttParseFail(DataStore& ds, uint32_t v, bool notify = false)
@@ -63,7 +63,7 @@ static inline void setMqttParseFail(DataStore& ds, uint32_t v, bool notify = fal
     RuntimeData& rt = ds.dataMutable();
     if (rt.mqtt.parseFail == v) return;
     rt.mqtt.parseFail = v;
-    if (notify) ds.notifyChanged(DATAKEY_MQTT_PARSE_FAIL, DIRTY_MQTT);
+    if (notify) ds.notifyChanged(DATAKEY_MQTT_PARSE_FAIL);
 }
 
 static inline void setMqttHandlerFail(DataStore& ds, uint32_t v, bool notify = false)
@@ -71,7 +71,7 @@ static inline void setMqttHandlerFail(DataStore& ds, uint32_t v, bool notify = f
     RuntimeData& rt = ds.dataMutable();
     if (rt.mqtt.handlerFail == v) return;
     rt.mqtt.handlerFail = v;
-    if (notify) ds.notifyChanged(DATAKEY_MQTT_HANDLER_FAIL, DIRTY_MQTT);
+    if (notify) ds.notifyChanged(DATAKEY_MQTT_HANDLER_FAIL);
 }
 
 static inline void setMqttOversizeDrop(DataStore& ds, uint32_t v, bool notify = false)
@@ -79,5 +79,5 @@ static inline void setMqttOversizeDrop(DataStore& ds, uint32_t v, bool notify = 
     RuntimeData& rt = ds.dataMutable();
     if (rt.mqtt.oversizeDrop == v) return;
     rt.mqtt.oversizeDrop = v;
-    if (notify) ds.notifyChanged(DATAKEY_MQTT_OVERSIZE_DROP, DIRTY_MQTT);
+    if (notify) ds.notifyChanged(DATAKEY_MQTT_OVERSIZE_DROP);
 }

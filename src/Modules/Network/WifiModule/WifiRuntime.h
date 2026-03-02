@@ -35,7 +35,7 @@ static inline void setWifiReady(DataStore& ds, bool ready)
     RuntimeData& rt = ds.dataMutable();
     if (rt.wifi.ready == ready) return;
     rt.wifi.ready = ready;
-    ds.notifyChanged(DATAKEY_WIFI_READY, DIRTY_NETWORK);
+    ds.notifyChanged(DATAKEY_WIFI_READY);
 }
 
 static inline void setWifiIp(DataStore& ds, const IpV4& ip)
@@ -43,5 +43,5 @@ static inline void setWifiIp(DataStore& ds, const IpV4& ip)
     RuntimeData& rt = ds.dataMutable();
     if (ipEqual(rt.wifi.ip, ip)) return;
     rt.wifi.ip = ip;
-    ds.notifyChanged(DATAKEY_WIFI_IP, DIRTY_NETWORK);
+    ds.notifyChanged(DATAKEY_WIFI_IP);
 }

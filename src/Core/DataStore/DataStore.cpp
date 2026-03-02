@@ -4,18 +4,6 @@
  */
 #include "Core/DataStore/DataStore.h"
 
-void DataStore::markDirty(uint32_t mask)
-{
-    _dirtyFlags |= mask;
-}
-
-uint32_t DataStore::consumeDirtyFlags()
-{
-    uint32_t f = _dirtyFlags;
-    _dirtyFlags = DIRTY_NONE;
-    return f;
-}
-
 void DataStore::publishChanged(DataKey key)
 {
     if (!_bus) return;
@@ -23,16 +11,7 @@ void DataStore::publishChanged(DataKey key)
     _bus->post(EventId::DataChanged, &p, sizeof(p));
 }
 
-void DataStore::publishSnapshot()
+void DataStore::notifyChanged(DataKey key)
 {
-    if (!_bus) return;
-    DataSnapshotPayload p{ (uint32_t)_dirtyFlags };
-    _bus->post(EventId::DataSnapshotAvailable, &p, sizeof(p));
-}
-
-void DataStore::notifyChanged(DataKey key, uint32_t dirtyMask)
-{
-    markDirty(dirtyMask);
     publishChanged(key);
-    publishSnapshot();
 }

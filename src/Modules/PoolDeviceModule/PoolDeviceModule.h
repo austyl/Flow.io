@@ -57,6 +57,8 @@ public:
     const char* deviceLabel(uint8_t idx) const;
     uint8_t runtimeSnapshotCount() const override;
     const char* runtimeSnapshotSuffix(uint8_t idx) const override;
+    RuntimeRouteClass runtimeSnapshotClass(uint8_t idx) const override;
+    bool runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const override;
     bool buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const override;
 
 private:

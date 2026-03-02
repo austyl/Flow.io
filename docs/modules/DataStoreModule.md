@@ -27,9 +27,8 @@ Aucune variable `ConfigStore`.
 Le module ne publie pas directement d'événement.
 Mais après wiring:
 - toute écriture runtime via helpers `*Runtime.h` appelant `DataStore::notifyChanged` émet:
-  - `DataChanged`
-  - `DataSnapshotAvailable`
+  - `DataChanged` (avec `DataKey`)
 
 ## MQTT
 
-Aucune publication directe. `MQTTModule` consomme les événements DataStore.
+Aucune publication directe. Le runtime MQTT est consommé via `MqttRuntimeDispatchModule` (`RuntimeDispatchCore` + sink MQTT).

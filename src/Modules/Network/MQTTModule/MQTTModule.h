@@ -18,7 +18,6 @@ struct MQTTConfig {
     char user[Limits::Mqtt::Buffers::User] = "";
     char pass[Limits::Mqtt::Buffers::Pass] = "";
     char baseTopic[Limits::Mqtt::Buffers::BaseTopic] = "flowio"; // Default value
-    uint32_t sensorMinPublishMs = Limits::Mqtt::Defaults::SensorMinPublishMs;
     // reserved for future runtime publisher config
 };
 
@@ -72,14 +71,6 @@ public:
     void formatTopic(char* out, size_t outLen, const char* suffix) const;
     bool isConnected() const { return state == MQTTState::Connected; }
     void setStartupReady(bool ready) { _startupReady = ready; }
-    uint32_t activeSensorsDirtyMask() const { return sensorsActiveDirtyMask; }
-    void setSensorsPublisher(const char* topic, bool (*build)(MQTTModule* self, char* out, size_t outLen)) {
-        sensorsTopic = topic;
-        sensorsBuild = build;
-        sensorsPending = true;
-        sensorsPendingDirtyMask = 0xFFFFFFFFUL;
-        lastSensorsPublishMs = 0;
-    }
     DataStore* dataStorePtr() const { return dataStore; }
 
 private:
@@ -114,13 +105,6 @@ private:
     uint8_t publisherCount = 0;
     const char* cfgModules[Limits::Mqtt::Capacity::CfgTopicMax] = {nullptr};
     uint8_t cfgModuleCount = 0;
-
-    const char* sensorsTopic = nullptr;
-    bool (*sensorsBuild)(MQTTModule* self, char* out, size_t outLen) = nullptr;
-    bool sensorsPending = false;
-    uint32_t sensorsPendingDirtyMask = 0;
-    uint32_t sensorsActiveDirtyMask = 0;
-    uint32_t lastSensorsPublishMs = 0;
 
     struct RxMsg {
         char topic[Limits::Mqtt::Buffers::RxTopic];
@@ -162,12 +146,6 @@ private:
         NVS_KEY(NvsKeys::Mqtt::Enabled),"enabled","mqtt",ConfigType::Bool,
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
-    // CFGDOC: {"label":"Période mini capteurs (ms)","help":"Intervalle minimal entre deux publications capteurs.","unit":"ms"}
-    ConfigVariable<int32_t,0> sensorMinVar {
-        NVS_KEY(NvsKeys::Mqtt::SensorMinPublishMs),"sens_min_pub_ms","mqtt",ConfigType::Int32,
-        (int32_t*)&cfgData.sensorMinPublishMs,ConfigPersistence::Persistent,0
-    };
-
     void setState(MQTTState s);
     void buildTopics();
     void refreshConfigModules();

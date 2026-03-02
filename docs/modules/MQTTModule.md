@@ -5,7 +5,7 @@
 Gateway MQTT principal:
 - connexion broker, reconnect/backoff
 - souscription commandes (`cmd`) et patch config (`cfg/set`)
-- publication ACK, status, config, runtime snapshots, alarmes
+- publication ACK, status, config, alarmes
 - exposition de `MqttService`
 
 Type: module actif.
@@ -44,7 +44,7 @@ Type: module actif.
 ## Config / NVS
 
 Branche `ConfigBranchId::Mqtt` (`module: mqtt`):
-- `host`, `port`, `user`, `pass`, `baseTopic`, `enabled`, `sens_min_pub_ms`
+- `host`, `port`, `user`, `pass`, `baseTopic`, `enabled`
 
 ## Topics majeurs
 
@@ -82,12 +82,11 @@ Traitement:
 
 Abonnements:
 - `DataChanged`
-- `DataSnapshotAvailable`
 - `ConfigChanged`
 - `AlarmRaised`, `AlarmCleared`, `AlarmAcked`, `AlarmSilenceChanged`, `AlarmConditionChanged`
 
 Effets:
-- `DataSnapshotAvailable`: déclenche publication runtime sélective (dirty flags)
+- `DataChanged` sur `MqttReady`: alimente la logique de reconnexion/état réseau MQTT
 - `ConfigChanged`: publication `cfg/<module>` ciblée, reconnect si clés MQTT de connexion modifiées
 - événements alarmes: publication `rt/alarms/id*` + `rt/alarms/m`
 
@@ -99,9 +98,10 @@ Effets:
 
 ## Publication runtime
 
-- sensors publisher (mux runtime depuis `main.cpp`)
-- publishers périodiques additionnels (`addRuntimePublisher`)
-- throttling via `sensorMinPublishMs`
+- les routes runtime métier (`rt/io/*`, `rt/pdm/*`, `rt/poollogic/*`) sont publiées par `MqttRuntimeDispatchModule`
+- `MQTTModule` conserve les publishers périodiques additionnels (`addRuntimePublisher`), par ex:
+  - `rt/network/state`
+  - `rt/system/state`
 
 ## Points clés robustesse
 

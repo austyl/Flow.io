@@ -6,6 +6,7 @@
 #include "Core/ModuleManager.h"   ///< required for iteration
 #include <Arduino.h>
 #include <WiFi.h>                ///< only for RSSI (optional)
+#include <string.h>
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::SystemMonitorModule)
 #include "Core/ModuleLog.h"
 
@@ -132,13 +133,12 @@ void SystemMonitorModule::logTaskStacks() {
         return;
     }
 
-    char line[512];
+    static constexpr uint8_t kTasksPerLine = 6;
+    char line[384];
     size_t off = 0;
-    int w = snprintf(line, sizeof(line), "Stack");
-    if (w < 0) return;
-    off = (size_t)w;
+    line[0] = '\0';
+    uint8_t tasksOnLine = 0;
     bool hasTask = false;
-    bool hasLow = false;
 
     const uint8_t n = moduleManager->getCount();
     for (uint8_t i = 0; i < n; ++i) {
@@ -151,21 +151,44 @@ void SystemMonitorModule::logTaskStacks() {
         UBaseType_t hw = uxTaskGetStackHighWaterMark(h);
         hasTask = true;
         const bool isLow = (hw < 300);
-        if (isLow) hasLow = true;
 
-        if (off < sizeof(line)) {
-            w = snprintf(line + off, sizeof(line) - off, " %s@c%ld=%u%s",
-                         m->moduleId(),
-                         (long)m->taskCore(),
-                         (unsigned)hw,
-                         isLow ? "!" : "");
-            if (w < 0) break;
-            if ((size_t)w >= (sizeof(line) - off)) {
-                off = sizeof(line) - 1;
-                line[off] = '\0';
-                break;
+        char entry[80];
+        const int ew = snprintf(entry, sizeof(entry), "%s@c%ld=%u%s",
+                                m->moduleId(),
+                                (long)m->taskCore(),
+                                (unsigned)hw,
+                                isLow ? "!" : "");
+        if (ew < 0) continue;
+
+        const size_t entryLen = (size_t)ew;
+        const size_t sepLen = (tasksOnLine > 0) ? 1U : 0U;
+
+        if (tasksOnLine >= kTasksPerLine || (off + sepLen + entryLen) >= sizeof(line)) {
+            if (tasksOnLine > 0) {
+                LOGI("Stack %s", line);
             }
-            off += (size_t)w;
+            off = 0;
+            line[0] = '\0';
+            tasksOnLine = 0;
+        }
+
+        if ((off + sepLen + entryLen) >= sizeof(line)) {
+            continue;
+        }
+
+        if (sepLen) {
+            line[off++] = ' ';
+            line[off] = '\0';
+        }
+        memcpy(line + off, entry, entryLen + 1);
+        off += entryLen;
+        ++tasksOnLine;
+
+        if (tasksOnLine >= kTasksPerLine) {
+            LOGI("Stack %s", line);
+            off = 0;
+            line[0] = '\0';
+            tasksOnLine = 0;
         }
     }
 
@@ -174,8 +197,9 @@ void SystemMonitorModule::logTaskStacks() {
         return;
     }
 
-    (void)hasLow;
-    LOGI("%s", line);
+    if (tasksOnLine > 0) {
+        LOGI("Stack %s", line);
+    }
 }
 
 void SystemMonitorModule::buildHealthJson(char* out, size_t outLen) {

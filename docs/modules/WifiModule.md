@@ -42,8 +42,8 @@ Branche: `ConfigBranchId::Wifi` (`module: wifi`)
 ## DataStore
 
 Écritures via `WifiRuntime.h`:
-- `setWifiReady(...)` -> `DataKeys::WifiReady` + `DIRTY_NETWORK`
-- `setWifiIp(...)` -> `DataKeys::WifiIp` + `DIRTY_NETWORK`
+- `setWifiReady(...)` -> `DataKeys::WifiReady`
+- `setWifiIp(...)` -> `DataKeys::WifiIp`
 
 ## EventBus / MQTT
 

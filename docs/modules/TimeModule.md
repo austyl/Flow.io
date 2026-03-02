@@ -68,7 +68,7 @@ Slots système réservés (0..2):
 ## DataStore
 
 Écriture:
-- `setTimeReady(...)` -> `DataKeys::TimeReady` + `DIRTY_TIME`
+- `setTimeReady(...)` -> `DataKeys::TimeReady`
 
 ## Persistance scheduler
 

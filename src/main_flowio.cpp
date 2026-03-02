@@ -14,7 +14,6 @@
 #include "Core/ConfigStore.h"
 #include "Core/DataStore/DataStore.h"
 #include "Core/ModuleManager.h"
-#include "Core/RuntimeSnapshotProvider.h"
 #include "Core/ServiceRegistry.h"
 
 /// Load Modules
@@ -24,6 +23,7 @@
 #include "Modules/Network/MQTTModule/MQTTModule.h"
 #include "Modules/Network/HAModule/HAModule.h"
 #include "Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h"
+#include "Modules/Network/MqttRuntimeDispatchModule/MqttRuntimeDispatchModule.h"
 // Stores Modules
 #include "Modules/Stores/ConfigStoreModule/ConfigStoreModule.h"
 #include "Modules/Stores/DataStoreModule/DataStoreModule.h"
@@ -79,6 +79,7 @@ static CommandModule        commandModule;
 static ConfigStoreModule    configStoreModule;
 static DataStoreModule      dataStoreModule;
 static MQTTModule           mqttModule;
+static MqttRuntimeDispatchModule mqttRuntimeDispatchModule;
 static HAModule             haModule;
 static SystemModule         systemModule;
 static SystemMonitorModule  systemMonitorModule;
@@ -98,8 +99,6 @@ static OneWireBus oneWireWater(Board::OneWire::BusA);
 static OneWireBus oneWireAir(Board::OneWire::BusB);
 static TaskHandle_t ledRandomTaskHandle = nullptr;
 
-static char topicRuntimeMux[Limits::TopicBuf] = {0};
-static char topicRuntimeState[Limits::TopicBuf] = {0};
 static char topicNetworkState[Limits::TopicBuf] = {0};
 static char topicSystemState[Limits::TopicBuf] = {0};
 
@@ -111,37 +110,6 @@ struct BootOrchestratorState {
     uint32_t t0Ms = 0;
 };
 static BootOrchestratorState gBootOrchestrator{};
-
-struct RuntimeSnapshotRoute {
-    const IRuntimeSnapshotProvider* provider = nullptr;
-    uint8_t snapshotIdx = 0;
-    char topic[Limits::TopicBuf] = {0};
-    uint32_t dirtyMask = DIRTY_SENSORS;
-    uint32_t lastPublishedTs = 0;
-    bool startupForce = false;
-    bool startupPublished = false;
-    bool retryPending = false;
-    uint32_t retryBackoffMs = 0;
-    uint32_t retryNextMs = 0;
-};
-static RuntimeSnapshotRoute gRuntimeRoutes[Limits::MaxRuntimeRoutes]{};
-static uint8_t gRuntimeRouteCount = 0;
-static_assert(Limits::MaxRuntimeRoutes >=
-                  (FLOW_POOL_SENSOR_BINDING_COUNT + FLOW_POOL_IO_BINDING_COUNT + (FLOW_POOL_IO_BINDING_COUNT * 2U) + 2U),
-              "MaxRuntimeRoutes too small for default Flow.IO runtime providers (io + pooldev + poollogic)");
-
-struct RuntimeMuxStats {
-    uint32_t seq = 0;
-    uint32_t tsMs = 0;
-    uint8_t routesTotal = 0;
-    uint8_t routesPublished = 0;
-    uint8_t routesSkippedNoChange = 0;
-    uint8_t routesSkippedMask = 0;
-    uint8_t buildErrors = 0;
-    uint8_t publishErrors = 0;
-    uint32_t activeDirtyMask = 0;
-};
-static RuntimeMuxStats gRuntimeMuxStats{};
 
 static constexpr uint8_t IO_DO_COUNT = FLOW_POOL_IO_BINDING_COUNT;
 
@@ -163,13 +131,13 @@ static void setAdcDefaultCalib(IOAnalogDefinition& def,
 static void onIoFloatValue(void* ctx, float value) {
     if (!gIoDataStore) return;
     uint8_t idx = (uint8_t)(uintptr_t)ctx;
-    setIoEndpointFloat(*gIoDataStore, idx, value, millis(), DIRTY_SENSORS);
+    setIoEndpointFloat(*gIoDataStore, idx, value, millis());
 }
 
 static void onIoBoolValue(void* ctx, bool value) {
     if (!gIoDataStore) return;
     uint8_t idx = (uint8_t)(uintptr_t)ctx;
-    setIoEndpointBool(*gIoDataStore, idx, value, millis(), DIRTY_SENSORS);
+    setIoEndpointBool(*gIoDataStore, idx, value, millis());
 }
 
 static void requireSetup(bool ok, const char* step)
@@ -177,128 +145,6 @@ static void requireSetup(bool ok, const char* step)
     if (ok) return;
     Board::SerialMap::logSerial().printf("Setup failure: %s\n", step ? step : "unknown");
     while (true) delay(1000);
-}
-
-static bool registerRuntimeProvider(MQTTModule& mqtt, const IRuntimeSnapshotProvider* provider) {
-    if (!provider) return false;
-
-    bool any = false;
-    const uint8_t count = provider->runtimeSnapshotCount();
-    for (uint8_t idx = 0; idx < count; ++idx) {
-        if (gRuntimeRouteCount >= Limits::MaxRuntimeRoutes) {
-            Board::SerialMap::logSerial().printf("Runtime route limit reached (%u), provider routes truncated\n",
-                                                 (unsigned)Limits::MaxRuntimeRoutes);
-            break;
-        }
-        const char* suffix = provider->runtimeSnapshotSuffix(idx);
-        if (!suffix || suffix[0] == '\0') continue;
-
-        RuntimeSnapshotRoute& route = gRuntimeRoutes[gRuntimeRouteCount++];
-        route.provider = provider;
-        route.snapshotIdx = idx;
-        if (strncmp(suffix, "rt/io/output/", 13) == 0) {
-            route.dirtyMask = DIRTY_ACTUATORS;
-        } else if (strncmp(suffix, "rt/pdm/state/", 13) == 0) {
-            route.dirtyMask = DIRTY_ACTUATORS;
-        } else if (strncmp(suffix, "rt/pdm/metrics/", 15) == 0) {
-            route.dirtyMask = DIRTY_SENSORS;
-        } else {
-            route.dirtyMask = DIRTY_SENSORS;
-        }
-        route.startupForce =
-            (strncmp(suffix, "rt/io/output/", 13) == 0) ||
-            (strncmp(suffix, "rt/pdm/state/", 13) == 0);
-        route.lastPublishedTs = 0;
-        route.startupPublished = false;
-        route.retryPending = false;
-        route.retryBackoffMs = 0;
-        route.retryNextMs = 0;
-        mqtt.formatTopic(route.topic, sizeof(route.topic), suffix);
-        any = true;
-    }
-    return any;
-}
-
-static bool publishRuntimeStates(MQTTModule* mqtt, char* out, size_t len) {
-    if (!mqtt) return false;
-    DataStore* ds = mqtt->dataStorePtr();
-    if (!ds) return false;
-    gIoDataStore = ds;
-
-    RuntimeMuxStats st{};
-    const uint32_t nowMs = millis();
-    st.seq = gRuntimeMuxStats.seq + 1;
-    st.tsMs = nowMs;
-    st.routesTotal = gRuntimeRouteCount;
-    uint32_t activeDirtyMask = mqtt->activeSensorsDirtyMask();
-    if (activeDirtyMask == 0U) activeDirtyMask = (DIRTY_SENSORS | DIRTY_ACTUATORS);
-    st.activeDirtyMask = activeDirtyMask;
-
-    for (uint8_t i = 0; i < gRuntimeRouteCount; ++i) {
-        RuntimeSnapshotRoute& route = gRuntimeRoutes[i];
-        if (!route.provider) continue;
-        const bool forceStartupRoute = route.startupForce && !route.startupPublished;
-        const bool retryDue = route.retryPending && ((int32_t)(nowMs - route.retryNextMs) >= 0);
-        if (!forceStartupRoute && !retryDue && (route.dirtyMask & activeDirtyMask) == 0U) {
-            ++st.routesSkippedMask;
-            continue;
-        }
-
-        uint32_t ts = 0;
-        if (!route.provider->buildRuntimeSnapshot(route.snapshotIdx, out, len, ts)) {
-            ++st.buildErrors;
-            continue;
-        }
-        if (!forceStartupRoute && !retryDue && ts <= route.lastPublishedTs) {
-            ++st.routesSkippedNoChange;
-            continue;
-        }
-
-        if (mqtt->publish(route.topic, out, 0, false)) {
-            route.lastPublishedTs = ts;
-            if (route.startupForce) route.startupPublished = true;
-            route.retryPending = false;
-            route.retryBackoffMs = 0;
-            route.retryNextMs = 0;
-            ++st.routesPublished;
-        } else {
-            constexpr uint32_t kRetryMinMs = 250U;
-            constexpr uint32_t kRetryMaxMs = 5000U;
-            uint32_t backoff = route.retryBackoffMs;
-            if (backoff == 0U) backoff = kRetryMinMs;
-            else if (backoff >= (kRetryMaxMs / 2U)) backoff = kRetryMaxMs;
-            else backoff *= 2U;
-            route.retryPending = true;
-            route.retryBackoffMs = backoff;
-            route.retryNextMs = nowMs + backoff;
-            ++st.publishErrors;
-        }
-    }
-
-    gRuntimeMuxStats = st;
-    // Mux callback publishes detailed routes manually and does not publish its bound topic.
-    return false;
-}
-
-static bool buildRuntimeMuxState(MQTTModule* mqtt, char* out, size_t len) {
-    if (!mqtt || !out || len == 0) return false;
-    const RuntimeMuxStats& st = gRuntimeMuxStats;
-    int wrote = snprintf(
-        out, len,
-        "{\"v\":1,\"ts\":%lu,\"seq\":%lu,\"routes_total\":%u,\"routes_pub\":%u,"
-        "\"routes_skip_nc\":%u,\"routes_skip_m\":%u,"
-        "\"build_errors\":%u,\"publish_errors\":%u,\"dirty_act_m\":%lu}",
-        (unsigned long)millis(),
-        (unsigned long)st.seq,
-        (unsigned)st.routesTotal,
-        (unsigned)st.routesPublished,
-        (unsigned)st.routesSkippedNoChange,
-        (unsigned)st.routesSkippedMask,
-        (unsigned)st.buildErrors,
-        (unsigned)st.publishErrors,
-        (unsigned long)st.activeDirtyMask
-    );
-    return (wrote > 0) && ((size_t)wrote < len);
 }
 
 static bool buildNetworkSnapshot(MQTTModule* mqtt, char* out, size_t len) {
@@ -439,6 +285,7 @@ void setup() {
     moduleManager.add(&wifiModule);
     moduleManager.add(&timeModule);
     moduleManager.add(&mqttModule);
+    moduleManager.add(&mqttRuntimeDispatchModule);
     moduleManager.add(&haModule);
     moduleManager.add(&systemModule);
     moduleManager.add(&ioModule);
@@ -622,6 +469,10 @@ void setup() {
         requireSetup(poolDeviceModule.defineDevice(pd), "define pool device");
     }
 
+    requireSetup(mqttRuntimeDispatchModule.registerProvider(&ioModule), "register runtime provider io");
+    requireSetup(mqttRuntimeDispatchModule.registerProvider(&poolDeviceModule), "register runtime provider pooldev");
+    requireSetup(mqttRuntimeDispatchModule.registerProvider(&poolLogicModule), "register runtime provider poollogic");
+
     
     bool ok = moduleManager.initAll(registry, services);
     if (!ok) {
@@ -631,18 +482,8 @@ void setup() {
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     gIoDataStore = dsSvc ? dsSvc->store : nullptr;
 
-    mqttModule.formatTopic(topicRuntimeMux, sizeof(topicRuntimeMux), "rt/runtime/mux");
-    mqttModule.formatTopic(topicRuntimeState, sizeof(topicRuntimeState), "rt/runtime/state");
-    gRuntimeRouteCount = 0;
-    (void)registerRuntimeProvider(mqttModule, &ioModule);
-    (void)registerRuntimeProvider(mqttModule, &poolDeviceModule);
-    (void)registerRuntimeProvider(mqttModule, &poolLogicModule);
     mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");
     mqttModule.formatTopic(topicSystemState, sizeof(topicSystemState), "rt/system/state");
-    mqttModule.setSensorsPublisher(topicRuntimeMux, publishRuntimeStates);
-    // Dedicated retry tick for runtime routes; callback intentionally returns false (no topic payload).
-    mqttModule.addRuntimePublisher(topicRuntimeMux, 10000, 0, false, publishRuntimeStates, true);
-    mqttModule.addRuntimePublisher(topicRuntimeState, 60000, 0, false, buildRuntimeMuxState);
     mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
     mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
     startBootOrchestrator();

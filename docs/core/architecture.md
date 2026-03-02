@@ -13,8 +13,9 @@ Flow.IO suit une architecture modulaire orientée contrats:
 - `ModuleManager`: tri topologique des dépendances, init, `onConfigLoaded`, start des tasks
 - `ServiceRegistry`: registre de services par identifiant string (`add/get<T>()`)
 - `EventBus`: queue thread-safe, dispatch par callbacks
-- `DataStore`: état runtime centralisé + `DataChanged` / `DataSnapshotAvailable`
+- `DataStore`: état runtime centralisé + `DataChanged`
 - `ConfigStore`: variables de config déclarées, chargement/sauvegarde NVS, JSON import/export
+- `RuntimeDispatchCore`: coeur générique de dispatch runtime (dirty routing + throttle + retry), indépendant du transport
 
 ## Chaîne de logs
 
@@ -52,16 +53,17 @@ flowchart LR
 6. câblage runtime MQTT (routes snapshots runtime)
 7. boot orchestrator (release différée MQTT/HA)
 
-## Runtime publisher multiplexé
+## Dispatch runtime
 
-Dans `main.cpp`, un multiplexeur runtime:
+Dans `main_flowio.cpp`, `MqttRuntimeDispatchModule`:
 - enregistre les providers `IRuntimeSnapshotProvider` (`io`, `pooldev`, `poollogic`)
-- construit des routes `rt/io/...`, `rt/pdm/state/...`, `rt/pdm/metrics/...`
-- publie seulement les routes changées selon timestamp + dirty mask
-- publie des snapshots système supplémentaires:
-  - `rt/runtime/state`
-  - `rt/network/state`
-  - `rt/system/state`
+- délègue la logique de dispatch à `RuntimeDispatchCore`
+- branche le transport via un sink (`MqttRuntimeSink`)
+- publie seulement les routes changées selon timestamp + classe de route (numérique throttlé / actuateur immédiat)
+
+`MQTTModule` publie séparément les snapshots périodiques additionnels:
+- `rt/network/state`
+- `rt/system/state`
 
 ## Règles d'intégration recommandées
 

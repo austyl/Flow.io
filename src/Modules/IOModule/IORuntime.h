@@ -48,8 +48,7 @@ static inline bool ioEndpointBool(const DataStore& ds, uint8_t idx, bool& out)
     return true;
 }
 
-static inline bool setIoEndpointFloat(DataStore& ds, uint8_t idx, float value, uint32_t tsMs,
-                                      uint32_t dirtyMask = DIRTY_SENSORS)
+static inline bool setIoEndpointFloat(DataStore& ds, uint8_t idx, float value, uint32_t tsMs)
 {
     if (idx >= IO_MAX_ENDPOINTS) return false;
 
@@ -68,12 +67,11 @@ static inline bool setIoEndpointFloat(DataStore& ds, uint8_t idx, float value, u
     ep.floatValue = value;
     ep.timestampMs = tsMs;
 
-    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx), dirtyMask);
+    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx));
     return true;
 }
 
-static inline bool setIoEndpointBool(DataStore& ds, uint8_t idx, bool value, uint32_t tsMs,
-                                     uint32_t dirtyMask = DIRTY_SENSORS)
+static inline bool setIoEndpointBool(DataStore& ds, uint8_t idx, bool value, uint32_t tsMs)
 {
     if (idx >= IO_MAX_ENDPOINTS) return false;
 
@@ -92,12 +90,11 @@ static inline bool setIoEndpointBool(DataStore& ds, uint8_t idx, bool value, uin
     ep.boolValue = value;
     ep.timestampMs = tsMs;
 
-    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx), dirtyMask);
+    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx));
     return true;
 }
 
-static inline bool setIoEndpointInt(DataStore& ds, uint8_t idx, int32_t value, uint32_t tsMs,
-                                    uint32_t dirtyMask = DIRTY_SENSORS)
+static inline bool setIoEndpointInt(DataStore& ds, uint8_t idx, int32_t value, uint32_t tsMs)
 {
     if (idx >= IO_MAX_ENDPOINTS) return false;
 
@@ -116,6 +113,6 @@ static inline bool setIoEndpointInt(DataStore& ds, uint8_t idx, int32_t value, u
     ep.intValue = value;
     ep.timestampMs = tsMs;
 
-    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx), dirtyMask);
+    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx));
     return true;
 }
