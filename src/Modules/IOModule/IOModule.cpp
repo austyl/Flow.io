@@ -1111,6 +1111,20 @@ bool IOModule::svcGetMask_(void* ctx, uint8_t* mask)
     return self->getLedMask_(*mask);
 }
 
+bool IOModule::svcStatusLedsSetMask_(void* ctx, uint8_t mask, uint32_t tsMs)
+{
+    IOModule* self = static_cast<IOModule*>(ctx);
+    if (!self) return false;
+    return self->setLedMask_(mask, tsMs == 0U ? millis() : tsMs);
+}
+
+bool IOModule::svcStatusLedsGetMask_(void* ctx, uint8_t* mask)
+{
+    IOModule* self = static_cast<IOModule*>(ctx);
+    if (!self || !mask) return false;
+    return self->getLedMask_(*mask);
+}
+
 bool IOModule::setLedMask_(uint8_t mask, uint32_t tsMs)
 {
     if (!cfgData_.pcfEnabled) return false;
@@ -1513,6 +1527,9 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
     (void)services.add("io", &ioSvc_);
+    if (!services.add("status_leds", &statusLedsSvc_)) {
+        LOGW("status_leds service registration failed");
+    }
 
     // Default labels for digital output slots (can be overridden by persisted config).
     for (uint8_t i = 0; i < FLOW_POOL_IO_BINDING_COUNT; ++i) {

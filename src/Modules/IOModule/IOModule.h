@@ -182,6 +182,8 @@ private:
     static bool svcTurnOn_(void* ctx, uint8_t bit);
     static bool svcTurnOff_(void* ctx, uint8_t bit);
     static bool svcGetMask_(void* ctx, uint8_t* mask);
+    static bool svcStatusLedsSetMask_(void* ctx, uint8_t mask, uint32_t tsMs);
+    static bool svcStatusLedsGetMask_(void* ctx, uint8_t* mask);
 
     uint8_t ioCount_() const;
     IoStatus ioIdAt_(uint8_t index, IoId* outId) const;
@@ -305,6 +307,11 @@ private:
         svcReadAnalog_,
         svcTick_,
         svcLastCycle_,
+        this
+    };
+    StatusLedsService statusLedsSvc_{
+        svcStatusLedsSetMask_,
+        svcStatusLedsGetMask_,
         this
     };
     bool pcfLastEnabled_ = false;

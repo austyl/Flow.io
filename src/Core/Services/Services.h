@@ -12,6 +12,7 @@
 #include "IHA.h"
 #include "ILogger.h"
 #include "IIO.h"
+#include "IStatusLeds.h"
 #include "IPoolDevice.h"
 #include "IMqtt.h"
 #include "ITime.h"
