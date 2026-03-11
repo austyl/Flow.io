@@ -1,10 +1,10 @@
 {
   "_meta": {
     "generated": true,
-    "total": 262,
-    "decl_total": 212,
+    "total": 282,
+    "decl_total": 232,
     "decl_with_cfgdoc": 99,
-    "missing_cfgdoc_count": 113,
+    "missing_cfgdoc_count": 133,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
   },
@@ -835,6 +835,186 @@
       "help": "Source ADC de A5 (0=ADS interne, 1=ADS externe).",
       "var": "a5SourceVar_",
       "source": "auto-hint"
+    },
+    "io/input/i0/i0_active_high": {
+      "module": "io/input/i0",
+      "name": "i0_active_high",
+      "type": "Bool",
+      "label": "I0 active high",
+      "help": "Parametre 'i0_active_high' pour la branche 'io/input/i0' (type Bool).",
+      "var": "i0ActiveHighVar_",
+      "source": "auto"
+    },
+    "io/input/i0/i0_name": {
+      "module": "io/input/i0",
+      "name": "i0_name",
+      "type": "CharArray",
+      "label": "I0 name",
+      "help": "Parametre 'i0_name' pour la branche 'io/input/i0' (type CharArray).",
+      "var": "i0NameVar_",
+      "source": "auto"
+    },
+    "io/input/i0/i0_pin": {
+      "module": "io/input/i0",
+      "name": "i0_pin",
+      "type": "UInt8",
+      "label": "I0 pin",
+      "help": "Parametre 'i0_pin' pour la branche 'io/input/i0' (type UInt8).",
+      "var": "i0PinVar_",
+      "source": "auto"
+    },
+    "io/input/i0/i0_pull_mode": {
+      "module": "io/input/i0",
+      "name": "i0_pull_mode",
+      "type": "UInt8",
+      "label": "I0 pull mode",
+      "help": "Parametre 'i0_pull_mode' pour la branche 'io/input/i0' (type UInt8).",
+      "var": "i0PullModeVar_",
+      "source": "auto"
+    },
+    "io/input/i1/i1_active_high": {
+      "module": "io/input/i1",
+      "name": "i1_active_high",
+      "type": "Bool",
+      "label": "I1 active high",
+      "help": "Parametre 'i1_active_high' pour la branche 'io/input/i1' (type Bool).",
+      "var": "i1ActiveHighVar_",
+      "source": "auto"
+    },
+    "io/input/i1/i1_name": {
+      "module": "io/input/i1",
+      "name": "i1_name",
+      "type": "CharArray",
+      "label": "I1 name",
+      "help": "Parametre 'i1_name' pour la branche 'io/input/i1' (type CharArray).",
+      "var": "i1NameVar_",
+      "source": "auto"
+    },
+    "io/input/i1/i1_pin": {
+      "module": "io/input/i1",
+      "name": "i1_pin",
+      "type": "UInt8",
+      "label": "I1 pin",
+      "help": "Parametre 'i1_pin' pour la branche 'io/input/i1' (type UInt8).",
+      "var": "i1PinVar_",
+      "source": "auto"
+    },
+    "io/input/i1/i1_pull_mode": {
+      "module": "io/input/i1",
+      "name": "i1_pull_mode",
+      "type": "UInt8",
+      "label": "I1 pull mode",
+      "help": "Parametre 'i1_pull_mode' pour la branche 'io/input/i1' (type UInt8).",
+      "var": "i1PullModeVar_",
+      "source": "auto"
+    },
+    "io/input/i2/i2_active_high": {
+      "module": "io/input/i2",
+      "name": "i2_active_high",
+      "type": "Bool",
+      "label": "I2 active high",
+      "help": "Parametre 'i2_active_high' pour la branche 'io/input/i2' (type Bool).",
+      "var": "i2ActiveHighVar_",
+      "source": "auto"
+    },
+    "io/input/i2/i2_name": {
+      "module": "io/input/i2",
+      "name": "i2_name",
+      "type": "CharArray",
+      "label": "I2 name",
+      "help": "Parametre 'i2_name' pour la branche 'io/input/i2' (type CharArray).",
+      "var": "i2NameVar_",
+      "source": "auto"
+    },
+    "io/input/i2/i2_pin": {
+      "module": "io/input/i2",
+      "name": "i2_pin",
+      "type": "UInt8",
+      "label": "I2 pin",
+      "help": "Parametre 'i2_pin' pour la branche 'io/input/i2' (type UInt8).",
+      "var": "i2PinVar_",
+      "source": "auto"
+    },
+    "io/input/i2/i2_pull_mode": {
+      "module": "io/input/i2",
+      "name": "i2_pull_mode",
+      "type": "UInt8",
+      "label": "I2 pull mode",
+      "help": "Parametre 'i2_pull_mode' pour la branche 'io/input/i2' (type UInt8).",
+      "var": "i2PullModeVar_",
+      "source": "auto"
+    },
+    "io/input/i3/i3_active_high": {
+      "module": "io/input/i3",
+      "name": "i3_active_high",
+      "type": "Bool",
+      "label": "I3 active high",
+      "help": "Parametre 'i3_active_high' pour la branche 'io/input/i3' (type Bool).",
+      "var": "i3ActiveHighVar_",
+      "source": "auto"
+    },
+    "io/input/i3/i3_name": {
+      "module": "io/input/i3",
+      "name": "i3_name",
+      "type": "CharArray",
+      "label": "I3 name",
+      "help": "Parametre 'i3_name' pour la branche 'io/input/i3' (type CharArray).",
+      "var": "i3NameVar_",
+      "source": "auto"
+    },
+    "io/input/i3/i3_pin": {
+      "module": "io/input/i3",
+      "name": "i3_pin",
+      "type": "UInt8",
+      "label": "I3 pin",
+      "help": "Parametre 'i3_pin' pour la branche 'io/input/i3' (type UInt8).",
+      "var": "i3PinVar_",
+      "source": "auto"
+    },
+    "io/input/i3/i3_pull_mode": {
+      "module": "io/input/i3",
+      "name": "i3_pull_mode",
+      "type": "UInt8",
+      "label": "I3 pull mode",
+      "help": "Parametre 'i3_pull_mode' pour la branche 'io/input/i3' (type UInt8).",
+      "var": "i3PullModeVar_",
+      "source": "auto"
+    },
+    "io/input/i4/i4_active_high": {
+      "module": "io/input/i4",
+      "name": "i4_active_high",
+      "type": "Bool",
+      "label": "I4 active high",
+      "help": "Parametre 'i4_active_high' pour la branche 'io/input/i4' (type Bool).",
+      "var": "i4ActiveHighVar_",
+      "source": "auto"
+    },
+    "io/input/i4/i4_name": {
+      "module": "io/input/i4",
+      "name": "i4_name",
+      "type": "CharArray",
+      "label": "I4 name",
+      "help": "Parametre 'i4_name' pour la branche 'io/input/i4' (type CharArray).",
+      "var": "i4NameVar_",
+      "source": "auto"
+    },
+    "io/input/i4/i4_pin": {
+      "module": "io/input/i4",
+      "name": "i4_pin",
+      "type": "UInt8",
+      "label": "I4 pin",
+      "help": "Parametre 'i4_pin' pour la branche 'io/input/i4' (type UInt8).",
+      "var": "i4PinVar_",
+      "source": "auto"
+    },
+    "io/input/i4/i4_pull_mode": {
+      "module": "io/input/i4",
+      "name": "i4_pull_mode",
+      "type": "UInt8",
+      "label": "I4 pull mode",
+      "help": "Parametre 'i4_pull_mode' pour la branche 'io/input/i4' (type UInt8).",
+      "var": "i4PullModeVar_",
+      "source": "auto"
     },
     "io/output/d0/d0_active_high": {
       "module": "io/output/d0",

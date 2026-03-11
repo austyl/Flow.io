@@ -31,6 +31,11 @@ static constexpr uint8_t kCfgBranchIoD4 = 13;
 static constexpr uint8_t kCfgBranchIoD5 = 14;
 static constexpr uint8_t kCfgBranchIoD6 = 15;
 static constexpr uint8_t kCfgBranchIoD7 = 16;
+static constexpr uint8_t kCfgBranchIoI0 = 17;
+static constexpr uint8_t kCfgBranchIoI1 = 18;
+static constexpr uint8_t kCfgBranchIoI2 = 19;
+static constexpr uint8_t kCfgBranchIoI3 = 20;
+static constexpr uint8_t kCfgBranchIoI4 = 21;
 static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::Io, kCfgBranchIo}, "io", "io", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {2, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoDebug}, "io/debug", "io/debug", (uint8_t)MqttPublishPriority::Normal, nullptr},
@@ -48,6 +53,11 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {14, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD5}, "io/output/d5", "io/output/d5", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {15, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD6}, "io/output/d6", "io/output/d6", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {16, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD7}, "io/output/d7", "io/output/d7", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {17, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI0}, "io/input/i0", "io/input/i0", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {18, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI1}, "io/input/i1", "io/input/i1", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {19, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI2}, "io/input/i2", "io/input/i2", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {20, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI3}, "io/input/i3", "io/input/i3", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {21, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI4}, "io/input/i4", "io/input/i4", (uint8_t)MqttPublishPriority::Normal, nullptr},
 };
 }
 
@@ -187,6 +197,13 @@ bool IOModule::defineDigitalInput(const IODigitalInputDefinition& def)
         s.inDef = def;
         s.inDef.ioId = s.ioId;
         s.owner = this;
+        if (logicalIdx < MAX_DIGITAL_INPUTS) {
+            strncpy(digitalInCfg_[logicalIdx].name, def.id, sizeof(digitalInCfg_[logicalIdx].name) - 1);
+            digitalInCfg_[logicalIdx].name[sizeof(digitalInCfg_[logicalIdx].name) - 1] = '\0';
+            digitalInCfg_[logicalIdx].pin = def.pin;
+            digitalInCfg_[logicalIdx].activeHigh = def.activeHigh;
+            digitalInCfg_[logicalIdx].pullMode = def.pullMode;
+        }
         return true;
     }
 
@@ -250,6 +267,7 @@ const char* IOModule::endpointLabel(const char* endpointId) const
         uint8_t slotIdx = 0xFF;
         if (findDigitalSlotByLogical_(DIGITAL_SLOT_INPUT, idx, slotIdx)) {
             const DigitalSlot& s = digitalSlots_[slotIdx];
+            if (idx < MAX_DIGITAL_INPUTS && digitalInCfg_[idx].name[0] != '\0') return digitalInCfg_[idx].name;
             if (s.inDef.id[0] != '\0') return s.inDef.id;
         }
     }
@@ -949,7 +967,11 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         if (s.kind == DIGITAL_SLOT_OUTPUT && s.logicalIdx < DIGITAL_CFG_SLOTS) {
             name = digitalCfg_[s.logicalIdx].name;
         } else if (s.kind == DIGITAL_SLOT_INPUT) {
-            name = s.inDef.id;
+            if (s.logicalIdx < MAX_DIGITAL_INPUTS && digitalInCfg_[s.logicalIdx].name[0] != '\0') {
+                name = digitalInCfg_[s.logicalIdx].name;
+            } else {
+                name = s.inDef.id;
+            }
         }
         if (!name || name[0] == '\0') name = s.endpointId;
         if (!name) name = "";
@@ -1238,6 +1260,19 @@ bool IOModule::configureRuntime_()
                    : (IoId)(IO_ID_DI_BASE + s.logicalIdx);
 
         if (s.kind == DIGITAL_SLOT_INPUT) {
+            const uint8_t cfgIdx = s.logicalIdx;
+            if (cfgIdx < MAX_DIGITAL_INPUTS) {
+                if (digitalInCfg_[cfgIdx].name[0] != '\0') {
+                    strncpy(s.inDef.id, digitalInCfg_[cfgIdx].name, sizeof(s.inDef.id) - 1);
+                    s.inDef.id[sizeof(s.inDef.id) - 1] = '\0';
+                }
+                if (digitalInCfg_[cfgIdx].pin != 0) s.inDef.pin = digitalInCfg_[cfgIdx].pin;
+                s.inDef.activeHigh = digitalInCfg_[cfgIdx].activeHigh;
+                uint8_t pull = digitalInCfg_[cfgIdx].pullMode;
+                if (pull > IO_PULL_DOWN) pull = IO_PULL_NONE;
+                s.inDef.pullMode = pull;
+            }
+
             snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
             s.driver = allocGpioDriver_(
                 s.endpointId,
@@ -1573,6 +1608,12 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(a4C1Var_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4PrecVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MinVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MaxVar_, kCfgModuleId, kCfgBranchIoA4);
     cfg.registerVar(a5NameVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5SourceVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5ChannelVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5C0Var_, kCfgModuleId, kCfgBranchIoA5);
     cfg.registerVar(a5C1Var_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5PrecVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MinVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MaxVar_, kCfgModuleId, kCfgBranchIoA5);
+
+    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PinVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0);
+    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PinVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1);
+    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PinVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2);
+    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PinVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3);
+    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PinVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4);
 
     cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PinVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
     cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PinVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
