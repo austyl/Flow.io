@@ -94,7 +94,6 @@ static constexpr bool kPirActiveHigh = (FLOW_SUPERVISOR_PIR_ACTIVE_HIGH != 0);
 static constexpr uint32_t kWifiResetHoldMs = (uint32_t)FLOW_SUPERVISOR_WIFI_RESET_HOLD_MS;
 static constexpr uint32_t kWifiResetDebounceMs = (uint32_t)FLOW_SUPERVISOR_WIFI_RESET_DEBOUNCE_MS;
 static constexpr uint32_t kFwPollMs = 500U;
-static constexpr uint32_t kFlowPollMs = 2000U;
 static constexpr uint32_t kStartupSplashHoldMs = 5000U;
 static constexpr uint32_t kButtonBootGuardMs = 8000U;
 static constexpr uint32_t kButtonArmHighStableMs = 500U;
@@ -552,10 +551,6 @@ void SupervisorHMIModule::loop()
     if ((uint32_t)(now - lastFwPollMs_) >= kFwPollMs) {
         lastFwPollMs_ = now;
         pollFirmwareStatus_();
-    }
-    if ((uint32_t)(now - lastFlowPollMs_) >= kFlowPollMs) {
-        lastFlowPollMs_ = now;
-        pollFlowStatus_();
     }
 
     updateWifiResetButton_();

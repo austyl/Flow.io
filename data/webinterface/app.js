@@ -3,6 +3,14 @@
     const menuToggles = Array.from(document.querySelectorAll('[data-menu-toggle]'));
     const menuItems = Array.from(document.querySelectorAll('.menu-item'));
     const pages = Array.from(document.querySelectorAll('.page'));
+    const webAssetVersion = (typeof window.__FLOW_WEB_ASSET_VERSION__ === 'string')
+      ? window.__FLOW_WEB_ASSET_VERSION__
+      : '';
+
+    function versionedWebAssetUrl(path) {
+      if (!webAssetVersion) return path;
+      return path + '?v=' + encodeURIComponent(webAssetVersion);
+    }
 
     function isMobileLayout() {
       return window.innerWidth <= 900;
@@ -30,6 +38,16 @@
       if (!upgradeStatusPollTimer) return;
       clearInterval(upgradeStatusPollTimer);
       upgradeStatusPollTimer = null;
+    }
+
+    let flowRemoteFetchQueue = Promise.resolve();
+
+    function fetchFlowRemoteQueued(url, options) {
+      const queued = flowRemoteFetchQueue
+        .catch(() => {})
+        .then(() => fetch(url, options));
+      flowRemoteFetchQueue = queued.catch(() => {});
+      return queued;
     }
 
     function showPage(pageId) {
@@ -549,7 +567,10 @@
       }
 
       try {
-        const res = await fetch('/api/flow/status/domain?d=' + encodeURIComponent(domainKey), { cache: 'no-store' });
+        const res = await fetchFlowRemoteQueued(
+          '/api/flow/status/domain?d=' + encodeURIComponent(domainKey),
+          { cache: 'no-store' }
+        );
         const data = await res.json().catch(() => null);
         if (!res.ok || !data || data.ok !== true) {
           throw new Error('statut ' + domainKey + ' indisponible');
@@ -1105,7 +1126,7 @@
     async function chargerFlowCfgDocs() {
       flowCfgDocsLoaded = true;
       try {
-        const res = await fetch('/webinterface/cfgdocs.fr.json', { cache: 'no-store' });
+        const res = await fetch(versionedWebAssetUrl('/webinterface/cfgdocs.fr.json'), { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok || !data || typeof data !== 'object') {
           throw new Error('invalid docs payload');
@@ -1143,7 +1164,7 @@
       const url = p.length > 0
         ? ('/api/flowcfg/children?prefix=' + encodeURIComponent(p))
         : '/api/flowcfg/children';
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetchFlowRemoteQueued(url, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok || !data || data.ok !== true || !Array.isArray(data.children)) {
         throw new Error('liste enfants indisponible');
@@ -1316,7 +1337,10 @@
           resetFlowCfgEditor('Aucune branche sélectionnée.');
           return;
         }
-        const res = await fetch('/api/flowcfg/module?name=' + encodeURIComponent(m), { cache: 'no-store' });
+        const res = await fetchFlowRemoteQueued(
+          '/api/flowcfg/module?name=' + encodeURIComponent(m),
+          { cache: 'no-store' }
+        );
         const data = await res.json();
         if (!res.ok || !data || data.ok !== true || typeof data.data !== 'object') {
           throw new Error('lecture module impossible');
@@ -1384,7 +1408,7 @@
         const patch = buildFlowCfgPatchJson();
         const body = new URLSearchParams();
         body.set('patch', patch);
-        const res = await fetch('/api/flowcfg/apply', {
+        const res = await fetchFlowRemoteQueued('/api/flowcfg/apply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
           body: body.toString()
@@ -1500,7 +1524,9 @@
       if (target === 'flow' && action === 'reboot') endpoint = '/api/flow/system/reboot';
       else if (target === 'flow' && action === 'factory_reset') endpoint = '/api/flow/system/factory-reset';
       else if (target === 'supervisor' && action === 'factory_reset') endpoint = '/api/system/factory-reset';
-      const res = await fetch(endpoint, { method: 'POST' });
+      const res = (target === 'flow')
+        ? await fetchFlowRemoteQueued(endpoint, { method: 'POST' })
+        : await fetch(endpoint, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error('échec action');
       if (target === 'flow' && action === 'factory_reset') {

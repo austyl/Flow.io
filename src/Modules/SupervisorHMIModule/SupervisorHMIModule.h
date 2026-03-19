@@ -61,7 +61,6 @@ private:
     uint32_t restartAtMs_ = 0;
 
     uint32_t lastFwPollMs_ = 0;
-    uint32_t lastFlowPollMs_ = 0;
     uint32_t lastRenderMs_ = 0;
     uint32_t splashHoldUntilMs_ = 0;
     uint32_t lastRenderKey_ = 0;

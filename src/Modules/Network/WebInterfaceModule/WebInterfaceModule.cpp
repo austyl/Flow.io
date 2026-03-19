@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
+#include <FS.h>
 #include <esp_heap_caps.h>
 #include "Core/DataKeys.h"
 #include "Core/EventBus/EventPayloads.h"
@@ -56,6 +57,58 @@ constexpr uint32_t kHttpLatencyInfoMs = 40U;
 constexpr uint32_t kHttpLatencyWarnMs = 120U;
 constexpr uint32_t kHttpLatencyFlowCfgInfoMs = 200U;
 constexpr uint32_t kHttpLatencyFlowCfgWarnMs = 900U;
+constexpr const char* kWebAssetVersionToken = "__FLOW_WEB_ASSET_VERSION__";
+
+const char* webAssetVersion_()
+{
+    static bool initialized = false;
+    static char version[32] = {0};
+    if (!initialized) {
+        snprintf(version, sizeof(version), "%s_%s", __DATE__, __TIME__);
+        for (size_t i = 0; version[i] != '\0'; ++i) {
+            const char c = version[i];
+            const bool isAlphaNum = ((c >= 'a' && c <= 'z') ||
+                                     (c >= 'A' && c <= 'Z') ||
+                                     (c >= '0' && c <= '9'));
+            if (!isAlphaNum) {
+                version[i] = '-';
+            }
+        }
+        initialized = true;
+    }
+    return version;
+}
+
+void addNoCacheHeaders_(AsyncWebServerResponse* response)
+{
+    if (!response) return;
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+}
+
+void addVersionedAssetCacheHeaders_(AsyncWebServerResponse* response)
+{
+    if (!response) return;
+    response->addHeader("Cache-Control", "public, max-age=31536000, immutable");
+}
+
+bool sendVersionedIndexHtml_(AsyncWebServerRequest* request)
+{
+    if (!request) return false;
+    File f = SPIFFS.open("/webinterface/index.html", FILE_READ);
+    if (!f) return false;
+
+    String html = f.readString();
+    f.close();
+    if (html.length() == 0) return false;
+
+    html.replace(kWebAssetVersionToken, webAssetVersion_());
+    AsyncWebServerResponse* response = request->beginResponse(200, "text/html", html);
+    addNoCacheHeaders_(response);
+    request->send(response);
+    return true;
+}
 
 bool parseFlowStatusDomainParam_(const String& raw, FlowStatusDomain& domainOut)
 {
@@ -270,29 +323,41 @@ void WebInterfaceModule::startServer_()
             request->send(404, "text/plain", "Not found");
             return;
         }
-        request->send(SPIFFS, "/webinterface/app.css", "text/css");
+        AsyncWebServerResponse* response = request->beginResponse(SPIFFS, "/webinterface/app.css", "text/css");
+        addVersionedAssetCacheHeaders_(response);
+        request->send(response);
     });
     server_.on("/webinterface/app.js", HTTP_GET, [this](AsyncWebServerRequest* request) {
         if (!spiffsReady_ || !SPIFFS.exists("/webinterface/app.js")) {
             request->send(404, "text/plain", "Not found");
             return;
         }
-        request->send(SPIFFS, "/webinterface/app.js", "application/javascript");
+        AsyncWebServerResponse* response =
+            request->beginResponse(SPIFFS, "/webinterface/app.js", "application/javascript");
+        addVersionedAssetCacheHeaders_(response);
+        request->send(response);
     });
     server_.on("/webinterface/cfgdocs.fr.json", HTTP_GET, [this](AsyncWebServerRequest* request) {
         if (spiffsReady_ && SPIFFS.exists("/webinterface/cfgdocs.fr.json")) {
-            request->send(SPIFFS, "/webinterface/cfgdocs.fr.json", "application/json");
+            AsyncWebServerResponse* response =
+                request->beginResponse(SPIFFS, "/webinterface/cfgdocs.fr.json", "application/json");
+            addVersionedAssetCacheHeaders_(response);
+            request->send(response);
             return;
         }
-        request->send(200, "application/json", "{\"_meta\":{\"generated\":false},\"docs\":{}}");
+        AsyncWebServerResponse* response =
+            request->beginResponse(200, "application/json", "{\"_meta\":{\"generated\":false},\"docs\":{}}");
+        addNoCacheHeaders_(response);
+        request->send(response);
     });
     server_.on("/webinterface", HTTP_GET, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/webinterface");
-        if (spiffsReady_ && SPIFFS.exists("/webinterface/index.html")) {
-            request->send(SPIFFS, "/webinterface/index.html", "text/html");
+        if (spiffsReady_ && SPIFFS.exists("/webinterface/index.html") && sendVersionedIndexHtml_(request)) {
             return;
         }
-        sendProgmemLiteral_(request, "text/html", kWebInterfaceFallbackPage);
+        AsyncWebServerResponse* response = request->beginResponse(200, "text/html", kWebInterfaceFallbackPage);
+        addNoCacheHeaders_(response);
+        request->send(response);
     });
     server_.on("/webinterface/", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->redirect("/webinterface");
@@ -661,6 +726,11 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flow.status\"}}");
             return;
         }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flow.status.link\"}}");
+            return;
+        }
 
         char domainBuf[448] = {0};
         StaticJsonDocument<512> domainDoc;
@@ -768,6 +838,11 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flow.status.domain\"}}");
             return;
         }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flow.status.domain.link\"}}");
+            return;
+        }
 
         if (!request->hasParam("d")) {
             request->send(400, "application/json",
@@ -810,6 +885,11 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.modules\"}}");
             return;
         }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.modules.link\"}}");
+            return;
+        }
 
         char out[Limits::Mqtt::Buffers::Ack] = {0};
         if (!flowCfgSvc_->listModulesJson(flowCfgSvc_->ctx, out, sizeof(out))) {
@@ -836,6 +916,11 @@ void WebInterfaceModule::startServer_()
         if (!flowCfgSvc_ || !flowCfgSvc_->listChildrenJson) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.children\"}}");
+            return;
+        }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.children.link\"}}");
             return;
         }
 
@@ -865,6 +950,11 @@ void WebInterfaceModule::startServer_()
         if (!flowCfgSvc_ || !flowCfgSvc_->getModuleJson) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.module\"}}");
+            return;
+        }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.module.link\"}}");
             return;
         }
         if (!request->hasParam("name")) {
@@ -918,6 +1008,11 @@ void WebInterfaceModule::startServer_()
         if (!flowCfgSvc_ || !flowCfgSvc_->applyPatchJson) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.apply\"}}");
+            return;
+        }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.apply.link\"}}");
             return;
         }
         if (!request->hasParam("patch", true)) {

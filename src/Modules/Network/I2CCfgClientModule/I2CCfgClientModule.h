@@ -71,7 +71,9 @@ private:
     const CommandService* cmdSvc_ = nullptr;
     I2cLink link_{};
     bool ready_ = false;
+    bool reachable_ = false;
     uint8_t seq_ = 1;
+    uint32_t retryAfterMs_ = 0;
     MqttConfigRouteProducer cfgMqttPub_{};
 
     FlowCfgRemoteService svc_{
@@ -96,6 +98,8 @@ private:
     bool applyPatchJson_(const char* patch, char* out, size_t outLen);
     bool executeSystemActionJson_(uint8_t action, char* out, size_t outLen);
     bool pingFlow_(uint8_t& statusOut);
+    void markRemoteUnavailable_();
+    void markRemoteAvailable_();
 
     bool transact_(uint8_t op,
                    const uint8_t* reqPayload,

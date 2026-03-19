@@ -16,6 +16,7 @@ constexpr uint8_t kInterlinkBus = 1;  // Interlink is fixed on I2C controller 1 
 constexpr uint8_t kI2cClientCfgProducerId = 51;
 constexpr uint8_t kI2cClientCfgBranch = 2;
 constexpr size_t kRuntimeStatusDomainBufSize = 448;
+constexpr uint32_t kRemoteRetryCooldownMs = 3000U;
 static constexpr MqttConfigRouteProducer::Route kI2cClientCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::I2cCfg, kI2cClientCfgBranch}, "i2c/cfg/client", "i2c/cfg/client", (uint8_t)MqttPublishPriority::Normal, nullptr},
 };
@@ -155,6 +156,8 @@ void I2CCfgClientModule::startLink_()
          cfgData_.enabled ? "true" : "false",
          ready_ ? "true" : "false");
     ready_ = false;
+    reachable_ = false;
+    retryAfterMs_ = 0;
     if (!cfgData_.enabled) {
         LOGI("I2C cfg client disabled");
         return;
@@ -185,6 +188,7 @@ void I2CCfgClientModule::startLink_()
 
     uint8_t pingStatus = I2cCfgProtocol::StatusFailed;
     if (!pingFlow_(pingStatus)) {
+        markRemoteUnavailable_();
         LOGW("I2C cfg ping transport failed target=0x%02X bus=%u sda=%ld scl=%ld freq=%ld (check wiring/power/address)",
              (unsigned)cfgData_.targetAddr,
              (unsigned)kInterlinkBus,
@@ -192,30 +196,60 @@ void I2CCfgClientModule::startLink_()
              (long)cfgData_.scl,
              (long)cfgData_.freqHz);
     } else if (pingStatus != I2cCfgProtocol::StatusOk) {
+        markRemoteUnavailable_();
         LOGW("I2C cfg ping returned status=%u (%s) target=0x%02X",
              (unsigned)pingStatus,
              statusName(pingStatus),
              (unsigned)cfgData_.targetAddr);
     } else {
+        markRemoteAvailable_();
         LOGI("I2C cfg ping ok target=0x%02X", (unsigned)cfgData_.targetAddr);
     }
 }
 
 bool I2CCfgClientModule::ensureReady_()
 {
-    if (ready_) return true;
-    if (!cfgData_.enabled) {
-        LOGW("ensureReady failed: module disabled");
+    if (!ready_) {
+        if (!cfgData_.enabled) {
+            LOGW("ensureReady failed: module disabled");
+            return false;
+        }
+        LOGW("ensureReady: link not ready, attempting restart");
+        startLink_();
+        return ready_ && reachable_;
+    }
+    if (reachable_) return true;
+
+    const uint32_t now = millis();
+    if ((int32_t)(now - retryAfterMs_) < 0) {
         return false;
     }
-    LOGW("ensureReady: link not ready, attempting restart");
-    startLink_();
-    return ready_;
+
+    uint8_t pingStatus = I2cCfgProtocol::StatusFailed;
+    if (!pingFlow_(pingStatus) || pingStatus != I2cCfgProtocol::StatusOk) {
+        markRemoteUnavailable_();
+        return false;
+    }
+    markRemoteAvailable_();
+    LOGI("I2C cfg remote reachable again target=0x%02X", (unsigned)cfgData_.targetAddr);
+    return true;
 }
 
 bool I2CCfgClientModule::isReady_() const
 {
-    return ready_;
+    return ready_ && reachable_;
+}
+
+void I2CCfgClientModule::markRemoteUnavailable_()
+{
+    reachable_ = false;
+    retryAfterMs_ = millis() + kRemoteRetryCooldownMs;
+}
+
+void I2CCfgClientModule::markRemoteAvailable_()
+{
+    reachable_ = true;
+    retryAfterMs_ = 0;
 }
 
 bool I2CCfgClientModule::pingFlow_(uint8_t& statusOut)
@@ -273,6 +307,7 @@ bool I2CCfgClientModule::transact_(uint8_t op,
                 delay(2);
                 continue;
             }
+            markRemoteUnavailable_();
             LOGW("I2C transfer failed op=%s seq=%u addr=0x%02X req=%u",
                  opName(op),
                  (unsigned)seq,
@@ -290,6 +325,7 @@ bool I2CCfgClientModule::transact_(uint8_t op,
                 delay(2);
                 continue;
             }
+            markRemoteUnavailable_();
             LOGW("I2C short response op=%s seq=%u len=%u",
                  opName(op),
                  (unsigned)seq,
@@ -301,6 +337,7 @@ bool I2CCfgClientModule::transact_(uint8_t op,
                 delay(2);
                 continue;
             }
+            markRemoteUnavailable_();
             LOGW("I2C bad header op=%s seq=%u magic=0x%02X ver=%u",
                  opName(op),
                  (unsigned)seq,
@@ -313,6 +350,7 @@ bool I2CCfgClientModule::transact_(uint8_t op,
                 delay(2);
                 continue;
             }
+            markRemoteUnavailable_();
             LOGW("I2C op/seq mismatch expected_op=%u expected_seq=%u got_op=%u got_seq=%u",
                  (unsigned)op,
                  (unsigned)seq,
@@ -324,9 +362,12 @@ bool I2CCfgClientModule::transact_(uint8_t op,
         break;
     }
 
+    markRemoteAvailable_();
+
     statusOut = rx[4];
     const size_t payloadLen = rx[5];
     if (payloadLen > I2cCfgProtocol::MaxPayload) {
+        markRemoteUnavailable_();
         LOGW("I2C invalid payload len op=%s seq=%u payload=%u",
              opName(op),
              (unsigned)seq,
@@ -334,6 +375,7 @@ bool I2CCfgClientModule::transact_(uint8_t op,
         return false;
     }
     if (rxLen < (I2cCfgProtocol::RespHeaderSize + payloadLen)) {
+        markRemoteUnavailable_();
         LOGW("I2C truncated response op=%s seq=%u rx_len=%u expected=%u",
              opName(op),
              (unsigned)seq,

@@ -241,7 +241,6 @@ Payload réponse:
 |---|---|
 | `0..1` | longueur totale JSON, little-endian |
 | `2` | flags, bit `0x02` si JSON tronqué |
-
 Notes:
 - la réponse ne contient pas encore le JSON lui-même
 - elle annonce seulement la taille totale à relire ensuite
@@ -257,7 +256,6 @@ Payload requête:
 |---|---|
 | `0..1` | offset, little-endian |
 | `2` | taille demandée (`want`) |
-
 Comportement:
 - si `want == 0` ou `want > 96`, le serveur borne à `96`
 - le dernier chunk invalide ensuite le buffer serveur
@@ -309,7 +307,6 @@ Payload requête:
 |---|---|
 | `0..1` | offset, little-endian |
 | `2` | taille demandée |
-
 Payload réponse:
 - sous-chaîne brute du JSON du domaine
 
@@ -578,4 +575,3 @@ Règles implicites de compatibilité:
 - configuration distante: oui
 - lecture runtime: oui, désormais par domaine
 - actions système distantes: oui
-
