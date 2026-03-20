@@ -98,6 +98,7 @@ private:
     bool applyPatchJson_(const char* patch, char* out, size_t outLen);
     bool executeSystemActionJson_(uint8_t action, char* out, size_t outLen);
     bool pingFlow_(uint8_t& statusOut);
+    void recoverLinkAfterApplyFailure_(const char* step, bool transportOk, uint8_t status);
     void markRemoteUnavailable_();
     void markRemoteAvailable_();
 

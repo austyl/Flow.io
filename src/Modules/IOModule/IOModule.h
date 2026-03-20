@@ -5,15 +5,12 @@
  */
 
 #include "Core/Module.h"
-#include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/NvsKeys.h"
-#include "Core/SystemLimits.h"
-#include "Core/WokwiDefaultOverrides.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/Services/Services.h"
-#include "Domain/Pool/PoolBindings.h"
+#include "Core/SystemLimits.h"
+#include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Modules/IOModule/IOBus/I2CBus.h"
-#include "Modules/IOModule/IOBus/OneWireBus.h"
 #include "Modules/IOModule/IODrivers/Ads1115Driver.h"
 #include "Modules/IOModule/IODrivers/Ds18b20Driver.h"
 #include "Modules/IOModule/IODrivers/GpioDriver.h"
@@ -23,108 +20,14 @@
 #include "Modules/IOModule/IOEndpoints/DigitalSensorEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/Pcf8574MaskEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/RunningMedianAverageFloat.h"
+#include "Modules/IOModule/IOModuleDataModel.h"
+#include "Modules/IOModule/IOModuleTypes.h"
+#include "Modules/IOModule/IOProviders/IOProviders.h"
 #include "Modules/IOModule/IORegistry/IORegistry.h"
 #include "Modules/IOModule/IOScheduler/IOScheduler.h"
-#include "Modules/IOModule/IOModuleDataModel.h"
 
-struct IOModuleConfig {
-    bool enabled = FLOW_WIRDEF_IO_EN;
-    int32_t i2cSda = FLOW_WIRDEF_IO_SDA;
-    int32_t i2cScl = FLOW_WIRDEF_IO_SCL;
-    int32_t adsPollMs = FLOW_MODDEF_IO_ADS;
-    int32_t dsPollMs = FLOW_MODDEF_IO_DS;
-    int32_t digitalPollMs = FLOW_MODDEF_IO_DIN;
-    uint8_t adsInternalAddr = FLOW_WIRDEF_IO_AIAD;
-    uint8_t adsExternalAddr = FLOW_WIRDEF_IO_AEAD;
-    int32_t adsGain = FLOW_MODDEF_IO_AGAI;
-    int32_t adsRate = FLOW_MODDEF_IO_ARAT;
-    bool pcfEnabled = FLOW_WIRDEF_IO_PCFEN;
-    uint8_t pcfAddress = FLOW_WIRDEF_IO_PCFAD;
-    uint8_t pcfMaskDefault = FLOW_WIRDEF_IO_PCFMK;
-    bool pcfActiveLow = FLOW_WIRDEF_IO_PCFAL;
-    bool traceEnabled = FLOW_MODDEF_IO_TREN;
-    int32_t tracePeriodMs = FLOW_MODDEF_IO_TRMS;
-};
-
-enum IOAnalogSource : uint8_t {
-    IO_SRC_ADS_INTERNAL_SINGLE = 0,
-    IO_SRC_ADS_EXTERNAL_DIFF = 1,
-    IO_SRC_DS18_WATER = 2,
-    IO_SRC_DS18_AIR = 3
-};
-
-typedef void (*IOAnalogValueCallback)(void* ctx, float value);
-typedef void (*IODigitalValueCallback)(void* ctx, bool value);
-
-enum IODigitalPullMode : uint8_t {
-    IO_PULL_NONE = 0,
-    IO_PULL_UP = 1,
-    IO_PULL_DOWN = 2
-};
-
-struct IOAnalogDefinition {
-    char id[24] = {0};
-    /** Required explicit AI id in [IO_ID_AI_BASE..IO_ID_AI_BASE+MAX_ANALOG_ENDPOINTS). */
-    IoId ioId = IO_ID_INVALID;
-    uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
-    uint8_t channel = 0;
-    float c0 = 1.0f;
-    float c1 = 0.0f;
-    int32_t precision = 1;
-    float minValid = -32768.0f;
-    float maxValid = 32767.0f;
-    IOAnalogValueCallback onValueChanged = nullptr;
-    void* onValueCtx = nullptr;
-};
-
-struct IOAnalogSlotConfig {
-    char name[24] = {0};
-    uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
-    uint8_t channel = 0;
-    float c0 = 1.0f;
-    float c1 = 0.0f;
-    int32_t precision = 1;
-    float minValid = -32768.0f;
-    float maxValid = 32767.0f;
-};
-
-struct IODigitalOutputDefinition {
-    char id[24] = {0};
-    /** Required explicit DO id in [IO_ID_DO_BASE..IO_ID_DO_BASE+MAX_DIGITAL_OUTPUTS). */
-    IoId ioId = IO_ID_INVALID;
-    uint8_t pin = 0;
-    bool activeHigh = false;
-    bool initialOn = false;
-    bool momentary = false;
-    uint16_t pulseMs = 500;
-};
-
-struct IODigitalOutputSlotConfig {
-    char name[24] = {0};
-    uint8_t pin = 0;
-    bool activeHigh = false;
-    bool initialOn = false;
-    bool momentary = false;
-    int32_t pulseMs = 500;
-};
-
-struct IODigitalInputSlotConfig {
-    char name[24] = {0};
-    uint8_t pin = 0;
-    bool activeHigh = true;
-    uint8_t pullMode = IO_PULL_NONE;
-};
-
-struct IODigitalInputDefinition {
-    char id[24] = {0};
-    /** Required explicit DI id in [IO_ID_DI_BASE..IO_ID_DI_BASE+MAX_DIGITAL_INPUTS). */
-    IoId ioId = IO_ID_INVALID;
-    uint8_t pin = 0;
-    bool activeHigh = true;
-    uint8_t pullMode = IO_PULL_NONE;
-    IODigitalValueCallback onValueChanged = nullptr;
-    void* onValueCtx = nullptr;
-};
+class DataStore;
+class OneWireBus;
 
 class IOModule : public Module, public IRuntimeSnapshotProvider {
 public:
@@ -143,12 +46,11 @@ public:
         return nullptr;
     }
 #else
-    uint8_t dependencyCount() const override { return 4; }
+    uint8_t dependencyCount() const override { return 3; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "datastore";
         if (i == 2) return "mqtt";
-        if (i == 3) return "ha";
         return nullptr;
     }
 #endif
@@ -162,6 +64,11 @@ public:
     bool defineDigitalInput(const IODigitalInputDefinition& def);
     bool defineDigitalOutput(const IODigitalOutputDefinition& def);
     const char* analogSlotName(uint8_t idx) const;
+    bool analogSlotUsed(uint8_t idx) const;
+    bool digitalInputSlotUsed(uint8_t logicalIdx) const;
+    bool digitalOutputSlotUsed(uint8_t logicalIdx) const;
+    int32_t analogPrecision(uint8_t idx) const;
+    uint16_t takeAnalogConfigDirtyMask();
     const char* endpointLabel(const char* endpointId) const;
     bool buildInputSnapshot(char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildOutputSnapshot(char* out, size_t len, uint32_t& maxTsOut) const;
@@ -214,14 +121,12 @@ private:
     bool runtimeSnapshotRouteFromIndex_(uint8_t snapshotIdx, uint8_t& routeTypeOut, uint8_t& slotIdxOut) const;
     bool buildEndpointSnapshot_(IOEndpoint* ep, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildGroupSnapshot_(char* out, size_t len, bool inputGroup, uint32_t& maxTsOut) const;
+    const IOAnalogProvider* analogProviderForSource_(uint8_t source) const;
     bool processAnalogDefinition_(uint8_t idx, uint32_t nowMs);
     bool processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs);
-    int32_t clampPrecisionForHa_(int32_t precision) const;
-    void buildHaValueTemplate_(uint8_t analogIdx, char* out, size_t outLen) const;
-    void registerHaAnalogSensors_();
-    void registerHaDigitalInputBinarySensors_();
+    int32_t sanitizeAnalogPrecision_(int32_t precision) const;
     void forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs);
-    void maybeRefreshHaOnPrecisionChange_();
+    void refreshAnalogConfigState_();
     bool endpointIndexFromId_(const char* id, uint8_t& idxOut) const;
     bool digitalLogicalUsed_(uint8_t kind, uint8_t logicalIdx) const;
     bool findDigitalSlotByLogical_(uint8_t kind, uint8_t logicalIdx, uint8_t& slotIdxOut) const;
@@ -274,7 +179,7 @@ private:
         char endpointId[8] = {0};
         IODigitalInputDefinition inDef{};
         IODigitalOutputDefinition outDef{};
-        IDigitalPinDriver* driver = nullptr;
+        IODigitalProvider provider{};
         IOEndpoint* endpoint = nullptr;
         bool pulseArmed = false;
         uint32_t pulseDeadlineMs = 0;
@@ -288,9 +193,9 @@ private:
     IODigitalOutputSlotConfig digitalCfg_[DIGITAL_CFG_SLOTS]{};
 
     const LogHubService* logHub_ = nullptr;
-    const HAService* haSvc_ = nullptr;
     DataStore* dataStore_ = nullptr;
-    MqttConfigRouteProducer* cfgMqttPub_ = nullptr;
+    MqttConfigRouteProducer cfgMqttPub_{};
+    bool cfgMqttPubConfigured_ = false;
 
     IORegistry registry_{};
     IOScheduler scheduler_{};
@@ -301,12 +206,11 @@ private:
     uint8_t oneWireWaterAddr_[8] = {0};
     uint8_t oneWireAirAddr_[8] = {0};
 
-    IAnalogSourceDriver* adsInternal_ = nullptr;
-    IAnalogSourceDriver* adsExternal_ = nullptr;
-    IAnalogSourceDriver* dsWater_ = nullptr;
-    IAnalogSourceDriver* dsAir_ = nullptr;
-
-    IMaskOutputDriver* pcf_ = nullptr;
+    IOAnalogProvider adsInternalProvider_{};
+    IOAnalogProvider adsExternalProvider_{};
+    IOAnalogProvider dsWaterProvider_{};
+    IOAnalogProvider dsAirProvider_{};
+    IOMaskProvider ledMaskProvider_{};
     Pcf8574MaskEndpoint* ledMaskEp_ = nullptr;
     IOServiceV2 ioSvc_{
         svcCount_,
@@ -351,12 +255,9 @@ private:
     bool runtimeInitAttempted_ = false;
     bool pcfEnableNeedsReinitWarned_ = false;
     uint32_t analogCalcLogLastMs_[3]{0, 0, 0};
-    int32_t haPrecisionLast_[ANALOG_CFG_SLOTS]{};
-    bool haPrecisionLastInit_ = false;
-    char haValueTpl_[ANALOG_CFG_SLOTS][128]{};
-    char haSwitchStateSuffix_[PoolBinding::kDeviceBindingCount][24]{};
-    char haSwitchPayloadOn_[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
-    char haSwitchPayloadOff_[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
+    int32_t analogPrecisionLast_[ANALOG_CFG_SLOTS]{};
+    bool analogPrecisionLastInit_ = false;
+    uint16_t analogConfigDirtyMask_ = 0;
 
     ConfigVariable<bool,0> enabledVar_ { NVS_KEY(NvsKeys::Io::IO_EN),"enabled","io",ConfigType::Bool,&cfgData_.enabled,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> i2cSdaVar_ { NVS_KEY(NvsKeys::Io::IO_SDA),"i2c_sda","io",ConfigType::Int32,&cfgData_.i2cSda,ConfigPersistence::Persistent,0 };

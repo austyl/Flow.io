@@ -107,6 +107,63 @@ bool appendDomainFields_(char* out, size_t outLen, size_t& pos, const char* doma
     return true;
 }
 
+bool copyJsonReply_(char* out, size_t outLen, const uint8_t* resp, size_t respLen)
+{
+    if (!out || outLen == 0 || !resp || respLen == 0) return false;
+    const size_t n = (respLen < (outLen - 1U)) ? respLen : (outLen - 1U);
+    memcpy(out, resp, n);
+    out[n] = '\0';
+    return true;
+}
+
+bool writeApplyStatusError_(char* out, size_t outLen, const char* step, uint8_t status)
+{
+    const char* where = "flowcfg.apply";
+    ErrorCode code = ErrorCode::Failed;
+
+    if (strcmp(step, "begin") == 0) {
+        where = "flowcfg.apply.begin";
+        if (status == I2cCfgProtocol::StatusOverflow) {
+            code = ErrorCode::ArgsTooLarge;
+            where = "flowcfg.apply.begin.overflow";
+        } else if (status == I2cCfgProtocol::StatusNotReady) {
+            code = ErrorCode::NotReady;
+            where = "flowcfg.apply.begin.not_ready";
+        } else if (status == I2cCfgProtocol::StatusBadRequest) {
+            code = ErrorCode::BadCfgJson;
+            where = "flowcfg.apply.begin.bad_request";
+        }
+    } else if (strcmp(step, "write") == 0) {
+        where = "flowcfg.apply.write";
+        if (status == I2cCfgProtocol::StatusOverflow) {
+            code = ErrorCode::ArgsTooLarge;
+            where = "flowcfg.apply.write.overflow";
+        } else if (status == I2cCfgProtocol::StatusRange) {
+            where = "flowcfg.apply.write.range";
+        } else if (status == I2cCfgProtocol::StatusNotReady) {
+            code = ErrorCode::NotReady;
+            where = "flowcfg.apply.write.not_ready";
+        } else if (status == I2cCfgProtocol::StatusBadRequest) {
+            code = ErrorCode::BadCfgJson;
+            where = "flowcfg.apply.write.bad_request";
+        }
+    } else if (strcmp(step, "commit") == 0) {
+        where = "flowcfg.apply.commit";
+        if (status == I2cCfgProtocol::StatusNotReady) {
+            code = ErrorCode::NotReady;
+            where = "flowcfg.apply.commit.not_ready";
+        } else if (status == I2cCfgProtocol::StatusBadRequest) {
+            code = ErrorCode::BadCfgJson;
+            where = "flowcfg.apply.commit.bad_request";
+        } else if (status == I2cCfgProtocol::StatusFailed) {
+            code = ErrorCode::CfgApplyFailed;
+            where = "flowcfg.apply.commit.failed";
+        }
+    }
+
+    return writeErrorJson(out, outLen, code, where);
+}
+
 }  // namespace
 
 void I2CCfgClientModule::init(ConfigStore& cfg, ServiceRegistry& services)
@@ -240,6 +297,17 @@ bool I2CCfgClientModule::ensureReady_()
 bool I2CCfgClientModule::isReady_() const
 {
     return ready_ && reachable_;
+}
+
+void I2CCfgClientModule::recoverLinkAfterApplyFailure_(const char* step, bool transportOk, uint8_t status)
+{
+    LOGW("Recovering I2C cfg link after apply failure step=%s transport=%s status=%u (%s)",
+         step ? step : "unknown",
+         transportOk ? "ok" : "failed",
+         (unsigned)status,
+         statusName(status));
+    delay(2);
+    startLink_();
 }
 
 void I2CCfgClientModule::markRemoteUnavailable_()
@@ -690,7 +758,7 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
 
     const size_t len = strnlen(patch, Limits::JsonConfigApplyBuf + 1);
     if (len == 0 || len > Limits::JsonConfigApplyBuf) {
-        (void)writeErrorJson(out, outLen, ErrorCode::BadCfgJson, "flowcfg.apply");
+        (void)writeErrorJson(out, outLen, ErrorCode::ArgsTooLarge, "flowcfg.apply.size");
         return false;
     }
 
@@ -708,7 +776,12 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
              statusName(status),
              (unsigned)respLen,
              (unsigned)len);
-        (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.apply.begin");
+        if (!okPatchBegin) {
+            (void)writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.apply.begin.transport");
+        } else {
+            (void)writeApplyStatusError_(out, outLen, "begin", status);
+        }
+        recoverLinkAfterApplyFailure_("begin", okPatchBegin, status);
         return false;
     }
 
@@ -731,7 +804,12 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
                  (unsigned)status,
                  statusName(status),
                  (unsigned)respLen);
-            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.apply.write");
+            if (!okPatchWrite) {
+                (void)writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.apply.write.transport");
+            } else {
+                (void)writeApplyStatusError_(out, outLen, "write", status);
+            }
+            recoverLinkAfterApplyFailure_("write", okPatchWrite, status);
             return false;
         }
         offset += chunk;
@@ -745,7 +823,14 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
              (unsigned)status,
              statusName(status),
              (unsigned)respLen);
-        (void)writeErrorJson(out, outLen, ErrorCode::CfgApplyFailed, "flowcfg.apply.commit");
+        if (!okPatchCommit) {
+            (void)writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.apply.commit.transport");
+        } else if (respLen > 0 && copyJsonReply_(out, outLen, resp, respLen)) {
+            // Preserve the remote Flow.IO error JSON so the web UI can explain the refusal.
+        } else {
+            (void)writeApplyStatusError_(out, outLen, "commit", status);
+        }
+        recoverLinkAfterApplyFailure_("commit", okPatchCommit, status);
         return false;
     }
 
@@ -939,7 +1024,7 @@ bool I2CCfgClientModule::cmdFlowFactoryReset_(void* userCtx, const CommandReques
 bool I2CCfgClientModule::svcIsReady_(void* ctx)
 {
     I2CCfgClientModule* self = static_cast<I2CCfgClientModule*>(ctx);
-    return self && self->isReady_();
+    return self && self->ensureReady_();
 }
 
 bool I2CCfgClientModule::svcListModulesJson_(void* ctx, char* out, size_t outLen)

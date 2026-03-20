@@ -24,6 +24,7 @@
     }
   },
   "docs": {
+    "log/levels": { "apply_per_field": true },
     "io/ads_ext_addr": { "display_format": "hex" },
     "io/ads_int_addr": { "display_format": "hex" },
     "io/pcf_address": { "display_format": "hex" },

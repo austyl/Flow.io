@@ -82,6 +82,18 @@ void addVersionedAssetCacheHeaders_(AsyncWebServerResponse* response)
     response->addHeader("Cache-Control", "public, max-age=31536000, immutable");
 }
 
+int flowCfgApplyHttpStatus_(const char* ackJson)
+{
+    if (!ackJson || ackJson[0] == '\0') return 500;
+    if (strstr(ackJson, "\"code\":\"BadCfgJson\"")) return 400;
+    if (strstr(ackJson, "\"code\":\"ArgsTooLarge\"") || strstr(ackJson, "\"code\":\"CfgTruncated\"")) return 413;
+    if (strstr(ackJson, "\"code\":\"NotReady\"")) return 503;
+    if (strstr(ackJson, "\"code\":\"CfgApplyFailed\"")) return 409;
+    if (strstr(ackJson, "\"code\":\"IoError\"")) return 502;
+    if (strstr(ackJson, "\"code\":\"Failed\"")) return 502;
+    return 500;
+}
+
 bool sendVersionedIndexHtml_(AsyncWebServerRequest* request)
 {
     if (!request) return false;
@@ -1044,8 +1056,12 @@ void WebInterfaceModule::startServer_()
         String patchStr = request->getParam("patch", true)->value();
         char ack[Limits::Mqtt::Buffers::Ack] = {0};
         if (!flowCfgSvc_->applyPatchJson(flowCfgSvc_->ctx, patchStr.c_str(), ack, sizeof(ack))) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flowcfg.apply.exec\"}}");
+            if (ack[0] != '\0') {
+                request->send(flowCfgApplyHttpStatus_(ack), "application/json", ack);
+            } else {
+                request->send(500, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flowcfg.apply.exec\"}}");
+            }
             return;
         }
         request->send(200, "application/json", ack);

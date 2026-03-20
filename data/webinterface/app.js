@@ -3,13 +3,33 @@
     const menuToggles = Array.from(document.querySelectorAll('[data-menu-toggle]'));
     const menuItems = Array.from(document.querySelectorAll('.menu-item'));
     const pages = Array.from(document.querySelectorAll('.page'));
+    const appMeta = document.querySelector('.app-meta');
     const webAssetVersion = (typeof window.__FLOW_WEB_ASSET_VERSION__ === 'string')
       ? window.__FLOW_WEB_ASSET_VERSION__
       : '';
-    const supervisorFirmwareVersion = (typeof window.__FLOW_FIRMWARE_VERSION__ === 'string' &&
-      window.__FLOW_FIRMWARE_VERSION__.trim())
-      ? window.__FLOW_FIRMWARE_VERSION__.trim()
-      : '-';
+
+    function resolveSupervisorFirmwareVersion() {
+      if (typeof window.__FLOW_FIRMWARE_VERSION__ === 'string') {
+        const trimmed = window.__FLOW_FIRMWARE_VERSION__.trim();
+        if (trimmed && !/^__FLOW_[A-Z0-9_]+__$/.test(trimmed)) {
+          return trimmed;
+        }
+      }
+      if (appMeta) {
+        const raw = (appMeta.textContent || '').trim();
+        const match = raw.match(/^Supervisor\s+(.+)$/i);
+        if (match && match[1]) {
+          const version = match[1].trim();
+          if (version && !/^__FLOW_[A-Z0-9_]+__$/.test(version)) {
+            return version;
+          }
+        }
+      }
+      return '-';
+    }
+
+    const supervisorFirmwareVersion = resolveSupervisorFirmwareVersion();
+    let flowStatusLiveTimer = null;
 
     function versionedWebAssetUrl(path) {
       if (!webAssetVersion) return path;
@@ -44,6 +64,12 @@
       upgradeStatusPollTimer = null;
     }
 
+    function stopFlowStatusLiveTimer() {
+      if (!flowStatusLiveTimer) return;
+      clearInterval(flowStatusLiveTimer);
+      flowStatusLiveTimer = null;
+    }
+
     let flowRemoteFetchQueue = Promise.resolve();
 
     function fetchFlowRemoteQueued(url, options) {
@@ -66,9 +92,12 @@
       }
       if (pageId === 'page-status') {
         refreshFlowStatus().catch(() => {});
+      } else {
+        stopFlowStatusLiveTimer();
       }
-      if (pageId === 'page-config') {
+      if (pageId === 'page-system') {
         onConfigPageShown().catch(() => {});
+        onUpgradePageShown().catch(() => {});
       }
       if (pageId === 'page-control') {
         onControlPageShown().catch(() => {});
@@ -76,9 +105,7 @@
       if (pageId === 'page-local-config') {
         onLocalConfigPageShown().catch(() => {});
       }
-      if (pageId === 'page-upgrade') {
-        onUpgradePageShown().catch(() => {});
-      } else {
+      if (pageId !== 'page-system') {
         stopUpgradeStatusPolling();
       }
       closeMobileDrawer();
@@ -171,6 +198,8 @@
     let supCfgCurrentData = {};
     let wifiScanAutoRequested = false;
     let flowStatusReqSeq = 0;
+    const fieldApplyCheckIcon =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.2 16.6 4.9 12.3l1.4-1.4 2.9 2.9 8.5-8.5 1.4 1.4z"/></svg>';
     const flowStatusDomainTtlMs = 20000;
     const flowStatusDomainKeys = ['system', 'wifi', 'mqtt', 'i2c'];
     const flowStatusDomainCache = {
@@ -374,7 +403,7 @@
       else if (state === 'running') stateLabel = 'en cours';
       else if (state === 'done') stateLabel = 'terminé';
       else if (state === 'error') stateLabel = 'erreur';
-      upStatusChip.textContent = stateLabel;
+      if (upStatusChip) upStatusChip.textContent = stateLabel;
       let p = progress;
       if (state === 'done') p = 100;
       if (state === 'queued' && p <= 0) p = 2;
@@ -482,7 +511,17 @@
 
     function fmtFlowStatusVal(v) {
       if (v === null || typeof v === 'undefined') return '-';
+      if (typeof v === 'string') {
+        const trimmed = v.trim();
+        if (!trimmed || /^__FLOW_[A-Z0-9_]+__$/.test(trimmed)) return '-';
+        return trimmed;
+      }
       return String(v);
+    }
+
+    function fmtFlowCount(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? String(Math.max(0, Math.round(n))) : '-';
     }
 
     function buildFlowStatusBoolIcon(v) {
@@ -501,12 +540,158 @@
     function fmtFlowUptime(ms) {
       if (!Number.isFinite(ms) || ms < 0) return '-';
       const sec = Math.floor(ms / 1000);
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = sec % 60;
-      if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
-      if (m > 0) return m + 'm ' + s + 's';
-      return s + 's';
+      if (sec < 60) return sec + (sec > 1 ? ' secondes' : ' seconde');
+      const min = Math.floor(sec / 60);
+      if (min < 60) return min + (min > 1 ? ' minutes' : ' minute');
+      const hours = Math.floor(min / 60);
+      if (hours < 24) return hours + (hours > 1 ? ' heures' : ' heure');
+      const days = Math.floor(hours / 24);
+      if (days < 30) return days + (days > 1 ? ' jours' : ' jour');
+      const months = Math.floor(days / 30);
+      return months + (months > 1 ? ' mois' : ' mois');
+    }
+
+    function fmtFlowRelativeAge(ms) {
+      if (!Number.isFinite(ms) || ms < 0) return '-';
+      const sec = Math.floor(ms / 1000);
+      if (sec < 60) return sec + ' s';
+      const min = Math.floor(sec / 60);
+      if (min < 60) return min + ' min';
+      const hours = Math.floor(min / 60);
+      if (hours < 24) return hours + ' h';
+      const days = Math.floor(hours / 24);
+      if (days < 30) return days + ' j';
+      const months = Math.floor(days / 30);
+      return months + ' mois';
+    }
+
+    function fmtFlowBytes(bytes) {
+      const n = Number(bytes);
+      if (!Number.isFinite(n) || n < 0) return '-';
+      if (n < 1024) return Math.round(n) + ' B';
+      if (n < (1024 * 1024)) return Math.round(n / 1024) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function clampFlowValue(v, min, max) {
+      if (v < min) return min;
+      if (v > max) return max;
+      return v;
+    }
+
+    function rssiToPercent(rssi) {
+      const n = Number(rssi);
+      if (!Number.isFinite(n)) return null;
+      const bounded = clampFlowValue(n, -95, -50);
+      return Math.round(((bounded + 95) / 45) * 100);
+    }
+
+    function describeFlowRssi(percent) {
+      if (!Number.isFinite(percent)) return 'Indisponible';
+      if (percent >= 75) return 'Tres bon';
+      if (percent >= 55) return 'Bon';
+      if (percent >= 35) return 'Correct';
+      return 'Faible';
+    }
+
+    function createFlowLiveValue(kind, baseMs, refMs) {
+      const span = document.createElement('span');
+      span.dataset.flowLive = kind;
+      span.dataset.flowBaseMs = String(Math.max(0, Number(baseMs) || 0));
+      span.dataset.flowRefMs = String(Math.max(0, Number(refMs) || Date.now()));
+      return span;
+    }
+
+    function updateFlowLiveValue(el, nowMs) {
+      if (!el) return;
+      const kind = el.dataset.flowLive || '';
+      const baseMs = Number(el.dataset.flowBaseMs) || 0;
+      const refMs = Number(el.dataset.flowRefMs) || nowMs;
+      const totalMs = baseMs + Math.max(0, nowMs - refMs);
+      if (kind === 'uptime') {
+        el.textContent = fmtFlowUptime(totalMs);
+        return;
+      }
+      if (kind === 'elapsed') {
+        el.textContent = fmtFlowRelativeAge(totalMs);
+      }
+    }
+
+    function refreshFlowStatusLiveValues() {
+      const pageStatus = document.getElementById('page-status');
+      if (!pageStatus || !pageStatus.classList.contains('active')) return;
+      const nowMs = Date.now();
+      flowStatusGrid.querySelectorAll('[data-flow-live]').forEach((el) => updateFlowLiveValue(el, nowMs));
+    }
+
+    function ensureFlowStatusLiveTimer() {
+      if (flowStatusLiveTimer) return;
+      flowStatusLiveTimer = setInterval(refreshFlowStatusLiveValues, 1000);
+    }
+
+    function buildFlowStatusCardIcon(iconKey, ok, label) {
+      const iconSvg = {
+        wifi: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.28 8.84a15.3 15.3 0 0 1 19.44 0l-1.42 1.42a13.3 13.3 0 0 0-16.6 0Zm3.54 3.54a10.3 10.3 0 0 1 12.36 0l-1.42 1.42a8.3 8.3 0 0 0-9.52 0Zm3.54 3.54a5.3 5.3 0 0 1 5.28 0L12 18.56Zm2.64 4.08a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></svg>',
+        supervisor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v2H7Zm0 4h10v2H7Zm0 4h6v2H7Z"/><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8l-5 0V5a2 2 0 0 1 2-2Zm0 2v14h14V5Z"/></svg>',
+        system: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h2.5A1.5 1.5 0 0 1 19 6.5V9h2v6h-2v2.5A1.5 1.5 0 0 1 17.5 19H15v2H9v-2H6.5A1.5 1.5 0 0 1 5 17.5V15H3V9h2V6.5A1.5 1.5 0 0 1 6.5 5H9Zm-2 4v10h10V7Zm2 2h6v6H9Z"/></svg>',
+        mqtt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15a7 7 0 0 1 14 0h-2a5 5 0 0 0-10 0Zm3 0a4 4 0 0 1 8 0h-2a2 2 0 0 0-4 0Zm4-1.5A1.5 1.5 0 1 1 10.5 15 1.5 1.5 0 0 1 12 13.5Z"/><path d="M4 19h16v2H4Z"/></svg>'
+      };
+      const span = document.createElement('span');
+      span.className = ok ? 'status-card-icon is-true' : 'status-card-icon is-false';
+      span.setAttribute('role', 'img');
+      span.setAttribute('aria-label', label || (ok ? 'OK' : 'NOK'));
+      span.title = label || (ok ? 'OK' : 'NOK');
+      span.innerHTML = iconSvg[iconKey] || iconSvg.system;
+      return span;
+    }
+
+    function buildFlowRssiGauge(rssi, hasRssi) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'status-gauge' + (hasRssi ? '' : ' is-empty');
+
+      const label = document.createElement('span');
+      label.className = 'status-gauge-label';
+
+      const track = document.createElement('span');
+      track.className = 'status-gauge-track';
+      const fill = document.createElement('span');
+      fill.className = 'status-gauge-fill';
+
+      if (hasRssi) {
+        const percent = rssiToPercent(rssi);
+        fill.style.width = (percent === null ? 0 : percent) + '%';
+        label.textContent = describeFlowRssi(percent) + ' (' + fmtFlowStatusVal(rssi) + ' dBm)';
+      } else {
+        fill.style.width = '0%';
+        label.textContent = 'Signal indisponible';
+      }
+
+      track.appendChild(fill);
+      wrapper.appendChild(track);
+      wrapper.appendChild(label);
+      return wrapper;
+    }
+
+    function buildMqttStatsStrip(items) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'status-mqtt-strip';
+      (items || []).forEach((item) => {
+        const cell = document.createElement('div');
+        cell.className = 'status-mqtt-metric';
+
+        const label = document.createElement('span');
+        label.className = 'status-mqtt-metric-label';
+        label.textContent = String(item && item.label ? item.label : '').slice(0, 1) || '-';
+
+        const value = document.createElement('strong');
+        value.className = 'status-mqtt-metric-value';
+        value.textContent = fmtFlowCount(item ? item.value : null);
+
+        cell.appendChild(label);
+        cell.appendChild(value);
+        wrapper.appendChild(cell);
+      });
+      return wrapper;
     }
 
     function normalizeIpValue(ip) {
@@ -598,30 +783,55 @@
       }
     }
 
-    function appendFlowStatusCard(title, rows) {
+    function appendFlowStatusRow(kv, label, value) {
+      const line = document.createElement('div');
+      const key = document.createElement('span');
+      key.textContent = label;
+      const renderedValue = document.createElement('b');
+      if (value && typeof value === 'object' && typeof value.nodeType === 'number') {
+        renderedValue.appendChild(value);
+      } else {
+        renderedValue.textContent = fmtFlowStatusVal(value);
+      }
+      line.appendChild(key);
+      line.appendChild(renderedValue);
+      kv.appendChild(line);
+    }
+
+    function appendFlowStatusCard(config) {
       const card = document.createElement('div');
       card.className = 'status-card';
+      if (config.cardClass) {
+        card.classList.add(config.cardClass);
+      }
+
+      const head = document.createElement('div');
+      head.className = 'status-card-head';
+      const titleBlock = document.createElement('div');
+
       const heading = document.createElement('h3');
-      heading.textContent = title;
-      card.appendChild(heading);
+      heading.textContent = config.title;
+      titleBlock.appendChild(heading);
+
+      if (config.summary) {
+        const summary = document.createElement('p');
+        summary.className = 'status-card-summary';
+        summary.textContent = config.summary;
+        titleBlock.appendChild(summary);
+      }
+
+      head.appendChild(titleBlock);
+      head.appendChild(buildFlowStatusCardIcon(config.icon, !!config.ok, config.iconLabel));
+      card.appendChild(head);
 
       const kv = document.createElement('div');
       kv.className = 'status-kv';
-      rows.forEach((row) => {
-        const line = document.createElement('div');
-        const key = document.createElement('span');
-        key.textContent = row[0];
-        const value = document.createElement('b');
-        if (typeof row[1] === 'boolean') {
-          value.appendChild(buildFlowStatusBoolIcon(row[1]));
-        } else {
-          value.textContent = fmtFlowStatusVal(row[1]);
-        }
-        line.appendChild(key);
-        line.appendChild(value);
-        kv.appendChild(line);
-      });
+      (config.rows || []).forEach((row) => appendFlowStatusRow(kv, row[0], row[1]));
       card.appendChild(kv);
+      (config.extras || []).forEach((extra) => {
+        if (!extra || typeof extra.nodeType !== 'number') return;
+        card.appendChild(extra);
+      });
       flowStatusGrid.appendChild(card);
     }
 
@@ -674,53 +884,97 @@
       const mqtt = (data && typeof data.mqtt === 'object') ? data.mqtt : {};
       const heap = (data && data.heap && typeof data.heap === 'object') ? data.heap : {};
       const i2c = (data && data.i2c && typeof data.i2c === 'object') ? data.i2c : {};
-      const firmware = data.fw || '-';
-      const uptimeMs = data.upms || 0;
+      const firmware = fmtFlowStatusVal(data.fw);
+      const uptimeMs = Number(data.upms) || 0;
       const wifiReady = !!wifi.rdy;
       const wifiIp = normalizeIpValue(wifi.ip);
       const wifiHasRssi = !!wifi.hrss;
       const wifiRssi = wifi.rssi ?? '-';
       const mqttReady = !!mqtt.rdy;
+      const mqttServer = fmtFlowStatusVal(mqtt.srv);
       const mqttRxDrop = mqtt.rxdrp ?? 0;
       const mqttParseFail = mqtt.prsf ?? 0;
       const mqttHandlerFail = mqtt.hndf ?? 0;
       const mqttOversizeDrop = mqtt.ovr ?? 0;
       const i2cLinkOk = !!i2c.lnk;
-      const i2cSeen = !!i2c.seen;
       const i2cReqCount = i2c.req ?? 0;
-      const i2cAgo = i2c.ago ?? 0;
+      const i2cBadReqCount = i2c.breq ?? 0;
+      const i2cFetchedAt = flowStatusDomainCache.i2c ? flowStatusDomainCache.i2c.fetchedAt : 0;
+      const mqttIssueCount = (Number(mqttRxDrop) || 0) +
+        (Number(mqttParseFail) || 0) +
+        (Number(mqttHandlerFail) || 0) +
+        (Number(mqttOversizeDrop) || 0);
+      const heapFree = ('free' in heap) ? heap.free : null;
+      const heapMin = ('min_free' in heap) ? heap.min_free : null;
+      const systemReady = firmware !== '-' || uptimeMs > 0 || heapFree !== null;
 
       flowStatusGrid.innerHTML = '';
-      appendFlowStatusCard('Réseau', [
-        ['WiFi connecté', wifiReady],
-        ['IP', wifiIp],
-        ['RSSI (dBm)', wifiHasRssi ? wifiRssi : '-']
-      ]);
-      appendFlowStatusCard('Supervisor', [
-        ['Firmware', supervisorFirmwareVersion],
-        ['Lien actif', i2cLinkOk],
-        ['Supervisor vu', i2cSeen],
-        ['Req total', i2cReqCount],
-        ['Dernière req (ms)', i2cAgo]
-      ]);
-      appendFlowStatusCard('Système Flow.IO', [
-        ['Firmware', firmware],
-        ['Uptime', fmtFlowUptime(uptimeMs)],
-        ['Heap libre', heap.free],
-        ['Heap min', heap.min]
-      ]);
-      appendFlowStatusCard('MQTT', [
-        ['Connecté', mqttReady],
-        ['RX drop', mqttRxDrop],
-        ['Parse fail', mqttParseFail],
-        ['Handler fail', mqttHandlerFail],
-        ['Oversize drop', mqttOversizeDrop]
-      ]);
+      appendFlowStatusCard({
+        title: 'WiFi',
+        icon: 'wifi',
+        ok: wifiReady,
+        iconLabel: wifiReady ? 'WiFi connecte' : 'WiFi deconnecte',
+        rows: [
+          ['Adresse IP', wifiIp],
+          ['Signal', buildFlowRssiGauge(wifiRssi, wifiHasRssi)]
+        ]
+      });
+      appendFlowStatusCard({
+        title: 'MQTT',
+        cardClass: 'status-card-mqtt',
+        icon: 'mqtt',
+        ok: mqttReady,
+        iconLabel: mqttReady ? 'MQTT connecte' : 'MQTT deconnecte',
+        rows: [
+          ['Serveur', mqttServer]
+        ],
+        extras: [
+          buildMqttStatsStrip([
+            { label: 'Anomalies', value: mqttIssueCount },
+            { label: 'Ignores', value: (Number(mqttRxDrop) || 0) + (Number(mqttOversizeDrop) || 0) },
+            { label: 'Contenu', value: mqttParseFail },
+            { label: 'Traitement', value: mqttHandlerFail }
+          ])
+        ]
+      });
+      appendFlowStatusCard({
+        title: 'Superviseur',
+        icon: 'supervisor',
+        ok: i2cLinkOk,
+        iconLabel: i2cLinkOk ? 'Lien I2C actif' : 'Lien I2C inactif',
+        rows: [
+          ['Firmware', supervisorFirmwareVersion],
+          ['Req I2C', fmtFlowCount(i2cReqCount)],
+          ['Err I2C', fmtFlowCount(i2cBadReqCount)],
+          ['Synchro', createFlowLiveValue('elapsed', 0, i2cFetchedAt)]
+        ]
+      });
+      appendFlowStatusCard({
+        title: 'Flow.IO',
+        icon: 'system',
+        ok: systemReady,
+        iconLabel: systemReady ? 'Systeme joignable' : 'Systeme indisponible',
+        rows: [
+          ['Firmware', firmware],
+          ['Uptime', createFlowLiveValue('uptime', uptimeMs, Date.now())],
+          ['Heap libre', fmtFlowBytes(heapFree)],
+          ['Heap min', fmtFlowBytes(heapMin)]
+        ]
+      });
 
-      flowStatusChip.textContent = i2cLinkOk ? 'Flow.IO en ligne (I2C OK)' : 'Flow.IO partiel / lien I2C faible';
+      flowStatusChip.textContent = i2cLinkOk
+        ? 'Flow.IO disponible'
+        : 'Connexion Flow.IO a verifier';
       flowStatusRaw.hidden = true;
       flowStatusRaw.classList.remove('is-skeleton');
       flowStatusRaw.innerHTML = '';
+      refreshFlowStatusLiveValues();
+      const pageStatus = document.getElementById('page-status');
+      if (pageStatus && pageStatus.classList.contains('active')) {
+        ensureFlowStatusLiveTimer();
+      } else {
+        stopFlowStatusLiveTimer();
+      }
     }
 
     async function refreshFlowStatus(forceRefresh) {
@@ -1292,6 +1546,11 @@
       return !!(meta && meta.hidden === true);
     }
 
+    function flowCfgApplyPerFieldEnabled(moduleName) {
+      const meta = configPathMeta(moduleName);
+      return !!(meta && meta.apply_per_field === true);
+    }
+
     async function chargerFlowCfgChildren(prefix, forceReload) {
       const p = nettoyerNomFlowCfg(prefix);
       const key = flowCfgCacheKey(p);
@@ -1327,15 +1586,81 @@
       flowCfgCurrentModule = '';
       flowCfgCurrentData = {};
       flowCfgFields.innerHTML = '';
+      flowCfgApplyBtn.hidden = false;
       flowCfgApplyBtn.disabled = true;
       if (message) {
         flowCfgStatus.textContent = message;
       }
     }
 
+    function storeConfigFieldInitialValue(el, value) {
+      if (!el) return;
+      el.dataset.initialValue = JSON.stringify(value);
+    }
+
+    function readConfigFieldValue(el) {
+      if (!el) return null;
+      const kind = String(el.dataset.kind || '').trim();
+      const displayFormat = String(el.dataset.format || '').trim();
+      if (kind === 'bool') {
+        return !!el.checked;
+      }
+      if (kind === 'int' || kind === 'float') {
+        return parseConfigNumericValue(el.value, kind, displayFormat);
+      }
+      const masked = el.dataset.masked === '1';
+      const raw = String(el.value ?? '');
+      if (masked && raw.length === 0) {
+        try {
+          return JSON.parse(el.dataset.initialValue || 'null');
+        } catch (err) {
+          return '';
+        }
+      }
+      return raw;
+    }
+
+    function configFieldIsDirty(el) {
+      if (!el) return false;
+      let initialValue = null;
+      try {
+        initialValue = JSON.parse(el.dataset.initialValue || 'null');
+      } catch (err) {
+        initialValue = null;
+      }
+      return JSON.stringify(readConfigFieldValue(el)) !== JSON.stringify(initialValue);
+    }
+
+    function updateControlFieldApplyState(inputEl, applyBtn) {
+      if (!inputEl || !applyBtn) return;
+      const dirty = configFieldIsDirty(inputEl);
+      applyBtn.disabled = !dirty;
+      applyBtn.classList.toggle('is-dirty', dirty);
+      applyBtn.classList.remove('is-pending');
+      applyBtn.title = dirty ? 'Appliquer ce changement' : 'Aucun changement a appliquer';
+      applyBtn.setAttribute('aria-label', applyBtn.title);
+      const row = inputEl.closest('.control-row');
+      if (row) row.classList.toggle('is-dirty', dirty);
+    }
+
+    function buildFlowCfgSingleFieldPatchJson(moduleName, inputEl) {
+      if (!moduleName || !inputEl) throw new Error('champ non disponible');
+      const key = String(inputEl.dataset.key || '').trim();
+      if (!key) throw new Error('cle de configuration absente');
+      const patch = {};
+      patch[moduleName] = {
+        [key]: readConfigFieldValue(inputEl)
+      };
+      return JSON.stringify(patch);
+    }
+
     function renderConfigFields(containerEl, moduleName, dataObj) {
       containerEl.innerHTML = '';
       const data = (dataObj && typeof dataObj === 'object') ? dataObj : {};
+      const perFieldApply = (containerEl === flowCfgFields) && flowCfgApplyPerFieldEnabled(moduleName);
+      if (containerEl === flowCfgFields) {
+        flowCfgApplyBtn.hidden = perFieldApply;
+      }
       const keys = Object.keys(data).sort();
       if (keys.length === 0) {
         const row = document.createElement('div');
@@ -1371,6 +1696,9 @@
         row.appendChild(labelWrap);
 
         const enumOptions = (doc && Array.isArray(doc._enumOptions)) ? doc._enumOptions : null;
+        let inputEl = null;
+        const valueWrap = document.createElement('div');
+        valueWrap.className = 'control-value-wrap';
 
         if (typeof value === 'boolean') {
           const sw = document.createElement('span');
@@ -1384,10 +1712,12 @@
           track.className = 'md3-track';
           const thumb = document.createElement('span');
           thumb.className = 'md3-thumb';
+          storeConfigFieldInitialValue(input, value);
           sw.appendChild(input);
           sw.appendChild(track);
           sw.appendChild(thumb);
-          row.appendChild(sw);
+          inputEl = input;
+          valueWrap.appendChild(sw);
         } else if (enumOptions && enumOptions.length > 0) {
           const select = document.createElement('select');
           select.className = 'control-input';
@@ -1409,7 +1739,9 @@
             }
             select.appendChild(optionEl);
           });
-          row.appendChild(select);
+          storeConfigFieldInitialValue(select, value);
+          inputEl = select;
+          valueWrap.appendChild(select);
         } else if (typeof value === 'number') {
           const input = document.createElement('input');
           input.className = 'control-input';
@@ -1424,7 +1756,9 @@
           if (displayFormat) {
             input.dataset.format = displayFormat;
           }
-          row.appendChild(input);
+          storeConfigFieldInitialValue(input, value);
+          inputEl = input;
+          valueWrap.appendChild(input);
         } else {
           const isSecret = /pass|token|secret/i.test(key);
           const textValue = String(value ?? '');
@@ -1441,9 +1775,31 @@
           }
           input.dataset.key = key;
           input.dataset.kind = 'string';
-          row.appendChild(input);
+          storeConfigFieldInitialValue(input, value);
+          inputEl = input;
+          valueWrap.appendChild(input);
         }
 
+        if (perFieldApply && inputEl) {
+          const applyBtn = document.createElement('button');
+          applyBtn.type = 'button';
+          applyBtn.className = 'control-field-apply';
+          applyBtn.innerHTML = fieldApplyCheckIcon;
+          applyBtn.disabled = true;
+          applyBtn.title = 'Aucun changement a appliquer';
+          applyBtn.setAttribute('aria-label', applyBtn.title);
+          applyBtn.addEventListener('click', async () => {
+            await appliquerFlowCfgField(inputEl, applyBtn);
+          });
+
+          const syncApplyState = () => updateControlFieldApplyState(inputEl, applyBtn);
+          inputEl.addEventListener('input', syncApplyState);
+          inputEl.addEventListener('change', syncApplyState);
+          updateControlFieldApplyState(inputEl, applyBtn);
+          valueWrap.appendChild(applyBtn);
+        }
+
+        row.appendChild(valueWrap);
         containerEl.appendChild(row);
       }
     }
@@ -1516,7 +1872,7 @@
         flowCfgCurrentData = data.data;
         renderFlowCfgTitle(m);
         renderFlowCfgFields(flowCfgCurrentData);
-        flowCfgApplyBtn.disabled = false;
+        flowCfgApplyBtn.disabled = flowCfgApplyBtn.hidden;
         flowCfgStatus.textContent = data.truncated
           ? 'Branche chargée (tronquée, buffer distant atteint).'
           : 'Branche chargée.';
@@ -1570,6 +1926,67 @@
       }
     }
 
+    function formatFlowCfgApplyError(data) {
+      const err = (data && typeof data === 'object' && data.err && typeof data.err === 'object') ? data.err : {};
+      const code = typeof err.code === 'string' ? err.code : '';
+      const where = typeof err.where === 'string' ? err.where : '';
+
+      if (code === 'ArgsTooLarge' || code === 'CfgTruncated') {
+        return 'Trop de changements en une seule fois pour le lien I2C (' + (where || 'flowcfg') + ').';
+      }
+      if (code === 'NotReady') {
+        return 'Lien I2C temporairement indisponible (' + (where || 'flowcfg') + ').';
+      }
+      if (code === 'IoError') {
+        return 'Erreur de communication I2C (' + (where || 'flowcfg') + ').';
+      }
+      if (code === 'BadCfgJson') {
+        return 'Patch de configuration invalide (' + (where || 'flowcfg') + ').';
+      }
+      if (code === 'CfgApplyFailed') {
+        return 'Flow.IO a refusé la configuration (' + (where || 'flowcfg') + ').';
+      }
+      if (code) {
+        return code + (where ? ' (' + where + ')' : '');
+      }
+      return 'apply refusé';
+    }
+
+    async function appliquerFlowCfgField(inputEl, applyBtn) {
+      if (!inputEl || !applyBtn || !flowCfgCurrentModule) return;
+      const key = String(inputEl.dataset.key || '').trim();
+      if (!key) return;
+      if (!configFieldIsDirty(inputEl)) {
+        updateControlFieldApplyState(inputEl, applyBtn);
+        return;
+      }
+
+      try {
+        applyBtn.disabled = true;
+        applyBtn.classList.add('is-pending');
+        flowCfgStatus.textContent = 'Application du champ "' + key + '"...';
+
+        const patch = buildFlowCfgSingleFieldPatchJson(flowCfgCurrentModule, inputEl);
+        const body = new URLSearchParams();
+        body.set('patch', patch);
+        const res = await fetchFlowRemoteQueued('/api/flowcfg/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: body.toString()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || data.ok !== true) {
+          throw new Error(formatFlowCfgApplyError(data));
+        }
+
+        await chargerFlowCfgModule(flowCfgCurrentModule);
+        flowCfgStatus.textContent = 'Champ "' + key + '" applique.';
+      } catch (err) {
+        flowCfgStatus.textContent = 'Application du champ echouee: ' + err;
+        updateControlFieldApplyState(inputEl, applyBtn);
+      }
+    }
+
     async function appliquerFlowCfg() {
       try {
         const patch = buildFlowCfgPatchJson();
@@ -1582,7 +1999,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data || data.ok !== true) {
-          throw new Error('apply refusé');
+          throw new Error(formatFlowCfgApplyError(data));
         }
         flowCfgStatus.textContent = 'Configuration appliquée sur Flow.IO.';
         await chargerFlowCfgModule(flowCfgCurrentModule);
@@ -1806,7 +2223,7 @@
     });
     document.addEventListener('visibilitychange', () => {
       const active = document.querySelector('.page.active');
-      const onUpgradePage = !!active && active.id === 'page-upgrade';
+      const onUpgradePage = !!active && active.id === 'page-system';
       const onTerminalPage = !!active && active.id === 'page-terminal';
       if (document.hidden || !onUpgradePage) {
         stopUpgradeStatusPolling();

@@ -4,8 +4,6 @@
  */
 
 #include "IOModule.h"
-#include "Core/BufferUsageTracker.h"
-#include "Core/MqttTopics.h"
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::IOModule)
 #include "Core/ModuleLog.h"
 #include "Modules/IOModule/IORuntime.h"
@@ -33,16 +31,6 @@ static constexpr uint8_t kCfgBranchIoD5 = 14;
 static constexpr uint8_t kCfgBranchIoD6 = 15;
 static constexpr uint8_t kCfgBranchIoD7 = 16;
 
-template <size_t Rows, size_t Cols>
-size_t charTableUsage_(const char (&table)[Rows][Cols])
-{
-    size_t total = 0U;
-    for (size_t row = 0; row < Rows; ++row) {
-        const size_t len = strnlen(table[row], Cols);
-        if (len > 0U) total += len + 1U;
-    }
-    return total;
-}
 static constexpr uint8_t kCfgBranchIoI0 = 17;
 static constexpr uint8_t kCfgBranchIoI1 = 18;
 static constexpr uint8_t kCfgBranchIoI2 = 19;
@@ -265,6 +253,36 @@ const char* IOModule::analogSlotName(uint8_t idx) const
     if (!analogSlots_[idx].used) return nullptr;
     if (analogSlots_[idx].def.id[0] == '\0') return nullptr;
     return analogSlots_[idx].def.id;
+}
+
+bool IOModule::analogSlotUsed(uint8_t idx) const
+{
+    return idx < MAX_ANALOG_ENDPOINTS && analogSlots_[idx].used;
+}
+
+bool IOModule::digitalInputSlotUsed(uint8_t logicalIdx) const
+{
+    uint8_t slotIdx = 0xFF;
+    return logicalIdx < MAX_DIGITAL_INPUTS && findDigitalSlotByLogical_(DIGITAL_SLOT_INPUT, logicalIdx, slotIdx);
+}
+
+bool IOModule::digitalOutputSlotUsed(uint8_t logicalIdx) const
+{
+    uint8_t slotIdx = 0xFF;
+    return logicalIdx < MAX_DIGITAL_OUTPUTS && findDigitalSlotByLogical_(DIGITAL_SLOT_OUTPUT, logicalIdx, slotIdx);
+}
+
+int32_t IOModule::analogPrecision(uint8_t idx) const
+{
+    if (idx >= ANALOG_CFG_SLOTS) return 0;
+    return sanitizeAnalogPrecision_(analogCfg_[idx].precision);
+}
+
+uint16_t IOModule::takeAnalogConfigDirtyMask()
+{
+    const uint16_t mask = analogConfigDirtyMask_;
+    analogConfigDirtyMask_ = 0;
+    return mask;
 }
 
 const char* IOModule::endpointLabel(const char* endpointId) const
@@ -542,8 +560,8 @@ bool IOModule::tickFastAds_(void* ctx, uint32_t nowMs)
     IOModule* self = static_cast<IOModule*>(ctx);
     if (!self || !self->runtimeReady_) return false;
 
-    if (self->adsInternal_) self->adsInternal_->tick(nowMs);
-    if (self->adsExternal_) self->adsExternal_->tick(nowMs);
+    self->adsInternalProvider_.tick(nowMs);
+    self->adsExternalProvider_.tick(nowMs);
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
@@ -560,8 +578,8 @@ bool IOModule::tickSlowDs_(void* ctx, uint32_t nowMs)
     IOModule* self = static_cast<IOModule*>(ctx);
     if (!self || !self->runtimeReady_) return false;
 
-    if (self->dsWater_) self->dsWater_->tick(nowMs);
-    if (self->dsAir_) self->dsAir_->tick(nowMs);
+    self->dsWaterProvider_.tick(nowMs);
+    self->dsAirProvider_.tick(nowMs);
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
@@ -587,21 +605,27 @@ bool IOModule::tickDigitalInputs_(void* ctx, uint32_t nowMs)
     return true;
 }
 
+const IOAnalogProvider* IOModule::analogProviderForSource_(uint8_t source) const
+{
+    // Kernel-side routing stays on compact source ids; provider binding happens once in runtime setup.
+    if (source == IO_SRC_ADS_INTERNAL_SINGLE) return &adsInternalProvider_;
+    if (source == IO_SRC_ADS_EXTERNAL_DIFF) return &adsExternalProvider_;
+    if (source == IO_SRC_DS18_WATER) return &dsWaterProvider_;
+    if (source == IO_SRC_DS18_AIR) return &dsAirProvider_;
+    return nullptr;
+}
+
 bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
 {
     if (idx >= MAX_ANALOG_ENDPOINTS) return false;
     AnalogSlot& slot = analogSlots_[idx];
     if (!slot.used || !slot.endpoint) return false;
 
-    IAnalogSourceDriver* sourceDriver = nullptr;
-    if (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) sourceDriver = adsInternal_;
-    else if (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF) sourceDriver = adsExternal_;
-    else if (slot.def.source == IO_SRC_DS18_WATER) sourceDriver = dsWater_;
-    else if (slot.def.source == IO_SRC_DS18_AIR) sourceDriver = dsAir_;
-    if (!sourceDriver) return false;
+    const IOAnalogProvider* provider = analogProviderForSource_(slot.def.source);
+    if (!provider || !provider->isBound()) return false;
 
     IOAnalogSample sample{};
-    if (!sourceDriver->readSample(slot.def.channel, sample)) {
+    if (!provider->readSample(slot.def.channel, sample)) {
         const bool isDsSource =
             (slot.def.source == IO_SRC_DS18_WATER) || (slot.def.source == IO_SRC_DS18_AIR);
         if (isDsSource) {
@@ -678,13 +702,13 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
 {
     if (slotIdx >= MAX_DIGITAL_SLOTS) return false;
     DigitalSlot& slot = digitalSlots_[slotIdx];
-    if (!slot.used || slot.kind != DIGITAL_SLOT_INPUT || !slot.driver || !slot.endpoint) return false;
+    if (!slot.used || slot.kind != DIGITAL_SLOT_INPUT || !slot.provider.isBound() || !slot.endpoint) return false;
     if (slot.endpoint->type() != IO_EP_DIGITAL_SENSOR) return false;
 
     DigitalSensorEndpoint* inputEp = static_cast<DigitalSensorEndpoint*>(slot.endpoint);
 
     bool on = false;
-    if (!slot.driver->read(on)) {
+    if (!slot.provider.read(on)) {
         // Transition to invalid only once; avoid timestamp churn while input remains unreadable.
         if (slot.lastValid) {
             inputEp->update(false, false, nowMs);
@@ -707,120 +731,11 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
     return true;
 }
 
-int32_t IOModule::clampPrecisionForHa_(int32_t precision) const
+int32_t IOModule::sanitizeAnalogPrecision_(int32_t precision) const
 {
     if (precision < 0) return 0;
     if (precision > 6) return 6;
     return precision;
-}
-
-void IOModule::buildHaValueTemplate_(uint8_t analogIdx, char* out, size_t outLen) const
-{
-    if (!out || outLen == 0 || analogIdx >= ANALOG_CFG_SLOTS) return;
-    int32_t p = clampPrecisionForHa_(analogCfg_[analogIdx].precision);
-    snprintf(
-        out,
-        outLen,
-        "{%% if value_json.value is number %%}{{ value_json.value | float | round(%ld) }}{%% else %%}unavailable{%% endif %%}",
-        (long)p
-    );
-}
-
-void IOModule::registerHaAnalogSensors_()
-{
-    if (!haSvc_ || !haSvc_->addSensor) return;
-    static constexpr const char* kIoValueAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
-
-    buildHaValueTemplate_(0, haValueTpl_[0], sizeof(haValueTpl_[0]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a0",
-                             haValueTpl_[0]);
-    buildHaValueTemplate_(1, haValueTpl_[1], sizeof(haValueTpl_[1]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a1",
-                             haValueTpl_[1]);
-    buildHaValueTemplate_(2, haValueTpl_[2], sizeof(haValueTpl_[2]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a2",
-                             haValueTpl_[2]);
-    buildHaValueTemplate_(3, haValueTpl_[3], sizeof(haValueTpl_[3]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a3",
-                             haValueTpl_[3]);
-    buildHaValueTemplate_(4, haValueTpl_[4], sizeof(haValueTpl_[4]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a4",
-                             haValueTpl_[4]);
-    buildHaValueTemplate_(5, haValueTpl_[5], sizeof(haValueTpl_[5]));
-    BufferUsageTracker::note(TrackedBufferId::IoHaValueTplTable,
-                             charTableUsage_(haValueTpl_),
-                             sizeof(haValueTpl_),
-                             "a5",
-                             haValueTpl_[5]);
-
-    const HASensorEntry s0{"io", "io_orp", "ORP", "rt/io/input/a0", haValueTpl_[0], nullptr, "mdi:flash", "mV", false, kIoValueAvailabilityTpl};
-    const HASensorEntry s1{"io", "io_ph", "pH", "rt/io/input/a1", haValueTpl_[1], nullptr, "mdi:ph", "", false, kIoValueAvailabilityTpl};
-    const HASensorEntry s2{"io", "io_psi", "PSI", "rt/io/input/a2", haValueTpl_[2], nullptr, "mdi:gauge", "PSI", false, kIoValueAvailabilityTpl};
-    const HASensorEntry s3{"io", "io_spare", "Spare", "rt/io/input/a3", haValueTpl_[3], nullptr, "mdi:sine-wave", nullptr, false, kIoValueAvailabilityTpl};
-    const HASensorEntry s4{"io", "io_wat_tmp", "Water Temperature", "rt/io/input/a4", haValueTpl_[4], nullptr, "mdi:water-thermometer", "\xC2\xB0""C", false, kIoValueAvailabilityTpl};
-    const HASensorEntry s5{"io", "io_air_tmp", "Air Temperature", "rt/io/input/a5", haValueTpl_[5], nullptr, "mdi:thermometer", "\xC2\xB0""C", false, kIoValueAvailabilityTpl};
-    (void)haSvc_->addSensor(haSvc_->ctx, &s0);
-    (void)haSvc_->addSensor(haSvc_->ctx, &s1);
-    (void)haSvc_->addSensor(haSvc_->ctx, &s2);
-    (void)haSvc_->addSensor(haSvc_->ctx, &s3);
-    (void)haSvc_->addSensor(haSvc_->ctx, &s4);
-    (void)haSvc_->addSensor(haSvc_->ctx, &s5);
-}
-
-void IOModule::registerHaDigitalInputBinarySensors_()
-{
-    if (!haSvc_ || !haSvc_->addBinarySensor) return;
-
-    static constexpr const char* kBoolTpl = "{{ 'True' if value_json.value else 'False' }}";
-    const HABinarySensorEntry poolLevel{
-        "io",
-        "io_pool_lvl",
-        "Pool Level",
-        "rt/io/input/i0",
-        kBoolTpl,
-        nullptr,
-        nullptr,
-        "mdi:waves-arrow-up"
-    };
-    const HABinarySensorEntry phLevel{
-        "io",
-        "io_ph_lvl",
-        "pH Level",
-        "rt/io/input/i1",
-        kBoolTpl,
-        nullptr,
-        nullptr,
-        "mdi:flask-outline"
-    };
-    const HABinarySensorEntry chlorineLevel{
-        "io",
-        "io_chl_lvl",
-        "Chlorine Level",
-        "rt/io/input/i2",
-        kBoolTpl,
-        nullptr,
-        nullptr,
-        "mdi:test-tube"
-    };
-
-    (void)haSvc_->addBinarySensor(haSvc_->ctx, &poolLevel);
-    (void)haSvc_->addBinarySensor(haSvc_->ctx, &phLevel);
-    (void)haSvc_->addBinarySensor(haSvc_->ctx, &chlorineLevel);
 }
 
 void IOModule::forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs)
@@ -839,23 +754,23 @@ void IOModule::forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs)
     }
 }
 
-void IOModule::maybeRefreshHaOnPrecisionChange_()
+void IOModule::refreshAnalogConfigState_()
 {
-    if (!haPrecisionLastInit_) {
+    if (!analogPrecisionLastInit_) {
         for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
-            int32_t p = clampPrecisionForHa_(analogCfg_[i].precision);
-            haPrecisionLast_[i] = p;
+            int32_t p = sanitizeAnalogPrecision_(analogCfg_[i].precision);
+            analogPrecisionLast_[i] = p;
         }
-        haPrecisionLastInit_ = true;
+        analogPrecisionLastInit_ = true;
         return;
     }
 
     bool changed = false;
     uint16_t changedMask = 0;
     for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
-        int32_t p = clampPrecisionForHa_(analogCfg_[i].precision);
-        if (haPrecisionLast_[i] == p) continue;
-        haPrecisionLast_[i] = p;
+        int32_t p = sanitizeAnalogPrecision_(analogCfg_[i].precision);
+        if (analogPrecisionLast_[i] == p) continue;
+        analogPrecisionLast_[i] = p;
         if (runtimeReady_ && i < MAX_ANALOG_ENDPOINTS && analogSlots_[i].used) {
             analogSlots_[i].def.precision = p;
         }
@@ -870,13 +785,7 @@ void IOModule::maybeRefreshHaOnPrecisionChange_()
             if ((changedMask & (uint16_t)(1u << i)) == 0) continue;
             forceAnalogSnapshotPublish_(i, nowMs);
         }
-        if (haSvc_ && haSvc_->addSensor) {
-            LOGI("Input precision changed -> request HA discovery refresh");
-            registerHaAnalogSensors_();
-            if (haSvc_->requestRefresh) {
-                (void)haSvc_->requestRefresh(haSvc_->ctx);
-            }
-        }
+        analogConfigDirtyMask_ |= changedMask;
     }
 }
 
@@ -1113,7 +1022,7 @@ IoStatus IOModule::ioReadAnalog_(IoId id, float* outValue, uint32_t* outTsMs, Io
 
 IoStatus IOModule::ioTick_(uint32_t nowMs)
 {
-    maybeRefreshHaOnPrecisionChange_();
+    refreshAnalogConfigState_();
 
     if (!cfgData_.enabled) return IO_ERR_NOT_READY;
     if (!runtimeReady_) return IO_ERR_NOT_READY;
@@ -1251,6 +1160,7 @@ bool IOModule::configureRuntime_()
     if (runtimeReady_) return true;
     if (!cfgData_.enabled) return false;
 
+    // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
     i2cBus_.begin(cfgData_.i2cSda, cfgData_.i2cScl);
     const bool ads48Present = i2cBus_.probe(0x48);
     const bool ads49Present = i2cBus_.probe(0x49);
@@ -1316,15 +1226,17 @@ bool IOModule::configureRuntime_()
             }
 
             snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
-            s.driver = allocGpioDriver_(
+            IDigitalPinDriver* driver = allocGpioDriver_(
                 s.endpointId,
                 s.inDef.pin,
                 false,
                 s.inDef.activeHigh,
                 s.inDef.pullMode
             );
-            if (!s.driver) continue;
-            if (!s.driver->begin()) continue;
+            if (!driver) continue;
+
+            s.provider = makeDigitalProvider(driver);
+            if (!s.provider.begin()) continue;
 
             s.endpoint = allocDigitalSensorEndpoint_(s.endpointId);
             if (!s.endpoint) continue;
@@ -1351,10 +1263,12 @@ bool IOModule::configureRuntime_()
         strncpy(s.endpointId, s.outDef.id, sizeof(s.endpointId) - 1);
         s.endpointId[sizeof(s.endpointId) - 1] = '\0';
 
-        s.driver = allocGpioDriver_(s.outDef.id, s.outDef.pin, true, s.outDef.activeHigh);
-        if (!s.driver) continue;
-        if (!s.driver->begin()) continue;
-        s.driver->write(s.outDef.initialOn);
+        IDigitalPinDriver* driver = allocGpioDriver_(s.outDef.id, s.outDef.pin, true, s.outDef.activeHigh);
+        if (!driver) continue;
+
+        s.provider = makeDigitalProvider(driver);
+        if (!s.provider.begin()) continue;
+        s.provider.write(s.outDef.initialOn);
         s.pulseArmed = false;
         s.pulseDeadlineMs = 0;
 
@@ -1379,30 +1293,32 @@ bool IOModule::configureRuntime_()
     adsExternalCfg.differentialPairs = true;
 
     if (needAdsInternal) {
-        adsInternal_ = allocAdsDriver_("ads_internal", &i2cBus_, adsInternalCfg);
-        if (!adsInternal_) {
+        IAnalogSourceDriver* driver = allocAdsDriver_("ads_internal", &i2cBus_, adsInternalCfg);
+        if (!driver) {
             LOGW("ADS internal pool exhausted");
         } else
-        if (!adsInternal_->begin()) {
+        if (!makeAnalogProvider(driver).begin()) {
             LOGW("ADS internal not detected at 0x%02X", cfgData_.adsInternalAddr);
-            adsInternal_ = nullptr;
-        } else
-        if (cfgData_.adsInternalAddr == 0x49) {
-            LOGI("ADS1115 found at 0x49 (internal)");
+        } else {
+            adsInternalProvider_ = makeAnalogProvider(driver);
+            if (cfgData_.adsInternalAddr == 0x49) {
+                LOGI("ADS1115 found at 0x49 (internal)");
+            }
         }
     }
 
     if (needAdsExternal) {
-        adsExternal_ = allocAdsDriver_("ads_external", &i2cBus_, adsExternalCfg);
-        if (!adsExternal_) {
+        IAnalogSourceDriver* driver = allocAdsDriver_("ads_external", &i2cBus_, adsExternalCfg);
+        if (!driver) {
             LOGW("ADS external pool exhausted");
         } else
-        if (!adsExternal_->begin()) {
+        if (!makeAnalogProvider(driver).begin()) {
             LOGW("ADS external not detected at 0x%02X", cfgData_.adsExternalAddr);
-            adsExternal_ = nullptr;
-        } else
-        if (cfgData_.adsExternalAddr == 0x49) {
-            LOGI("ADS1115 found at 0x49 (external)");
+        } else {
+            adsExternalProvider_ = makeAnalogProvider(driver);
+            if (cfgData_.adsExternalAddr == 0x49) {
+                LOGI("ADS1115 found at 0x49 (external)");
+            }
         }
     }
 
@@ -1413,9 +1329,13 @@ bool IOModule::configureRuntime_()
     if (needDsWater && oneWireWater_) {
         oneWireWater_->begin();
         if (oneWireWater_->getAddress(0, oneWireWaterAddr_)) {
-            dsWater_ = allocDsDriver_("ds18_water", oneWireWater_, oneWireWaterAddr_, dsCfg);
-            if (dsWater_) dsWater_->begin();
-            else LOGW("DS18 water pool exhausted");
+            IAnalogSourceDriver* driver = allocDsDriver_("ds18_water", oneWireWater_, oneWireWaterAddr_, dsCfg);
+            if (driver) {
+                dsWaterProvider_ = makeAnalogProvider(driver);
+                (void)dsWaterProvider_.begin();
+            } else {
+                LOGW("DS18 water pool exhausted");
+            }
         } else {
             LOGW("No DS18B20 found on water OneWire bus");
         }
@@ -1424,20 +1344,27 @@ bool IOModule::configureRuntime_()
     if (needDsAir && oneWireAir_) {
         oneWireAir_->begin();
         if (oneWireAir_->getAddress(0, oneWireAirAddr_)) {
-            dsAir_ = allocDsDriver_("ds18_air", oneWireAir_, oneWireAirAddr_, dsCfg);
-            if (dsAir_) dsAir_->begin();
-            else LOGW("DS18 air pool exhausted");
+            IAnalogSourceDriver* driver = allocDsDriver_("ds18_air", oneWireAir_, oneWireAirAddr_, dsCfg);
+            if (driver) {
+                dsAirProvider_ = makeAnalogProvider(driver);
+                (void)dsAirProvider_.begin();
+            } else {
+                LOGW("DS18 air pool exhausted");
+            }
         } else {
             LOGW("No DS18B20 found on air OneWire bus");
         }
     }
 
     if (cfgData_.pcfEnabled) {
-        pcf_ = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
-        if (!pcf_) {
+        IMaskOutputDriver* driver = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
+        if (!driver) {
             LOGW("PCF8574 pool exhausted");
         } else
-        if (pcf_->begin()) {
+        if (!makeMaskProvider(driver).begin()) {
+            LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
+        } else {
+            ledMaskProvider_ = makeMaskProvider(driver);
             ledMaskEp_ = allocMaskEndpoint_(
                 "status_leds_mask",
                 [](void* ctx, uint8_t mask) -> bool {
@@ -1447,15 +1374,12 @@ bool IOModule::configureRuntime_()
                     if (!mask) return false;
                     return static_cast<IMaskOutputDriver*>(ctx)->readMask(*mask);
                 },
-                pcf_
+                driver
             );
             if (ledMaskEp_) {
                 registry_.add(ledMaskEp_);
                 setLedMask_(cfgData_.pcfMaskDefault, millis());
             }
-        } else {
-            LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
-            pcf_ = nullptr;
         }
     }
 
@@ -1498,9 +1422,9 @@ void IOModule::pollPulseOutputs_(uint32_t nowMs)
     for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
         DigitalSlot& s = digitalSlots_[i];
         if (!s.used || s.kind != DIGITAL_SLOT_OUTPUT) continue;
-        if (!s.outDef.momentary || !s.pulseArmed || !s.driver) continue;
+        if (!s.outDef.momentary || !s.pulseArmed || !s.provider.isBound()) continue;
         if ((int32_t)(nowMs - s.pulseDeadlineMs) < 0) continue;
-        (void)s.driver->write(false);
+        (void)s.provider.write(false);
         s.pulseArmed = false;
     }
 }
@@ -1564,17 +1488,17 @@ Pcf8574MaskEndpoint* IOModule::allocMaskEndpoint_(const char* endpointId, MaskWr
 bool IOModule::writeDigitalOut_(void* ctx, bool on)
 {
     IOModule::DigitalSlot* s = static_cast<IOModule::DigitalSlot*>(ctx);
-    if (!s || !s->driver) return false;
+    if (!s || !s->provider.isBound()) return false;
     if (!s->used || s->kind != DIGITAL_SLOT_OUTPUT) return false;
 
     if (!s->outDef.momentary) {
-        bool ok = s->driver->write(on);
+        bool ok = s->provider.write(on);
         if (ok && s->owner) s->owner->markIoCycleChanged_(s->ioId);
         return ok;
     }
 
     // Momentary outputs always generate a physical pulse on each command.
-    if (!s->driver->write(true)) return false;
+    if (!s->provider.write(true)) return false;
     uint32_t pulse = (s->outDef.pulseMs == 0) ? 500u : (uint32_t)s->outDef.pulseMs;
     const uint32_t nowMs = millis();
     s->pulseDeadlineMs = nowMs + pulse;
@@ -1600,7 +1524,6 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Io;
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
-    haSvc_ = services.get<HAService>(ServiceId::Ha);
     const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
     if (!services.add(ServiceId::Io, &ioSvc_)) {
@@ -1608,15 +1531,6 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     }
     if (!services.add(ServiceId::StatusLeds, &statusLedsSvc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::StatusLeds));
-    }
-
-    // Default labels for digital output slots (can be overridden by persisted config).
-    for (uint8_t i = 0; i < PoolBinding::kDeviceBindingCount; ++i) {
-        const PoolIoBinding& b = PoolBinding::kIoBindings[i];
-        if (b.ioId < IO_ID_DO_BASE) continue;
-        const uint8_t logical = (uint8_t)(b.ioId - IO_ID_DO_BASE);
-        if (logical >= DIGITAL_CFG_SLOTS) continue;
-        snprintf(digitalCfg_[logical].name, sizeof(digitalCfg_[logical].name), "%s", b.name ? b.name : "");
     }
 
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchIo);
@@ -1669,97 +1583,24 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PinVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
 
     LOGI("I/O config registered");
-    if (haSvc_) {
-        if (haSvc_->addSensor) registerHaAnalogSensors_();
-        if (haSvc_->addBinarySensor) registerHaDigitalInputBinarySensors_();
-    }
-    if (haSvc_ && haSvc_->addSwitch) {
-        for (uint8_t i = 0; i < PoolBinding::kDeviceBindingCount; ++i) {
-            const PoolIoBinding& b = PoolBinding::kIoBindings[i];
-            if (b.ioId < IO_ID_DO_BASE) continue;
-            const uint8_t logical = (uint8_t)(b.ioId - IO_ID_DO_BASE);
-            if (logical >= MAX_DIGITAL_OUTPUTS) continue;
-
-            snprintf(haSwitchStateSuffix_[i], sizeof(haSwitchStateSuffix_[i]), "rt/io/output/d%u", (unsigned)logical);
-            bool payloadOk = true;
-            if (b.slot == PoolBinding::kDeviceSlotFiltrationPump) {
-                int wrote = snprintf(
-                    haSwitchPayloadOn_[i],
-                    sizeof(haSwitchPayloadOn_[i]),
-                    "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":true}}"
-                );
-                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOn_[i]))) payloadOk = false;
-                wrote = snprintf(
-                    haSwitchPayloadOff_[i],
-                    sizeof(haSwitchPayloadOff_[i]),
-                    "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":false}}"
-                );
-                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOff_[i]))) payloadOk = false;
-            } else {
-                int wrote = snprintf(
-                    haSwitchPayloadOn_[i],
-                    sizeof(haSwitchPayloadOn_[i]),
-                    "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":true}}",
-                    (unsigned)b.slot
-                );
-                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOn_[i]))) payloadOk = false;
-                wrote = snprintf(
-                    haSwitchPayloadOff_[i],
-                    sizeof(haSwitchPayloadOff_[i]),
-                    "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":false}}",
-                    (unsigned)b.slot
-                );
-                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOff_[i]))) payloadOk = false;
-            }
-            if (!payloadOk) {
-                LOGW("HA switch command payload truncated slot=%u", (unsigned)b.slot);
-                continue;
-            }
-            BufferUsageTracker::note(TrackedBufferId::IoHaSwitchPayloadOnTable,
-                                     charTableUsage_(haSwitchPayloadOn_),
-                                     sizeof(haSwitchPayloadOn_),
-                                     b.objectSuffix,
-                                     haSwitchPayloadOn_[i]);
-            BufferUsageTracker::note(TrackedBufferId::IoHaSwitchPayloadOffTable,
-                                     charTableUsage_(haSwitchPayloadOff_),
-                                     sizeof(haSwitchPayloadOff_),
-                                     b.objectSuffix,
-                                     haSwitchPayloadOff_[i]);
-
-            const HASwitchEntry sw{
-                "io",
-                b.objectSuffix,
-                b.name,
-                haSwitchStateSuffix_[i],
-                "{% if value_json.value %}ON{% else %}OFF{% endif %}",
-                MqttTopics::SuffixCmd,
-                haSwitchPayloadOn_[i],
-                haSwitchPayloadOff_[i],
-                b.haIcon,
-                nullptr
-            };
-            (void)haSvc_->addSwitch(haSvc_->ctx, &sw);
-        }
-    }
     for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
-        haPrecisionLast_[i] = clampPrecisionForHa_(analogCfg_[i].precision);
+        analogPrecisionLast_[i] = sanitizeAnalogPrecision_(analogCfg_[i].precision);
     }
-    haPrecisionLastInit_ = true;
+    analogPrecisionLastInit_ = true;
+    analogConfigDirtyMask_ = 0;
 
     (void)logHub_;
 }
 
 void IOModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
-    if (!cfgMqttPub_) {
-        cfgMqttPub_ = new (std::nothrow) MqttConfigRouteProducer();
-    }
-    if (cfgMqttPub_) {
-        cfgMqttPub_->configure(this,
-                               kIoCfgProducerId,
-                               kIoCfgRoutes,
-                               (uint8_t)(sizeof(kIoCfgRoutes) / sizeof(kIoCfgRoutes[0])),
-                               services);
+    if (!cfgMqttPubConfigured_) {
+        cfgMqttPub_.configure(this,
+                              kIoCfgProducerId,
+                              kIoCfgRoutes,
+                              (uint8_t)(sizeof(kIoCfgRoutes) / sizeof(kIoCfgRoutes[0])),
+                              services);
+        cfgMqttPubConfigured_ = true;
     }
 
     LOGI("io.onConfigLoaded begin enabled=%s i2c_sda=%ld i2c_scl=%ld runtimeReady=%s",

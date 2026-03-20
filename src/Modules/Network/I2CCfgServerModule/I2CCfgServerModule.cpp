@@ -116,6 +116,18 @@ bool parseJsonBoolField_(const char* json, const char* key, bool& valueOut)
     return false;
 }
 
+bool parseJsonIntField_(const char* json, const char* key, int32_t& valueOut)
+{
+    const char* value = nullptr;
+    if (!findJsonValue_(json, key, value)) return false;
+
+    char* end = nullptr;
+    const long parsed = strtol(value, &end, 10);
+    if (end == value) return false;
+    valueOut = (int32_t)parsed;
+    return true;
+}
+
 bool extractJsonString_(const char* start, char* out, size_t outLen, const char*& nextOut)
 {
     if (!start || !out || outLen == 0) return false;
@@ -529,14 +541,41 @@ bool I2CCfgServerModule::buildRuntimeStatusMqttJson_(bool& truncatedOut)
     const uint32_t mqttParseFailCnt = dataStore_ ? mqttParseFail(*dataStore_) : 0;
     const uint32_t mqttHandlerFailCnt = dataStore_ ? mqttHandlerFail(*dataStore_) : 0;
     const uint32_t mqttOversizeDropCnt = dataStore_ ? mqttOversizeDrop(*dataStore_) : 0;
+    char mqttServer[96] = {0};
+
+    if (cfgStore_) {
+        char mqttCfgJson[320] = {0};
+        bool truncated = false;
+        cfgStore_->toJsonModule("mqtt", mqttCfgJson, sizeof(mqttCfgJson), &truncated, true);
+
+        char mqttHost[Limits::Mqtt::Buffers::Host] = {0};
+        int32_t mqttPort = 0;
+        const char* hostValue = nullptr;
+        if (findJsonValue_(mqttCfgJson, "host", hostValue) &&
+            *hostValue == '"' &&
+            extractJsonString_(hostValue + 1, mqttHost, sizeof(mqttHost), hostValue) &&
+            mqttHost[0] != '\0') {
+            (void)parseJsonIntField_(mqttCfgJson, "port", mqttPort);
+            if (mqttPort > 0) {
+                (void)snprintf(mqttServer, sizeof(mqttServer), "%s:%ld", mqttHost, (long)mqttPort);
+            } else {
+                (void)snprintf(mqttServer, sizeof(mqttServer), "%s", mqttHost);
+            }
+        }
+    }
 
     size_t pos = 0;
     statusJson_[0] = '\0';
     if (!appendFormat_(statusJson_,
                        sizeof(statusJson_),
                        pos,
-                       "{\"ok\":true,\"mqtt\":{\"rdy\":%s,\"rxdrp\":%lu,\"prsf\":%lu,\"hndf\":%lu,\"ovr\":%lu}}",
-                       mqttUp ? "true" : "false",
+                       "{\"ok\":true,\"mqtt\":{\"rdy\":%s,\"srv\":",
+                       mqttUp ? "true" : "false")) return false;
+    if (!appendEscapedJsonString_(statusJson_, sizeof(statusJson_), pos, mqttServer)) return false;
+    if (!appendFormat_(statusJson_,
+                       sizeof(statusJson_),
+                       pos,
+                       ",\"rxdrp\":%lu,\"prsf\":%lu,\"hndf\":%lu,\"ovr\":%lu}}",
                        (unsigned long)mqttRxDropCnt,
                        (unsigned long)mqttParseFailCnt,
                        (unsigned long)mqttHandlerFailCnt,

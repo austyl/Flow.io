@@ -25,6 +25,7 @@
 #include "Modules/System/SystemMonitorModule/SystemMonitorModule.h"
 
 class DataStore;
+struct HAService;
 
 namespace Profiles {
 namespace FlowIO {
@@ -61,6 +62,7 @@ struct ModuleInstances {
     OneWireBus oneWireWater{19};
     OneWireBus oneWireAir{18};
     DataStore* ioDataStore = nullptr;
+    const HAService* haService = nullptr;
     char topicNetworkState[Limits::TopicBuf] = {0};
     char topicSystemState[Limits::TopicBuf] = {0};
     BootOrchestratorState bootOrchestrator{};
@@ -73,4 +75,3 @@ void loopProfile(AppContext& ctx);
 
 }  // namespace FlowIO
 }  // namespace Profiles
-
