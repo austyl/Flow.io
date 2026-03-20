@@ -33,8 +33,8 @@ void LogDispatcherModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     _services = &services;
 
     /// récupérer hub et sink registry
-    auto hubSvc = services.get<LogHubService>("loghub");
-    _sinkReg = services.get<LogSinkRegistryService>("logsinks");
+    auto hubSvc = services.get<LogHubService>(ServiceId::LogHub);
+    _sinkReg = services.get<LogSinkRegistryService>(ServiceId::LogSinks);
 
     /// hub object dans ctx => on va le passer en brut via ctx->hub
     /// On va récupérer le LogHub* via hubSvc->ctx

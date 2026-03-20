@@ -19,7 +19,7 @@ WifiProvisioningModule* gWifiProvisioningInstance = nullptr;
 void WifiProvisioningModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     cfgStore_ = &cfg;
-    wifiSvc_ = services.get<WifiService>("wifi");
+    wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
     bootMs_ = millis();
     lastCfgPollMs_ = 0;
     buildApCredentials_();
@@ -32,7 +32,9 @@ void WifiProvisioningModule::init(ConfigStore& cfg, ServiceRegistry& services)
         nullptr
     };
     netSvc.ctx = this;
-    services.add("network_access", &netSvc);
+    if (!services.add(ServiceId::NetworkAccess, &netSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::NetworkAccess));
+    }
 
     gWifiProvisioningInstance = this;
     if (wifiEventHandlerId_ != 0U) {

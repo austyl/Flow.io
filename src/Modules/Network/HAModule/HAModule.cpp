@@ -935,9 +935,9 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(prefixVar, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(modelVar, kCfgModuleId, kCfgBranchId);
 
-    eventBusSvc_ = services.get<EventBusService>("eventbus");
-    dsSvc_ = services.get<DataStoreService>("datastore");
-    mqttSvc_ = services.get<MqttService>("mqtt");
+    eventBusSvc_ = services.get<EventBusService>(ServiceId::EventBus);
+    dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
 
     haSvc_.addSensor = HAModule::svcAddSensor;
     haSvc_.addBinarySensor = HAModule::svcAddBinarySensor;
@@ -946,7 +946,9 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     haSvc_.addButton = HAModule::svcAddButton;
     haSvc_.requestRefresh = HAModule::svcRequestRefresh;
     haSvc_.ctx = this;
-    services.add("ha", &haSvc_);
+    if (!services.add(ServiceId::Ha, &haSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Ha));
+    }
 
     producer_.producerId = ProducerId;
     producer_.ctx = this;

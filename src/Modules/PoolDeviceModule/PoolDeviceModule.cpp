@@ -1423,15 +1423,17 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::PoolDevice;
     const uint8_t cfgRouteCap = (uint8_t)(2U + POOL_DEVICE_MAX * 2U);
     cfgStore_ = &cfg;
-    logHub_ = services.get<LogHubService>("loghub");
-    mqttSvc_ = services.get<MqttService>("mqtt");
-    ioSvc_ = services.get<IOServiceV2>("io");
-    (void)services.add("pooldev", &poolSvc_);
-    cmdSvc_ = services.get<CommandService>("cmd");
-    haSvc_ = services.get<HAService>("ha");
-    const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
+    ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
+    if (!services.add(ServiceId::PoolDevice, &poolSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::PoolDevice));
+    }
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    haSvc_ = services.get<HAService>(ServiceId::Ha);
+    const EventBusService* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
 
     if (!ioSvc_) {
@@ -1738,7 +1740,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
 void PoolDeviceModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
-    mqttSvc_ = services.get<MqttService>("mqtt");
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
     if (!cfgMqttPub_) {
         cfgMqttPub_ = new (std::nothrow) MqttConfigRouteProducer();
     }

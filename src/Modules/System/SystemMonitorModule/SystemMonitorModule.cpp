@@ -38,16 +38,16 @@ void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     cfgStore_ = &cfg;
     cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchId);
 
-    wifiSvc = services.get<WifiService>("wifi");
-    cfgSvc  = services.get<ConfigStoreService>("config");
-    logHub  = services.get<LogHubService>("loghub");
-    haSvc_  = services.get<HAService>("ha");
+    wifiSvc = services.get<WifiService>(ServiceId::Wifi);
+    cfgSvc  = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    logHub  = services.get<LogHubService>(ServiceId::LogHub);
+    haSvc_  = services.get<HAService>(ServiceId::Ha);
 }
 
 void SystemMonitorModule::registerHaEntities_(ServiceRegistry& services)
 {
     if (haEntitiesRegistered_) return;
-    if (!haSvc_) haSvc_ = services.get<HAService>("ha");
+    if (!haSvc_) haSvc_ = services.get<HAService>(ServiceId::Ha);
     if (!haSvc_ || !haSvc_->addSensor) return;
 
     const HASensorEntry uptimeSeconds{

@@ -120,10 +120,12 @@ void I2CCfgClientModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(freqVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(addrVar_, kCfgModuleId, kCfgBranchId);
 
-    logHub_ = services.get<LogHubService>("loghub");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    (void)services.add("flowcfg", &svc_);
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    if (!services.add(ServiceId::FlowCfg, &svc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::FlowCfg));
+    }
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         (void)cmdSvc_->registerHandler(cmdSvc_->ctx, "flow.system.reboot", &I2CCfgClientModule::cmdFlowReboot_, this);
         (void)cmdSvc_->registerHandler(cmdSvc_->ctx, "flow.system.factory_reset", &I2CCfgClientModule::cmdFlowFactoryReset_, this);

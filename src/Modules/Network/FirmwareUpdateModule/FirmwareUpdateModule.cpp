@@ -216,7 +216,7 @@ void FirmwareUpdateModule::onProgressChunk_(uint32_t chunkBytes)
 void FirmwareUpdateModule::attachWebInterfaceSvcIfNeeded_()
 {
     if (webInterfaceSvc_ || !services_) return;
-    webInterfaceSvc_ = services_->get<WebInterfaceService>("webinterface");
+    webInterfaceSvc_ = services_->get<WebInterfaceService>(ServiceId::WebInterface);
 }
 
 bool FirmwareUpdateModule::resolveUrl_(FirmwareUpdateTarget target,
@@ -1025,10 +1025,10 @@ void FirmwareUpdateModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     services_ = &services;
     cfgStore_ = &cfg;
-    logHub_ = services.get<LogHubService>("loghub");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    wifiSvc_ = services.get<WifiService>("wifi");
-    webInterfaceSvc_ = services.get<WebInterfaceService>("webinterface");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
+    webInterfaceSvc_ = services.get<WebInterfaceService>(ServiceId::WebInterface);
 
     cfg.registerVar(updateHostVar_);
     cfg.registerVar(flowioPathVar_);
@@ -1044,7 +1044,9 @@ void FirmwareUpdateModule::init(ConfigStore& cfg, ServiceRegistry& services)
         nullptr
     };
     svc.ctx = this;
-    services.add("fwupdate", &svc);
+    if (!services.add(ServiceId::FirmwareUpdate, &svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::FirmwareUpdate));
+    }
 
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "fw.update.status", &FirmwareUpdateModule::cmdStatus_, this);

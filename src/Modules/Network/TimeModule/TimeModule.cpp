@@ -376,12 +376,12 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     cfg.registerVar(weekStartMondayVar, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(scheduleBlobVar, kCfgModuleId, kSchedCfgBranchId);
 
-    logHub = services.get<LogHubService>("loghub");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
 
-    auto* ebSvc = services.get<EventBusService>("eventbus");
+    auto* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus = ebSvc ? ebSvc->bus : nullptr;
 
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore = dsSvc ? dsSvc->store : nullptr;
 
     if (eventBus) {
@@ -389,7 +389,7 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
         eventBus->subscribe(EventId::ConfigChanged, &TimeModule::onEventStatic, this);
     }
 
-    cmdSvc = services.get<CommandService>("cmd");
+    cmdSvc = services.get<CommandService>(ServiceId::Command);
     if (cmdSvc) {
         cmdSvc->registerHandler(cmdSvc->ctx, "time.resync", cmdResync, this);
         cmdSvc->registerHandler(cmdSvc->ctx, "ntp.resync", cmdResync, this); // backward compatibility
@@ -408,7 +408,9 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
         nullptr
     };
     timeSvc.ctx = this;
-    services.add("time", &timeSvc);
+    if (!services.add(ServiceId::Time, &timeSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Time));
+    }
 
     static TimeSchedulerService schedSvc{
         svcSchedSetSlot,
@@ -421,7 +423,9 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
         nullptr
     };
     schedSvc.ctx = this;
-    services.add("time.scheduler", &schedSvc);
+    if (!services.add(ServiceId::TimeScheduler, &schedSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::TimeScheduler));
+    }
 
     LOGI("Time services registered (time, time.scheduler)");
 

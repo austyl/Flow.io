@@ -218,17 +218,17 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfgStore_ = &cfg;
 
     services_ = &services;
-    logHub_ = services.get<LogHubService>("loghub");
-    logSinkReg_ = services.get<LogSinkRegistryService>("logsinks");
-    wifiSvc_ = services.get<WifiService>("wifi");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    flowCfgSvc_ = services.get<FlowCfgRemoteService>("flowcfg");
-    netAccessSvc_ = services.get<NetworkAccessService>("network_access");
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    logSinkReg_ = services.get<LogSinkRegistryService>(ServiceId::LogSinks);
+    wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    flowCfgSvc_ = services.get<FlowCfgRemoteService>(ServiceId::FlowCfg);
+    netAccessSvc_ = services.get<NetworkAccessService>(ServiceId::NetworkAccess);
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
-    auto* ebSvc = services.get<EventBusService>("eventbus");
+    auto* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
-    fwUpdateSvc_ = services.get<FirmwareUpdateService>("fwupdate");
+    fwUpdateSvc_ = services.get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
     if (eventBus_) {
         eventBus_->subscribe(EventId::DataChanged, &WebInterfaceModule::onEventStatic_, this);
     }
@@ -239,7 +239,9 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         nullptr
     };
     webInterfaceSvc.ctx = this;
-    services.add("webinterface", &webInterfaceSvc);
+    if (!services.add(ServiceId::WebInterface, &webInterfaceSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::WebInterface));
+    }
 
     uart_.setRxBufferSize(kUartRxBufferSize);
     uart_.begin(uartBaud_, SERIAL_8N1, uartRxPin_, uartTxPin_);
@@ -394,7 +396,7 @@ void WebInterfaceModule::startServer_()
         HttpLatencyScope latency(request, "/api/network/mode");
         NetworkAccessMode mode = NetworkAccessMode::None;
         if (!netAccessSvc_ && services_) {
-            netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+            netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
         }
         if (netAccessSvc_ && netAccessSvc_->mode) {
             mode = netAccessSvc_->mode(netAccessSvc_->ctx);
@@ -441,7 +443,7 @@ void WebInterfaceModule::startServer_()
     auto fwStatusHandler = [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/fwupdate/status");
         if (!fwUpdateSvc_ && services_) {
-            fwUpdateSvc_ = services_->get<FirmwareUpdateService>("fwupdate");
+            fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
         }
         if (!fwUpdateSvc_ || !fwUpdateSvc_->statusJson) {
             request->send(503, "application/json",
@@ -463,7 +465,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/fwupdate/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/fwupdate/config");
         if (!fwUpdateSvc_ && services_) {
-            fwUpdateSvc_ = services_->get<FirmwareUpdateService>("fwupdate");
+            fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
         }
         if (!fwUpdateSvc_ || !fwUpdateSvc_->configJson) {
             request->send(503, "application/json",
@@ -483,7 +485,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/fwupdate/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/fwupdate/config");
         if (!fwUpdateSvc_ && services_) {
-            fwUpdateSvc_ = services_->get<FirmwareUpdateService>("fwupdate");
+            fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
         }
         if (!fwUpdateSvc_ || !fwUpdateSvc_->setConfig) {
             request->send(503, "application/json",
@@ -620,7 +622,7 @@ void WebInterfaceModule::startServer_()
         }
 
         if (!netAccessSvc_ && services_) {
-            netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+            netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
         }
         if (netAccessSvc_ && netAccessSvc_->notifyWifiConfigChanged) {
             netAccessSvc_->notifyWifiConfigChanged(netAccessSvc_->ctx);
@@ -630,7 +632,7 @@ void WebInterfaceModule::startServer_()
         bool flowSyncOk = false;
         char flowSyncErr[96] = {0};
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (flowCfgSvc_ && flowCfgSvc_->applyPatchJson) {
             flowSyncAttempted = true;
@@ -682,7 +684,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/wifi/scan");
         if (!wifiSvc_ && services_) {
-            wifiSvc_ = services_->get<WifiService>("wifi");
+            wifiSvc_ = services_->get<WifiService>(ServiceId::Wifi);
         }
         if (!wifiSvc_ || !wifiSvc_->scanStatusJson) {
             request->send(503, "application/json",
@@ -702,7 +704,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/wifi/scan", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/wifi/scan");
         if (!wifiSvc_ && services_) {
-            wifiSvc_ = services_->get<WifiService>("wifi");
+            wifiSvc_ = services_->get<WifiService>(ServiceId::Wifi);
         }
         if (!wifiSvc_ || !wifiSvc_->requestScan) {
             request->send(503, "application/json",
@@ -737,7 +739,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->runtimeStatusDomainJson) {
             request->send(503, "application/json",
@@ -849,7 +851,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->runtimeStatusDomainJson) {
             request->send(503, "application/json",
@@ -896,7 +898,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->listModulesJson) {
             request->send(503, "application/json",
@@ -929,7 +931,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->listChildrenJson) {
             request->send(503, "application/json",
@@ -963,7 +965,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->getModuleJson) {
             request->send(503, "application/json",
@@ -1021,7 +1023,7 @@ void WebInterfaceModule::startServer_()
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
         if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>("flowcfg");
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
         }
         if (!flowCfgSvc_ || !flowCfgSvc_->applyPatchJson) {
             request->send(503, "application/json",
@@ -1150,7 +1152,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/system/reboot", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/system/reboot");
         if (!cmdSvc_ && services_) {
-            cmdSvc_ = services_->get<CommandService>("cmd");
+            cmdSvc_ = services_->get<CommandService>(ServiceId::Command);
         }
         if (!cmdSvc_ || !cmdSvc_->execute) {
             request->send(503, "application/json",
@@ -1174,7 +1176,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/system/factory-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/system/factory-reset");
         if (!cmdSvc_ && services_) {
-            cmdSvc_ = services_->get<CommandService>("cmd");
+            cmdSvc_ = services_->get<CommandService>(ServiceId::Command);
         }
         if (!cmdSvc_ || !cmdSvc_->execute) {
             request->send(503, "application/json",
@@ -1199,7 +1201,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/flow/system/reboot", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/flow/system/reboot");
         if (!cmdSvc_ && services_) {
-            cmdSvc_ = services_->get<CommandService>("cmd");
+            cmdSvc_ = services_->get<CommandService>(ServiceId::Command);
         }
         if (!cmdSvc_ || !cmdSvc_->execute) {
             request->send(503, "application/json",
@@ -1224,7 +1226,7 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/flow/system/factory-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/flow/system/factory-reset");
         if (!cmdSvc_ && services_) {
-            cmdSvc_ = services_->get<CommandService>("cmd");
+            cmdSvc_ = services_->get<CommandService>(ServiceId::Command);
         }
         if (!cmdSvc_ || !cmdSvc_->execute) {
             request->send(503, "application/json",
@@ -1380,7 +1382,7 @@ void WebInterfaceModule::handleUpdateRequest_(AsyncWebServerRequest* request, Fi
 {
     if (!request) return;
     if (!fwUpdateSvc_ && services_) {
-        fwUpdateSvc_ = services_->get<FirmwareUpdateService>("fwupdate");
+        fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
     }
     if (!fwUpdateSvc_ || !fwUpdateSvc_->start) {
         request->send(503, "application/json",
@@ -1501,7 +1503,7 @@ void WebInterfaceModule::formatTimestamp_(WebInterfaceModule* self, const LogEnt
     bool timeFromService = false;
     if (self) {
         if (!self->timeSvc_ && self->services_) {
-            self->timeSvc_ = self->services_->get<TimeService>("time");
+            self->timeSvc_ = self->services_->get<TimeService>(ServiceId::Time);
         }
         if (self->timeSvc_ &&
             self->timeSvc_->isSynced &&
@@ -1677,7 +1679,7 @@ void WebInterfaceModule::logWsFlowPressure_(const char* reason)
 void WebInterfaceModule::loop()
 {
     if (!netAccessSvc_ && services_) {
-        netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+        netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
     }
 
     if (!started_) {

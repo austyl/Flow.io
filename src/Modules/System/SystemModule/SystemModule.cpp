@@ -102,9 +102,9 @@ bool SystemModule::cmdFactoryReset(void* userCtx, const CommandRequest&, char* r
 void SystemModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
 
-    logHub = services.get<LogHubService>("loghub");
-    cmdSvc = services.get<CommandService>("cmd");
-    cfgSvc = services.get<ConfigStoreService>("config");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
+    cmdSvc = services.get<CommandService>(ServiceId::Command);
+    cfgSvc = services.get<ConfigStoreService>(ServiceId::ConfigStore);
 
     cmdSvc->registerHandler(cmdSvc->ctx, "system.ping", cmdPing, this);
     cmdSvc->registerHandler(cmdSvc->ctx, "system.reboot", cmdReboot, this);

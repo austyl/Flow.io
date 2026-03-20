@@ -145,12 +145,12 @@ uint32_t SupervisorHMIModule::currentClockMinute_() const
 
 void SupervisorHMIModule::init(ConfigStore&, ServiceRegistry& services)
 {
-    logHub_ = services.get<LogHubService>("loghub");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    wifiSvc_ = services.get<WifiService>("wifi");
-    netAccessSvc_ = services.get<NetworkAccessService>("network_access");
-    fwUpdateSvc_ = services.get<FirmwareUpdateService>("fwupdate");
-    flowCfgSvc_ = services.get<FlowCfgRemoteService>("flowcfg");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
+    netAccessSvc_ = services.get<NetworkAccessService>(ServiceId::NetworkAccess);
+    fwUpdateSvc_ = services.get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
+    flowCfgSvc_ = services.get<FlowCfgRemoteService>(ServiceId::FlowCfg);
     (void)logHub_;
 
     if (pirPin_ >= 0) {

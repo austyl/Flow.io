@@ -19,8 +19,10 @@ bool CommandModule::svcExecute(void* ctx, const char* cmd, const char* json, con
 void CommandModule::init(ConfigStore&, ServiceRegistry& services) {
     static CommandService svc{ svcRegister, svcExecute, nullptr };
     svc.ctx = &registry;
-    services.add("cmd", &svc);
+    if (!services.add(ServiceId::Command, &svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Command));
+    }
     
-    logHub = services.get<LogHubService>("loghub");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
     LOGI("CommandService registered");
 }

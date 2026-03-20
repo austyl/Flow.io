@@ -65,8 +65,8 @@ AlarmCondState LogAlarmSinkModule::condError_(void* ctx, uint32_t nowMs)
 
 void LogAlarmSinkModule::init(ConfigStore&, ServiceRegistry& services)
 {
-    const LogSinkRegistryService* sinks = services.get<LogSinkRegistryService>("logsinks");
-    const AlarmService* alarmSvc = services.get<AlarmService>("alarms");
+    const LogSinkRegistryService* sinks = services.get<LogSinkRegistryService>(ServiceId::LogSinks);
+    const AlarmService* alarmSvc = services.get<AlarmService>(ServiceId::Alarm);
     if (!sinks || !sinks->add || !alarmSvc || !alarmSvc->registerAlarm) {
         return;
     }

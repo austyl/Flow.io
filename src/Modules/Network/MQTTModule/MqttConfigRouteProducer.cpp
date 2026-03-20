@@ -55,10 +55,10 @@ void MqttConfigRouteProducer::configure(void* owner,
     routes_ = routes;
     routeCount_ = (routeCount > MaxRoutes) ? MaxRoutes : routeCount;
 
-    mqttSvc_ = services.get<MqttService>("mqtt");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    dsSvc_ = services.get<DataStoreService>("datastore");
-    const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
+    const EventBusService* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
 
     if (!eventsSubscribed_ && eventBus_) {

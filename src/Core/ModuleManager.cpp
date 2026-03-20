@@ -256,7 +256,7 @@ bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
 
 void ModuleManager::wireCoreServices(ServiceRegistry& services, ConfigStore& config) {
 
-  auto* ebService = services.get<EventBusService>("eventbus");
+  auto* ebService = services.get<EventBusService>(ServiceId::EventBus);
   if (ebService && ebService->bus) {
     config.setEventBus(ebService->bus);
     Log::debug(LOG_MODULE_ID, "wireCoreServices: eventbus wired");

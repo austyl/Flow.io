@@ -630,13 +630,15 @@ void AlarmModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(evalPeriodVar_, kCfgModuleId, kCfgBranchId);
 
-    logHub_ = services.get<LogHubService>("loghub");
-    const EventBusService* eb = services.get<EventBusService>("eventbus");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    const EventBusService* eb = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = eb ? eb->bus : nullptr;
-    cmdSvc_ = services.get<CommandService>("cmd");
-    haSvc_ = services.get<HAService>("ha");
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    haSvc_ = services.get<HAService>(ServiceId::Ha);
 
-    (void)services.add("alarms", &alarmSvc_);
+    if (!services.add(ServiceId::Alarm, &alarmSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Alarm));
+    }
 
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "alarms.list", &AlarmModule::cmdList_, this);
@@ -652,7 +654,7 @@ void AlarmModule::init(ConfigStore& cfg, ServiceRegistry& services)
 void AlarmModule::registerHaEntities_(ServiceRegistry& services)
 {
     if (haEntitiesRegistered_) return;
-    if (!haSvc_) haSvc_ = services.get<HAService>("ha");
+    if (!haSvc_) haSvc_ = services.get<HAService>(ServiceId::Ha);
     if (!haSvc_ || !haSvc_->addSensor) return;
 
     const HASensorEntry alarmsPack{

@@ -1599,13 +1599,15 @@ bool IOModule::endpointIndexFromId_(const char* id, uint8_t& idxOut) const
 void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Io;
-    logHub_ = services.get<LogHubService>("loghub");
-    haSvc_ = services.get<HAService>("ha");
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    haSvc_ = services.get<HAService>(ServiceId::Ha);
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
-    (void)services.add("io", &ioSvc_);
-    if (!services.add("status_leds", &statusLedsSvc_)) {
-        LOGW("status_leds service registration failed");
+    if (!services.add(ServiceId::Io, &ioSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Io));
+    }
+    if (!services.add(ServiceId::StatusLeds, &statusLedsSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::StatusLeds));
     }
 
     // Default labels for digital output slots (can be overridden by persisted config).

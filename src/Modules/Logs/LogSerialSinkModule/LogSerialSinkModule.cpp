@@ -74,7 +74,7 @@ static void serialSinkWrite(void* ctx, const LogEntry& e) {
 
     if (sinkCtx) {
         if (!sinkCtx->hubSvc && sinkCtx->services) {
-            sinkCtx->hubSvc = sinkCtx->services->get<LogHubService>("loghub");
+            sinkCtx->hubSvc = sinkCtx->services->get<LogHubService>(ServiceId::LogHub);
         }
         if (sinkCtx->hubSvc && sinkCtx->hubSvc->resolveModuleName) {
             moduleName = sinkCtx->hubSvc->resolveModuleName(sinkCtx->hubSvc->ctx, e.moduleId);
@@ -90,7 +90,7 @@ static void serialSinkWrite(void* ctx, const LogEntry& e) {
 
     if (sinkCtx) {
         if (!sinkCtx->timeSvc && sinkCtx->services) {
-            sinkCtx->timeSvc = sinkCtx->services->get<TimeService>("time");
+            sinkCtx->timeSvc = sinkCtx->services->get<TimeService>(ServiceId::Time);
         }
 
         if (sinkCtx->timeSvc &&
@@ -152,12 +152,12 @@ void LogSerialSinkModule::init(ConfigStore& cfg, ServiceRegistry& services) {
         gLogSerial->begin(Board::SerialMap::LogBaud);
     }
 
-    auto sinks = services.get<LogSinkRegistryService>("logsinks");
+    auto sinks = services.get<LogSinkRegistryService>(ServiceId::LogSinks);
     if (!sinks) return;
 
     gSerialSinkCtx.services = &services;
     gSerialSinkCtx.timeSvc = nullptr;
-    gSerialSinkCtx.hubSvc = services.get<LogHubService>("loghub");
+    gSerialSinkCtx.hubSvc = services.get<LogHubService>(ServiceId::LogHub);
 
     LogSinkService sink{};
     sink.write = serialSinkWrite;

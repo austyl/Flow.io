@@ -619,9 +619,9 @@ void WifiModule::init(ConfigStore& cfg,
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Wifi;
     constexpr uint8_t kCfgBranchId = kWifiCfgBranch;
     /// récupérer service loghub (log async)
-    logHub = services.get<LogHubService>("loghub");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
 
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore = dsSvc ? dsSvc->store : nullptr;
 
     /// Register config vars
@@ -641,9 +641,11 @@ void WifiModule::init(ConfigStore& cfg,
         WifiModule::svcScanStatusJson,
         WifiModule::svcSetStaRetryEnabled
     };
-    services.add("wifi", &svc);
+    if (!services.add(ServiceId::Wifi, &svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Wifi));
+    }
 
-    const CommandService* cmdSvc = services.get<CommandService>("cmd");
+    const CommandService* cmdSvc = services.get<CommandService>(ServiceId::Command);
     if (cmdSvc && cmdSvc->registerHandler) {
         const bool ok = cmdSvc->registerHandler(cmdSvc->ctx, "wifi.dump_cfg", &WifiModule::cmdDumpCfg_, this);
         if (!ok) {

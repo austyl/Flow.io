@@ -6,6 +6,8 @@
 #include "Core/Log.h"
 #include "Core/EventBus/EventPayloads.h"
 #include "Core/LogModuleIds.h"
+#define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::LogHub)
+#include "Core/ModuleLog.h"
 #include "Core/SystemLimits.h"
 #include <new>
 
@@ -61,8 +63,12 @@ void LogHubModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     };
     sinksSvc.ctx = &sinks;
 
-    services.add("loghub", &hubSvc);
-    services.add("logsinks", &sinksSvc);
+    if (!services.add(ServiceId::LogHub, &hubSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::LogHub));
+    }
+    if (!services.add(ServiceId::LogSinks, &sinksSvc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::LogSinks));
+    }
 
     Log::setHub(&hubSvc);
     (void)Log::registerModule((LogModuleId)LogModuleIdValue::LogHub, moduleId());

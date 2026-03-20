@@ -9,9 +9,11 @@
 
 void EventBusModule::init(ConfigStore&, ServiceRegistry& services) {
     /// récupérer service loghub (log async)
-    logHub = services.get<LogHubService>("loghub");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
 
-    services.add("eventbus", &_svc);
+    if (!services.add(ServiceId::EventBus, &_svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::EventBus));
+    }
 
     LOGI("EventBusService registered");
     /// Broadcast system started (no payload)

@@ -31,11 +31,13 @@ void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     registry = &cfg;
 
     /// récupérer service loghub (log async)
-    logHub = services.get<LogHubService>("loghub");
+    logHub = services.get<LogHubService>(ServiceId::LogHub);
 
     static ConfigStoreService svc{ svcApplyJson, svcToJson, svcToJsonModule, svcListModules, svcErase, nullptr };
     svc.ctx = registry;
 
-    services.add("config", &svc);
+    if (!services.add(ServiceId::ConfigStore, &svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::ConfigStore));
+    }
     LOGI("ConfigStoreService registered");
 }

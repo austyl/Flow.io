@@ -366,7 +366,7 @@ void configurePoolDevices(const AppContext& ctx, ModuleInstances& modules)
 
 void postInit(AppContext& ctx, ModuleInstances& modules)
 {
-    const DataStoreService* dsSvc = ctx.services.get<DataStoreService>("datastore");
+    const DataStoreService* dsSvc = ctx.services.get<DataStoreService>(ServiceId::DataStore);
     modules.ioDataStore = dsSvc ? dsSvc->store : nullptr;
 
     modules.mqttModule.formatTopic(modules.topicNetworkState, sizeof(modules.topicNetworkState), "rt/network/state");

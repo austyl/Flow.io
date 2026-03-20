@@ -1434,18 +1434,18 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(topicDeviceIdVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
 
-    wifiSvc_ = services.get<WifiService>("wifi");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    timeSchedSvc_ = services.get<TimeSchedulerService>("time.scheduler");
-    alarmSvc_ = services.get<AlarmService>("alarms");
-    logHub_ = services.get<LogHubService>("loghub");
+    wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    timeSchedSvc_ = services.get<TimeSchedulerService>(ServiceId::TimeScheduler);
+    alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
     (void)logHub_;
 
-    const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
+    const EventBusService* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
 
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
 
     rxDropCount_ = 0;
@@ -1459,7 +1459,9 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services)
     mqttSvc_.formatTopic = MQTTModule::svcFormatTopic_;
     mqttSvc_.isConnected = MQTTModule::svcIsConnected_;
     mqttSvc_.ctx = this;
-    (void)services.add("mqtt", &mqttSvc_);
+    if (!services.add(ServiceId::Mqtt, &mqttSvc_)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Mqtt));
+    }
 
     if (!cfgProducer_) {
         cfgProducer_ = new (std::nothrow) MqttConfigRouteProducer();

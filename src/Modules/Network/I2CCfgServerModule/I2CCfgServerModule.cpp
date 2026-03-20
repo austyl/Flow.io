@@ -267,11 +267,11 @@ void I2CCfgServerModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(freqVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(addrVar_, kCfgModuleId, kCfgBranchId);
 
-    logHub_ = services.get<LogHubService>("loghub");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    alarmSvc_ = services.get<AlarmService>("alarms");
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
+    const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
     cfgStore_ = &cfg;
     (void)logHub_;

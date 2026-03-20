@@ -137,12 +137,12 @@ uint8_t HMIModule::svcGetLedPage_(void* ctx)
 
 void HMIModule::init(ConfigStore&, ServiceRegistry& services)
 {
-    logHub_ = services.get<LogHubService>("loghub");
-    cfgSvc_ = services.get<ConfigStoreService>("config");
-    dsSvc_ = services.get<DataStoreService>("datastore");
-    alarmSvc_ = services.get<AlarmService>("alarms");
-    statusLedsSvc_ = services.get<StatusLedsService>("status_leds");
-    auto* ebSvc = services.get<EventBusService>("eventbus");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
+    dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
+    alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
+    statusLedsSvc_ = services.get<StatusLedsService>(ServiceId::StatusLeds);
+    auto* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
 
     if (!cfgSvc_) {
@@ -181,7 +181,9 @@ void HMIModule::init(ConfigStore&, ServiceRegistry& services)
         nullptr
     };
     svc.ctx = this;
-    services.add("hmi", &svc);
+    if (!services.add(ServiceId::Hmi, &svc)) {
+        LOGE("service registration failed: %s", toString(ServiceId::Hmi));
+    }
 
     NextionDriverConfig dcfg{};
     dcfg.serial = &Board::SerialMap::hmiSerial();

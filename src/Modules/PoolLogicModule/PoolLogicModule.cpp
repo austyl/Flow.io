@@ -260,7 +260,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::PoolLogic;
     cfgStore_ = &cfg;
-    mqttSvc_ = services.get<MqttService>("mqtt");
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
 
     enabledVar_.moduleName = kCfgModuleMode;
     autoModeVar_.moduleName = kCfgModuleMode;
@@ -377,15 +377,15 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(phPumpDeviceVar_, kCfgModuleId, kCfgBranchDevice);
     cfg.registerVar(orpPumpDeviceVar_, kCfgModuleId, kCfgBranchDevice);
 
-    logHub_ = services.get<LogHubService>("loghub");
-    const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
+    logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    const EventBusService* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
-    schedSvc_ = services.get<TimeSchedulerService>("time.scheduler");
-    ioSvc_ = services.get<IOServiceV2>("io");
-    poolSvc_ = services.get<PoolDeviceService>("pooldev");
-    haSvc_ = services.get<HAService>("ha");
-    cmdSvc_ = services.get<CommandService>("cmd");
-    alarmSvc_ = services.get<AlarmService>("alarms");
+    schedSvc_ = services.get<TimeSchedulerService>(ServiceId::TimeScheduler);
+    ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
+    poolSvc_ = services.get<PoolDeviceService>(ServiceId::PoolDevice);
+    haSvc_ = services.get<HAService>(ServiceId::Ha);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
     if (!ioSvc_) {
         LOGW("PoolLogic waiting for IOServiceV2");
     }
@@ -701,7 +701,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
 void PoolLogicModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
-    mqttSvc_ = services.get<MqttService>("mqtt");
+    mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
     if (!cfgMqttPub_) {
         cfgMqttPub_ = new (std::nothrow) MqttConfigRouteProducer();
     }

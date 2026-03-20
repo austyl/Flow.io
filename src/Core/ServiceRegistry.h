@@ -4,34 +4,35 @@
  * @brief Typed service registry for cross-module access.
  */
 #include <stdint.h>
-#include <cstring>
-
-/** @brief Maximum number of registered services. */
-constexpr uint8_t MAX_SERVICES = 16;
-
-/** @brief Raw registry entry. */
-struct ServiceEntry {
-    const char* id;
-    const void* ptr;
-};
+#include "ServiceId.h"
 
 /**
- * @brief Registry of named services (opaque pointers).
+ * @brief Registry of services keyed by ServiceId.
  */
 class ServiceRegistry {
 public:
-    /** @brief Register a service pointer under a string id. */
-    bool add(const char* id, const void* service);
+    /** @brief Register a service pointer under a strong id. */
+    bool add(ServiceId id, const void* service);
+    /** @brief Check whether a service id is currently registered. */
+    bool has(ServiceId id) const;
     /** @brief Fetch a raw service pointer by id. */
-    const void* getRaw(const char* id) const;
+    void* getRaw(ServiceId id);
+    /** @brief Fetch a raw service pointer by id. */
+    const void* getRaw(ServiceId id) const;
 
     /** @brief Fetch a typed service pointer by id. */
     template<typename T>
-    const T* get(const char* id) const {
+    T* get(ServiceId id) {
+        return reinterpret_cast<T*>(getRaw(id));
+    }
+
+    /** @brief Fetch a typed service pointer by id. */
+    template<typename T>
+    const T* get(ServiceId id) const {
         return reinterpret_cast<const T*>(getRaw(id));
     }
 
 private:
-    ServiceEntry entries[MAX_SERVICES]{};
-    uint8_t count = 0;
+    const void* slots_[kServiceIdCount]{};
+    uint8_t count_ = 0;
 };
