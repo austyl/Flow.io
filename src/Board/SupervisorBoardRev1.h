@@ -4,47 +4,56 @@
 
 namespace BoardProfiles {
 
+inline constexpr uint32_t kSupervisorBoardRev1UartBaud = 115200U;
+inline constexpr uint32_t kSupervisorBoardRev1InterlinkI2cHz = 100000U;
+
 inline constexpr UartSpec kSupervisorBoardRev1Uarts[] = {
-    {"log", 0, -1, -1, 115200, true},
-    {"bridge", 2, 16, 17, 115200, false},
-    {"panel", 2, 33, 32, 115200, false},
+    {"log", 0, -1, -1, kSupervisorBoardRev1UartBaud, true},
+    {"bridge", 2, 16, 17, kSupervisorBoardRev1UartBaud, false},
+    {"panel", 2, 33, 32, kSupervisorBoardRev1UartBaud, false},
 };
 
 inline constexpr I2cBusSpec kSupervisorBoardRev1I2c[] = {
-    {"interlink", 21, 22, 100000},
+    {"interlink", 21, 22, kSupervisorBoardRev1InterlinkI2cHz},
+};
+
+inline constexpr St7789DisplaySpec kSupervisorBoardRev1Display{
+    240,
+    320,
+    1,
+    0,
+    33,
+    14,
+    15,
+    4,
+    5,
+    19,
+    18,
+    true,
+    false,
+    40000000U,
+    80
+};
+
+inline constexpr SupervisorInputSpec kSupervisorBoardRev1Inputs{
+    36,
+    120,
+    true,
+    23,
+    40
+};
+
+inline constexpr SupervisorUpdateSpec kSupervisorBoardRev1Update{
+    25,
+    26,
+    13,
+    kSupervisorBoardRev1UartBaud
 };
 
 inline constexpr SupervisorBoardSpec kSupervisorBoardRev1Supervisor{
-    {
-        240,
-        320,
-        1,
-        0,
-        33,
-        14,
-        15,
-        4,
-        5,
-        19,
-        18,
-        true,
-        false,
-        40000000U,
-        80
-    },
-    {
-        36,
-        120,
-        true,
-        23,
-        40
-    },
-    {
-        25,
-        26,
-        13,
-        115200U
-    }
+    kSupervisorBoardRev1Display,
+    kSupervisorBoardRev1Inputs,
+    kSupervisorBoardRev1Update
 };
 
 inline constexpr BoardSpec kSupervisorBoardRev1{

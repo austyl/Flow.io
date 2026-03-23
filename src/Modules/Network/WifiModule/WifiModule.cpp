@@ -314,7 +314,7 @@ void WifiModule::startConnect() {
 
     if (ssidLen == 0U || ssidOnlySpaces) {
         const uint32_t now = millis();
-        if ((now - lastEmptySsidLogMs) >= 10000U) {
+        if ((now - lastEmptySsidLogMs) >= Limits::Wifi::Timing::EmptySsidLogIntervalMs) {
             lastEmptySsidLogMs = now;
             LOGW("SSID empty/blank, skipping connection (enabled=%d)", (int)cfgData.enabled);
         }
@@ -569,7 +569,7 @@ bool WifiModule::buildScanStatusJson_(char* out, size_t outLen)
     }
     portEXIT_CRITICAL(&scanMux_);
 
-    StaticJsonDocument<3072> doc;
+    StaticJsonDocument<Limits::Wifi::Buffers::ScanStatusJson> doc;
     doc["ok"] = true;
     doc["running"] = running;
     doc["requested"] = requested;
@@ -748,20 +748,20 @@ void WifiModule::loop() {
     switch (state) {
 
     case WifiState::Disabled:
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::DisabledLoopDelayMs));
         break;
 
     case WifiState::Idle:
         if (!staRetryEnabled_) {
-            vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::IdleRetryDisabledLoopDelayMs));
             break;
         }
         if (initialConnectNotBeforeMs_ != 0U && millis() < initialConnectNotBeforeMs_) {
-            vTaskDelay(pdMS_TO_TICKS(200));
+            vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::IdleConnectPollDelayMs));
             break;
         }
         startConnect();
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::IdlePostConnectDelayMs));
         break;
 
     case WifiState::Connecting:
@@ -769,7 +769,7 @@ void WifiModule::loop() {
         if (!staRetryEnabled_ && !WiFi.isConnected()) {
             WiFi.disconnect(false, false);
             setState(WifiState::Idle);
-            vTaskDelay(pdMS_TO_TICKS(200));
+            vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::IdleConnectPollDelayMs));
             break;
         }
         const wl_status_t wl = WiFi.status();
@@ -778,7 +778,7 @@ void WifiModule::loop() {
             lastConnectStatus_ = wl;
         }
 
-        if ((now - lastConnectingLogMs_) >= 3000U) {
+        if ((now - lastConnectingLogMs_) >= Limits::Wifi::Timing::ConnectingLogIntervalMs) {
             lastConnectingLogMs_ = now;
             const int rssi = WiFi.isConnected() ? WiFi.RSSI() : -127;
             const char* wlName = wlStatusName_(wl);
@@ -792,7 +792,8 @@ void WifiModule::loop() {
                  (unsigned long)(now - stateTs));
         }
 
-        if (!reconnectKickSent_ && (now - stateTs) > 4000U && wl == WL_DISCONNECTED) {
+        if (!reconnectKickSent_ && (now - stateTs) > Limits::Wifi::Timing::ReconnectKickDelayMs &&
+            wl == WL_DISCONNECTED) {
             reconnectKickSent_ = true;
             WiFi.reconnect();
         }
@@ -804,7 +805,7 @@ void WifiModule::loop() {
             WiFi.RSSI());
             setState(WifiState::Connected);
         }
-        else if (now - stateTs > 15000) {
+        else if ((now - stateTs) > Limits::Wifi::Timing::ConnectTimeoutMs) {
             const char* wlName = wlStatusName_(wl);
             if (lastDisconnectReason_ != 0U) {
                 const char* reasonName = WiFi.disconnectReasonName((wifi_err_reason_t)lastDisconnectReason_);
@@ -819,7 +820,7 @@ void WifiModule::loop() {
             WiFi.disconnect(false, false);
             setState(WifiState::ErrorWait);
         }
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::ConnectingLoopDelayMs));
         break;
     }
 
@@ -848,18 +849,18 @@ void WifiModule::loop() {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::ConnectedLoopDelayMs));
         break;
 
     case WifiState::ErrorWait:
         if (!staRetryEnabled_) {
-            vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::ErrorWaitLoopDelayMs));
             break;
         }
-        if (millis() - stateTs > 5000) {
+        if ((millis() - stateTs) > Limits::Wifi::Timing::ErrorWaitDurationMs) {
             setState(WifiState::Idle);
         }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(Limits::Wifi::Timing::ErrorWaitLoopDelayMs));
         break;
     }
 }

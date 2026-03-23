@@ -745,7 +745,7 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        char out[3072] = {0};
+        char out[Limits::Wifi::Buffers::ScanStatusJson] = {0};
         if (!wifiSvc_->scanStatusJson(wifiSvc_->ctx, out, sizeof(out))) {
             request->send(500, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.scan.get\"}}");
@@ -776,7 +776,7 @@ void WebInterfaceModule::startServer_()
         }
 
         if (wifiSvc_->scanStatusJson) {
-            char out[3072] = {0};
+            char out[Limits::Wifi::Buffers::ScanStatusJson] = {0};
             if (wifiSvc_->scanStatusJson(wifiSvc_->ctx, out, sizeof(out))) {
                 request->send(202, "application/json", out);
                 return;

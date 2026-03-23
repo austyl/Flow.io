@@ -36,6 +36,27 @@ constexpr uint8_t LogQueueLen = 64;
 constexpr uint8_t EventQueueLen = 32;
 /** @brief Maximum number of EventBus subscribers (`EventBus::MAX_SUBSCRIBERS`). */
 constexpr uint8_t EventSubscribersMax = 50;
+
+/** @brief Core runtime limits shared by the module framework. */
+namespace Core {
+namespace Capacity {
+/** @brief Maximum number of modules registered in `ModuleManager`. */
+constexpr size_t MaxModules = 25;
+/** @brief Maximum number of declared tasks tracked by `ModuleManager`. */
+constexpr size_t MaxModuleTasks = 32;
+}  // namespace Capacity
+
+namespace Task {
+/** @brief Default FreeRTOS task stack size used by `Module::taskStackSize`. */
+constexpr uint16_t DefaultStackSize = 3072;
+}  // namespace Task
+
+namespace Timing {
+/** @brief Small cooperative delay inserted after each `Module::loop` execution. */
+constexpr uint32_t LoopDelayMs = 10;
+}  // namespace Timing
+}  // namespace Core
+
 /** @brief MQTT-specific limits grouped by concern to keep `SystemLimits` readable. */
 namespace Mqtt {
 
@@ -153,6 +174,47 @@ constexpr uint32_t DefaultEvalPeriodMs = 250;
 constexpr size_t JsonCmdBuf = 256;
 }  // namespace Alarm
 
+/** @brief Shared WiFi runtime timings and buffers. */
+namespace Wifi {
+namespace Buffers {
+/** @brief JSON document/output buffer used for WiFi scan status snapshots. */
+constexpr size_t ScanStatusJson = 3072;
+}  // namespace Buffers
+
+namespace Timing {
+/** @brief Minimum spacing between scan attempts when throttling WiFi scans. */
+constexpr uint32_t ScanThrottleMs = 8000U;
+/** @brief Initial delay before the first STA connect attempt after boot/config load. */
+constexpr uint32_t InitialConnectDelayMs = 1200U;
+/** @brief Startup window during which disconnect logs stay at debug level. */
+constexpr uint32_t StartupTransientLogWindowMs = 10000U;
+/** @brief Minimum spacing between repeated empty-SSID warnings. */
+constexpr uint32_t EmptySsidLogIntervalMs = 10000U;
+/** @brief Loop delay while WiFi runtime is disabled. */
+constexpr uint32_t DisabledLoopDelayMs = 2000U;
+/** @brief Loop delay while retries are disabled and WiFi is idle. */
+constexpr uint32_t IdleRetryDisabledLoopDelayMs = 500U;
+/** @brief Poll delay while waiting for the initial connect deadline. */
+constexpr uint32_t IdleConnectPollDelayMs = 200U;
+/** @brief Delay after issuing a STA connect attempt. */
+constexpr uint32_t IdlePostConnectDelayMs = 1000U;
+/** @brief Log cadence while the STA connect attempt is in progress. */
+constexpr uint32_t ConnectingLogIntervalMs = 3000U;
+/** @brief Delay before forcing a reconnect kick during connection attempts. */
+constexpr uint32_t ReconnectKickDelayMs = 4000U;
+/** @brief Timeout for a WiFi STA connect attempt before entering error wait. */
+constexpr uint32_t ConnectTimeoutMs = 15000U;
+/** @brief Loop delay while waiting for a WiFi STA connection. */
+constexpr uint32_t ConnectingLoopDelayMs = 200U;
+/** @brief Loop delay while WiFi remains connected. */
+constexpr uint32_t ConnectedLoopDelayMs = 1000U;
+/** @brief Error wait duration before retrying a failed WiFi connection. */
+constexpr uint32_t ErrorWaitDurationMs = 5000U;
+/** @brief Loop delay while staying in WiFi error-wait state. */
+constexpr uint32_t ErrorWaitLoopDelayMs = 500U;
+}  // namespace Timing
+}  // namespace Wifi
+
 /** @brief Home Assistant auto-discovery publication pacing limits. */
 namespace Ha {
 namespace Timing {
@@ -178,5 +240,19 @@ constexpr uint32_t HaStartDelayMs = 15000;
 /** @brief Delay in ms before enabling PoolLogic control loop (`PoolLogicModule::setStartupReady`). */
 constexpr uint32_t PoolLogicStartDelayMs = 10000;
 }  // namespace Boot
+
+/** @brief Firmware update networking limits shared by the update module. */
+namespace FirmwareUpdate {
+namespace Http {
+/** @brief HTTP connect timeout used for firmware and cfgdocs downloads. */
+constexpr uint16_t ConnectTimeoutMs = 15000U;
+/** @brief HTTP request timeout used once the download has started. */
+constexpr uint32_t RequestTimeoutMs = 60000U;
+/** @brief Timeout while waiting for the next chunk from a download stream. */
+constexpr uint32_t StreamReadTimeoutMs = 15000U;
+/** @brief Scratch buffer size used to copy download streams chunk by chunk. */
+constexpr size_t StreamChunkBytes = 1024U;
+}  // namespace Http
+}  // namespace FirmwareUpdate
 
 }  // namespace Limits

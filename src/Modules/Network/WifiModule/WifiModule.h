@@ -66,9 +66,9 @@ public:
 
 private:
     static constexpr uint8_t kScanMaxResults = 24;
-    static constexpr uint32_t kScanThrottleMs = 8000U;
-    static constexpr uint32_t kInitialConnectDelayMs = 1200U;
-    static constexpr uint32_t kStartupTransientLogWindowMs = 10000U;
+    static constexpr uint32_t kScanThrottleMs = Limits::Wifi::Timing::ScanThrottleMs;
+    static constexpr uint32_t kInitialConnectDelayMs = Limits::Wifi::Timing::InitialConnectDelayMs;
+    static constexpr uint32_t kStartupTransientLogWindowMs = Limits::Wifi::Timing::StartupTransientLogWindowMs;
 
     struct WifiScanEntry {
         char ssid[33];

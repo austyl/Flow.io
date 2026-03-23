@@ -4,6 +4,7 @@
  * @brief Base interface for all runtime modules.
  */
 #include "ConfigStore.h"
+#include "Core/SystemLimits.h"
 #include "Runtime.h"
 #include "ServiceRegistry.h"
 #include "freertos/FreeRTOS.h"
@@ -49,7 +50,7 @@ public:
     virtual const ModuleTaskSpec* taskSpecs() const { return nullptr; }
 
     /** @brief Stack size for the FreeRTOS task. */
-    virtual uint16_t taskStackSize() const { return 3072; }
+    virtual uint16_t taskStackSize() const { return Limits::Core::Task::DefaultStackSize; }
     /** @brief Task priority for the FreeRTOS task. */
     virtual UBaseType_t taskPriority() const { return 1; }
     /** @brief CPU core affinity for the FreeRTOS task (`0` or `1` on ESP32). */
@@ -83,7 +84,7 @@ private:
         Module* self = static_cast<Module*>(arg);
         while (true) {
             self->loop();
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(Limits::Core::Timing::LoopDelayMs));
         }
     }
 

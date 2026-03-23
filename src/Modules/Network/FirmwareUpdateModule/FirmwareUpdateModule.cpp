@@ -15,6 +15,7 @@
 
 #include "Board/BoardSpec.h"
 #include "Core/ErrorCodes.h"
+#include "Core/SystemLimits.h"
 
 #include <ESPNexUpload.h>
 #include <esp32_flasher.h>
@@ -155,6 +156,13 @@ static bool validateCfgDocsFile_(fs::FS& fs, const char* path, char* errOut, siz
         return false;
     }
     return true;
+}
+
+static void configureDownloadHttp_(HTTPClient& http)
+{
+    http.setReuse(false);
+    http.setConnectTimeout(Limits::FirmwareUpdate::Http::ConnectTimeoutMs);
+    http.setTimeout(Limits::FirmwareUpdate::Http::RequestTimeoutMs);
 }
 
 const char* FirmwareUpdateModule::stateStr_(UpdateState s)
@@ -470,9 +478,7 @@ bool FirmwareUpdateModule::runFlowIoUpdate_(const char* url, char* errOut, size_
     setStatus_(UpdateState::Downloading, FirmwareUpdateTarget::FlowIO, 0, "downloading");
 
     HTTPClient http;
-    http.setReuse(false);
-    http.setConnectTimeout(15000);
-    http.setTimeout(60000);
+    configureDownloadHttp_(http);
     if (!http.begin(url)) {
         writeSimpleError_(errOut, errOutLen, "http begin failed");
         return false;
@@ -543,9 +549,7 @@ bool FirmwareUpdateModule::runSupervisorUpdate_(const char* url, char* errOut, s
     setStatus_(UpdateState::Downloading, FirmwareUpdateTarget::Supervisor, 0, "downloading");
 
     HTTPClient http;
-    http.setReuse(false);
-    http.setConnectTimeout(15000);
-    http.setTimeout(60000);
+    configureDownloadHttp_(http);
     if (!http.begin(url)) {
         writeSimpleError_(errOut, errOutLen, "http begin failed");
         return false;
@@ -579,7 +583,7 @@ bool FirmwareUpdateModule::runSupervisorUpdate_(const char* url, char* errOut, s
     } else {
         WiFiClient* stream = http.getStreamPtr();
         int32_t remaining = contentLength;
-        uint8_t buf[1024];
+        uint8_t buf[Limits::FirmwareUpdate::Http::StreamChunkBytes];
         uint32_t lastReadMs = millis();
 
         while (http.connected() && (contentLength <= 0 || remaining > 0)) {
@@ -588,7 +592,7 @@ bool FirmwareUpdateModule::runSupervisorUpdate_(const char* url, char* errOut, s
                 if (contentLength <= 0 && stream && !stream->connected()) {
                     break;
                 }
-                if ((millis() - lastReadMs) > 15000U) {
+                if ((millis() - lastReadMs) > Limits::FirmwareUpdate::Http::StreamReadTimeoutMs) {
                     snprintf(failMsg, sizeof(failMsg), "ota stream timeout");
                     break;
                 }
@@ -664,7 +668,7 @@ bool FirmwareUpdateModule::runNextionUpdate_(const char* url, char* errOut, size
     digitalWrite(nextionRebootPin_, HIGH);
 
     HTTPClient http;
-    http.setReuse(false);
+    configureDownloadHttp_(http);
     if (!http.begin(url)) {
         writeSimpleError_(errOut, errOutLen, "http begin failed");
         digitalWrite(flowIoEnablePin_, HIGH);
@@ -730,9 +734,7 @@ bool FirmwareUpdateModule::runCfgDocsUpdate_(const char* url, char* errOut, size
     setStatus_(UpdateState::Downloading, FirmwareUpdateTarget::CfgDocs, 0, "downloading");
 
     HTTPClient http;
-    http.setReuse(false);
-    http.setConnectTimeout(15000);
-    http.setTimeout(60000);
+    configureDownloadHttp_(http);
     if (!http.begin(url)) {
         writeSimpleError_(errOut, errOutLen, "http begin failed");
         return false;
@@ -773,7 +775,7 @@ bool FirmwareUpdateModule::runCfgDocsUpdate_(const char* url, char* errOut, size
     }
 
     WiFiClient* stream = http.getStreamPtr();
-    uint8_t buf[1024];
+    uint8_t buf[Limits::FirmwareUpdate::Http::StreamChunkBytes];
     int32_t remaining = contentLength;
     uint32_t lastReadMs = millis();
     char failMsg[128] = {0};
@@ -784,7 +786,7 @@ bool FirmwareUpdateModule::runCfgDocsUpdate_(const char* url, char* errOut, size
             if (contentLength <= 0 && stream && !stream->connected()) {
                 break;
             }
-            if ((millis() - lastReadMs) > 15000U) {
+            if ((millis() - lastReadMs) > Limits::FirmwareUpdate::Http::StreamReadTimeoutMs) {
                 snprintf(failMsg, sizeof(failMsg), "stream timeout");
                 break;
             }

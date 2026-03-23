@@ -5,11 +5,6 @@
  */
 #include "Module.h"
 
-/** @brief Maximum number of modules supported at runtime. */
-constexpr size_t MAX_MODULES = 25;
-/** @brief Maximum number of declared tasks supported at runtime. */
-constexpr size_t MAX_MODULE_TASKS = 32;
-
 /**
  * @brief Registers modules, resolves dependencies, and starts tasks.
  */
@@ -44,12 +39,12 @@ public:
         return &taskEntries[idx];
     }
 private:
-    Module* modules[MAX_MODULES];
+    Module* modules[Limits::Core::Capacity::MaxModules];
     uint8_t count = 0;
 
-    Module* ordered[MAX_MODULES];
+    Module* ordered[Limits::Core::Capacity::MaxModules];
     uint8_t orderedCount = 0;
-    TaskEntry taskEntries[MAX_MODULE_TASKS]{};
+    TaskEntry taskEntries[Limits::Core::Capacity::MaxModuleTasks]{};
     uint8_t taskEntryCount = 0;
 
     Module* findById(const char* id);

@@ -47,8 +47,9 @@ bool ModuleManager::add(Module* m) {
         return false;
     }
 
-    if (count >= MAX_MODULES) {
-        Log::error(LOG_MODULE_ID, "add failed: module limit reached (%u)", (unsigned)MAX_MODULES);
+    if (count >= Limits::Core::Capacity::MaxModules) {
+        Log::error(LOG_MODULE_ID, "add failed: module limit reached (%u)",
+                   (unsigned)Limits::Core::Capacity::MaxModules);
         return false;
     }
 
@@ -71,7 +72,7 @@ Module* ModuleManager::findById(const char* id) {
 bool ModuleManager::buildInitOrder() {
     Log::debug(LOG_MODULE_ID, "buildInitOrder: count=%u", (unsigned)count);
     /// Kahn topo-sort
-    bool placed[MAX_MODULES] = {0};
+    bool placed[Limits::Core::Capacity::MaxModules] = {0};
     orderedCount = 0;
 
     for (uint8_t pass = 0; pass < count; ++pass) {
@@ -172,6 +173,10 @@ bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
         }
     }
 
+    // Core shared dependencies must be injected before config callbacks and
+    // before any module task can start mutating shared runtime state.
+    wireCoreServices(services, cfg);
+
     /// Load persistent config after all modules registered their variables.
     cfg.loadPersistent();
 
@@ -207,10 +212,10 @@ bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
                            (unsigned)taskIndex);
                 return false;
             }
-            if (taskEntryCount >= MAX_MODULE_TASKS) {
+            if (taskEntryCount >= Limits::Core::Capacity::MaxModuleTasks) {
                 Log::error(LOG_MODULE_ID, "task registry full at module=%s limit=%u",
                            module->moduleId(),
-                           (unsigned)MAX_MODULE_TASKS);
+                           (unsigned)Limits::Core::Capacity::MaxModuleTasks);
                 return false;
             }
 
@@ -248,7 +253,6 @@ bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
         }
     }
 
-    wireCoreServices(services, cfg);
     Log::debug(LOG_MODULE_ID, "initAll: done");
     
     return true;
