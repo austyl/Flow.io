@@ -12,11 +12,12 @@ Type: module passif.
 
 ## Services exposés
 
-- `config` -> `ConfigStoreService`
+- `config` (`ServiceId::ConfigStore`) -> `ConfigStoreService`
   - `applyJson`
   - `toJson`
   - `toJsonModule`
   - `listModules`
+  - `erase`
 
 ## Services consommés
 
@@ -39,6 +40,8 @@ Indirectement via `ConfigStore`:
 Exemple d'application d'un patch:
 
 ```cpp
-const ConfigStoreService* cfg = services.get<ConfigStoreService>("config");
+#include "Core/ServiceId.h"
+
+const ConfigStoreService* cfg = services.get<ConfigStoreService>(ServiceId::ConfigStore);
 if (cfg) cfg->applyJson(cfg->ctx, "{\"poollogic\":{\"auto_mode\":true}}");
 ```

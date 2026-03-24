@@ -19,10 +19,12 @@ Cette documentation couvre l'architecture complète du firmware Flow.IO (ESP32),
 Flow.IO est basé sur:
 - des modules actifs (`Module`) exécutés dans des tasks FreeRTOS dédiées
 - des modules passifs (`ModulePassive`) qui exposent des services sans task
-- un `ServiceRegistry` typé pour les dépendances inter-modules
+- un `ServiceRegistry` typé indexé par `ServiceId` pour les dépendances inter-modules
 - un `EventBus` queue-based pour la signalisation interne
 - un `DataStore` pour l'état runtime partagé
 - un `ConfigStore` pour la configuration persistante NVS + JSON
+
+Les noms texte de services utilisés dans la documentation (`mqtt`, `io`, `time.scheduler`, etc.) correspondent aux labels de debug, tandis que le lookup réel du registre se fait par `ServiceId`.
 
 ## Ordre de boot (main)
 

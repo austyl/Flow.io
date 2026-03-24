@@ -9,10 +9,16 @@ Flow.IO suit une architecture modulaire orientée contrats:
 - la config persistante passe par `ConfigStore` (NVS) + `ConfigChanged`
 - le transport MQTT TX est centralisé dans `MQTTModule` (cœur unifié job-based)
 
+Le registre de services est désormais **ID-based**:
+
+- l'API de câblage s'appuie sur `ServiceId`
+- `ServiceRegistry` stocke un slot par ID
+- les noms texte (`"mqtt"`, `"io"`, `"time.scheduler"`, etc.) restent utiles pour le debug et la documentation, mais ne sont plus l'API de lookup
+
 ## Composants clés
 
 - `ModuleManager`: tri topologique, `init`, `onConfigLoaded`, démarrage tasks
-- `ServiceRegistry`: registre de services par ID string (`add/get<T>()`)
+- `ServiceRegistry`: registre de services par `ServiceId` (`add/get<T>()`)
 - `EventBus`: queue thread-safe, dispatch callback
 - `DataStore`: état runtime centralisé + événements `DataChanged`
 - `ConfigStore`: variables config déclarées par modules, NVS, JSON import/export

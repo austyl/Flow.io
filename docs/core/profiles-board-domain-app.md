@@ -124,12 +124,18 @@ Fichiers clés:
 
 Ce contexte est volontairement compact et sans allocation dynamique structurelle supplémentaire.
 
+Concernant les services:
+
+- `AppContext` embarque l'unique `ServiceRegistry` partagé du boot
+- ce registre est indexé par `ServiceId`
+- tout nouveau service transverse doit être câblé via `src/Core/ServiceId.h` puis exposé par son module
+
 ### Quand modifier `App`
 
 On touche `src/App/` seulement si la modification concerne tous les firmwares, par exemple:
 
 - ajout d'une nouvelle macro de profil ou de feature
-- ajout d'un nouveau service commun à tous les boots
+- ajout d'un nouveau service commun à tous les boots, avec réservation de son `ServiceId`
 - évolution du contrat `FirmwareProfile`
 - extension du contexte partagé `AppContext`
 

@@ -29,7 +29,7 @@ end
 subgraph L2["Core runtime"]
   C1["Module / ModulePassive (lifecycle)"]
   C2["ModuleManager (init topo + start)"]
-  C3["ServiceRegistry (add/get)"]
+  C3["ServiceRegistry (ServiceId -> slot, add/get<T>)"]
   C4["ConfigStore (JSON <-> NVS)"]
   C5["DataStore (keys + publish)"]
   C6["EventBus (events + payloads)"]
@@ -55,9 +55,9 @@ subgraph L3["Modules applicatifs"]
   MSys["SystemModule"]
   MSysMon["SystemMonitorModule"]
   MHMI["HMIModule->hmi"]
-  MProv["WifiProvisioningModule->network_access (Supervisor)"]
-  MWeb["WebInterfaceModule->webinterface (Supervisor)"]
-  MFW["FirmwareUpdateModule->fwupdate (Supervisor)"]
+  MProv["WifiProvisioningModule->network_access (ServiceId::NetworkAccess, Supervisor)"]
+  MWeb["WebInterfaceModule->webinterface (ServiceId::WebInterface, Supervisor)"]
+  MFW["FirmwareUpdateModule->fwupdate (ServiceId::FirmwareUpdate, Supervisor)"]
 end
 
 %% Layer 4: Applications
@@ -86,3 +86,5 @@ ASup --> MMqtt
 ASup --> MTime
 ASup --> MHA
 ```
+
+Les libellés `config`, `datastore`, `mqtt`, `network_access`, etc. correspondent aux noms texte de debug (`toString(ServiceId)`), tandis que le wiring réel entre modules passe par `ServiceId`.
