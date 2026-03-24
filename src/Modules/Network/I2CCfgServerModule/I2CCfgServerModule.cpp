@@ -28,6 +28,12 @@ constexpr uint8_t kI2cServerCfgBranch = 1;
 static constexpr MqttConfigRouteProducer::Route kI2cServerCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::I2cCfg, kI2cServerCfgBranch}, "i2c/cfg/server", "i2c/cfg/server", (uint8_t)MqttPublishPriority::Normal, nullptr},
 };
+constexpr uint8_t kRuntimeUiMaxIdsPerRequest = (uint8_t)((I2cCfgProtocol::MaxPayload - 1U) / 2U);
+constexpr uint8_t kI2cRuntimeUiValueLinkOk = 1;
+constexpr uint8_t kI2cRuntimeUiValueSeen = 2;
+constexpr uint8_t kI2cRuntimeUiValueReqCount = 3;
+constexpr uint8_t kI2cRuntimeUiValueBadReqCount = 4;
+constexpr uint8_t kI2cRuntimeUiValueLastReqAgoMs = 5;
 
 size_t tokenLenToSlash_(const char* s)
 {
@@ -281,6 +287,11 @@ const ModuleTaskSpec* I2CCfgServerModule::taskSpecs() const
         const_cast<I2CCfgServerModule*>(this)
     };
     return &spec;
+}
+
+bool I2CCfgServerModule::registerRuntimeUiProvider(const IRuntimeUiValueProvider* provider)
+{
+    return runtimeUiRegistry_.registerProvider(provider);
 }
 
 void I2CCfgServerModule::init(ConfigStore& cfg, ServiceRegistry& services)
@@ -709,7 +720,7 @@ bool I2CCfgServerModule::buildRuntimeStatusAlarmJson_(bool& truncatedOut)
                        (unsigned)activeAlarmCount)) return false;
 
     for (uint8_t i = 0; i < activeAlarmCodeCount; ++i) {
-        const size_t reserve = 4U;  // ]}} plus trailing null
+        const size_t reserve = 4U;
         const size_t needed = (i > 0 ? 1U : 0U) + jsonEscapedLen_(activeAlarmCodes_[i]) + reserve;
         if ((pos + needed) >= sizeof(statusJson_)) {
             truncatedOut = true;
@@ -720,6 +731,47 @@ bool I2CCfgServerModule::buildRuntimeStatusAlarmJson_(bool& truncatedOut)
     }
 
     return appendText_(statusJson_, sizeof(statusJson_), pos, "]}}");
+}
+
+bool I2CCfgServerModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+    const bool hasSupervisorSeen = reqCount_ > 0U;
+    const uint32_t nowMs = millis();
+    const uint32_t lastReqAgoMs = hasSupervisorSeen ? (nowMs - lastReqMs_) : 0U;
+    const bool supervisorLinkOk = started_ && hasSupervisorSeen && (lastReqAgoMs <= 15000U);
+
+    switch (valueId) {
+        case kI2cRuntimeUiValueLinkOk:
+            return writer.writeBool(runtimeId, supervisorLinkOk);
+        case kI2cRuntimeUiValueSeen:
+            return writer.writeBool(runtimeId, hasSupervisorSeen);
+        case kI2cRuntimeUiValueReqCount:
+            return writer.writeU32(runtimeId, reqCount_);
+        case kI2cRuntimeUiValueBadReqCount:
+            return writer.writeU32(runtimeId, badReqCount_);
+        case kI2cRuntimeUiValueLastReqAgoMs:
+            return hasSupervisorSeen
+                ? writer.writeU32(runtimeId, lastReqAgoMs)
+                : writer.writeUnavailable(runtimeId);
+        default:
+            return false;
+    }
+}
+
+bool I2CCfgServerModule::buildRuntimeAlarmSnapshotJson_(bool& truncatedOut)
+{
+    truncatedOut = false;
+    memset(alarmJsonScratch_, 0, sizeof(alarmJsonScratch_));
+    if (!alarmSvc_ || !alarmSvc_->buildSnapshot) return false;
+    if (!alarmSvc_->buildSnapshot(alarmSvc_->ctx, alarmJsonScratch_, sizeof(alarmJsonScratch_))) return false;
+
+    const size_t n = strnlen(alarmJsonScratch_, sizeof(alarmJsonScratch_));
+    if (n == 0U || n >= sizeof(alarmJsonScratch_)) {
+        truncatedOut = true;
+        return false;
+    }
+    return true;
 }
 
 void I2CCfgServerModule::queueSystemAction_(PendingSystemAction action)
@@ -839,7 +891,11 @@ void I2CCfgServerModule::buildResponse_(uint8_t op,
     txFrame_[3] = seq;
     txFrame_[4] = status;
     txFrame_[5] = (uint8_t)payloadLen;
-    if (payload && payloadLen > 0) memcpy(txFrame_ + I2cCfgProtocol::RespHeaderSize, payload, payloadLen);
+    if (payload &&
+        payloadLen > 0 &&
+        payload != (txFrame_ + I2cCfgProtocol::RespHeaderSize)) {
+        memcpy(txFrame_ + I2cCfgProtocol::RespHeaderSize, payload, payloadLen);
+    }
     txFrameLen_ = total;
     portEXIT_CRITICAL(&txMux_);
 }
@@ -860,6 +916,11 @@ void I2CCfgServerModule::handleRequest_(uint8_t op, uint8_t seq, const uint8_t* 
         statusJsonLen_ = 0;
         statusJsonValid_ = false;
         statusJsonTruncated_ = false;
+    }
+    if (op != I2cCfgProtocol::OpGetRuntimeAlarmBegin && op != I2cCfgProtocol::OpGetRuntimeAlarmChunk) {
+        alarmSnapshotLen_ = 0;
+        alarmSnapshotValid_ = false;
+        alarmSnapshotTruncated_ = false;
     }
     if (op != I2cCfgProtocol::OpPatchBegin &&
         op != I2cCfgProtocol::OpPatchWrite &&
@@ -1132,6 +1193,88 @@ void I2CCfgServerModule::handleRequest_(uint8_t op, uint8_t seq, const uint8_t* 
             statusJsonValid_ = false;
             statusJsonTruncated_ = false;
         }
+        return;
+    }
+
+    if (op == I2cCfgProtocol::OpGetRuntimeAlarmBegin) {
+        if (payloadLen != 0U) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+            return;
+        }
+        bool truncated = false;
+        if (!buildRuntimeAlarmSnapshotJson_(truncated)) {
+            alarmSnapshotLen_ = 0;
+            alarmSnapshotValid_ = false;
+            alarmSnapshotTruncated_ = false;
+            buildResponse_(op, seq, I2cCfgProtocol::StatusFailed, nullptr, 0);
+            return;
+        }
+        alarmSnapshotLen_ = strnlen(alarmJsonScratch_, sizeof(alarmJsonScratch_));
+        alarmSnapshotValid_ = true;
+        alarmSnapshotTruncated_ = truncated;
+
+        uint8_t out[3] = {0};
+        out[0] = (uint8_t)(alarmSnapshotLen_ & 0xFFu);
+        out[1] = (uint8_t)((alarmSnapshotLen_ >> 8) & 0xFFu);
+        out[2] = alarmSnapshotTruncated_ ? 0x02u : 0x00u;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusOk, out, sizeof(out));
+        return;
+    }
+
+    if (op == I2cCfgProtocol::OpGetRuntimeAlarmChunk) {
+        if (!alarmSnapshotValid_ || payloadLen < 3) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+            return;
+        }
+        const size_t offset = (size_t)payload[0] | ((size_t)payload[1] << 8);
+        size_t want = (size_t)payload[2];
+        if (offset > alarmSnapshotLen_) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusRange, nullptr, 0);
+            return;
+        }
+        if (want == 0 || want > I2cCfgProtocol::MaxPayload) want = I2cCfgProtocol::MaxPayload;
+        const size_t avail = alarmSnapshotLen_ - offset;
+        const size_t n = (avail < want) ? avail : want;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusOk, (const uint8_t*)(alarmJsonScratch_ + offset), n);
+        if ((offset + n) >= alarmSnapshotLen_) {
+            alarmSnapshotLen_ = 0;
+            alarmSnapshotValid_ = false;
+            alarmSnapshotTruncated_ = false;
+        }
+        return;
+    }
+
+    if (op == I2cCfgProtocol::OpGetRuntimeUiValues) {
+        if (payloadLen < 1U) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+            return;
+        }
+
+        const uint8_t count = payload[0];
+        if (count == 0U) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusOk, nullptr, 0);
+            return;
+        }
+        if (count > kRuntimeUiMaxIdsPerRequest || payloadLen != (size_t)(1U + ((size_t)count * 2U))) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+            return;
+        }
+
+        RuntimeUiId ids[kRuntimeUiMaxIdsPerRequest] = {};
+        for (uint8_t i = 0; i < count; ++i) {
+            const size_t offset = 1U + ((size_t)i * 2U);
+            ids[i] = (RuntimeUiId)((RuntimeUiId)payload[offset] |
+                                   ((RuntimeUiId)payload[offset + 1U] << 8));
+        }
+
+        size_t respLen = 0U;
+        uint8_t* respPayload = txFrame_ + I2cCfgProtocol::RespHeaderSize;
+        if (!runtimeUiSvc_.readValues(ids, count, respPayload, I2cCfgProtocol::MaxPayload, respLen)) {
+            buildResponse_(op, seq, I2cCfgProtocol::StatusOverflow, nullptr, 0);
+            return;
+        }
+
+        buildResponse_(op, seq, I2cCfgProtocol::StatusOk, respPayload, respLen);
         return;
     }
 

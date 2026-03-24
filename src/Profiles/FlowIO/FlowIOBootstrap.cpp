@@ -234,6 +234,12 @@ void setupProfile(AppContext& ctx)
     requireSetup(modules.mqttModule.registerRuntimeProvider(&modules.ioModule), "register runtime provider io");
     requireSetup(modules.mqttModule.registerRuntimeProvider(&modules.poolDeviceModule), "register runtime provider pooldev");
     requireSetup(modules.mqttModule.registerRuntimeProvider(&modules.poolLogicModule), "register runtime provider poollogic");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.systemModule), "register runtime ui provider system");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.wifiModule), "register runtime ui provider wifi");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.mqttModule), "register runtime ui provider mqtt");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.ioModule), "register runtime ui provider io");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.poolDeviceModule), "register runtime ui provider pooldev");
+    requireSetup(modules.i2cCfgServerModule.registerRuntimeUiProvider(&modules.poolLogicModule), "register runtime ui provider poollogic");
 
     requireSetup(ctx.moduleManager.initAll(ctx.registry, ctx.services), "init modules");
     postInit(ctx, modules);

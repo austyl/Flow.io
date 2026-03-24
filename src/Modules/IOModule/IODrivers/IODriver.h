@@ -28,6 +28,11 @@ public:
     virtual bool read(bool& on) const = 0;
 };
 
+class IDigitalCounterDriver : public IDigitalPinDriver {
+public:
+    virtual bool readCount(int32_t& count) const = 0;
+};
+
 class IAnalogSourceDriver : public IODriver {
 public:
     virtual bool readSample(uint8_t channel, IOAnalogSample& out) const = 0;

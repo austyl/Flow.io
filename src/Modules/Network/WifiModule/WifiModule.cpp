@@ -99,6 +99,37 @@ bool WifiModule::setStaRetryEnabled_(bool enabled)
     return true;
 }
 
+bool WifiModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+
+    switch (valueId) {
+        case RuntimeUiReady:
+            return writer.writeBool(runtimeId, dataStore ? wifiReady(*dataStore) : false);
+
+        case RuntimeUiIp: {
+            if (!dataStore) return writer.writeUnavailable(runtimeId);
+            const IpV4 ip = wifiIp(*dataStore);
+            char ipText[16] = {0};
+            snprintf(ipText,
+                     sizeof(ipText),
+                     "%u.%u.%u.%u",
+                     (unsigned)ip.b[0],
+                     (unsigned)ip.b[1],
+                     (unsigned)ip.b[2],
+                     (unsigned)ip.b[3]);
+            return writer.writeString(runtimeId, ipText);
+        }
+
+        case RuntimeUiRssi:
+            if (!WiFi.isConnected()) return writer.writeUnavailable(runtimeId);
+            return writer.writeI32(runtimeId, (int32_t)WiFi.RSSI());
+
+        default:
+            return false;
+    }
+}
+
 void WifiModule::onWifiEventSys_(arduino_event_t* event)
 {
     if (!event) return;

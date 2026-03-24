@@ -4,6 +4,8 @@
  */
 #include "SystemModule.h"
 #include "Core/ErrorCodes.h"
+#include "Core/FirmwareVersion.h"
+#include "Core/SystemStats.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
@@ -97,6 +99,26 @@ bool SystemModule::cmdFactoryReset(void* userCtx, const CommandRequest&, char* r
     delay(300); ///< laisser le temps à MQTT/Web de publier l'ACK
     esp_restart();
     return true;
+}
+
+bool SystemModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+    SystemStatsSnapshot snap{};
+    SystemStats::collect(snap);
+
+    switch (valueId) {
+        case RuntimeUiFirmware:
+            return writer.writeString(runtimeId, FirmwareVersion::Full);
+        case RuntimeUiUptimeMs:
+            return writer.writeU32(runtimeId, snap.uptimeMs);
+        case RuntimeUiHeapFree:
+            return writer.writeU32(runtimeId, snap.heap.freeBytes);
+        case RuntimeUiHeapMinFree:
+            return writer.writeU32(runtimeId, snap.heap.minFreeBytes);
+        default:
+            return false;
+    }
 }
 
 void SystemModule::init(ConfigStore& cfg, ServiceRegistry& services) {

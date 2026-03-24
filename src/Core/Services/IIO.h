@@ -84,6 +84,7 @@ struct IoValue {
 struct IoEndpointMeta {
     IoId id = IO_ID_INVALID;
     uint8_t kind = IO_KIND_DIGITAL_IN;
+    uint8_t valueType = IO_VAL_BOOL;
     uint8_t backend = IO_BACKEND_GPIO;
     uint8_t channel = 0;
     uint8_t capabilities = 0;
@@ -114,6 +115,8 @@ struct IOServiceV2 {
     IoStatus (*idAt)(void* ctx, uint8_t index, IoId* outId);
     /** Fetch static metadata for a given endpoint id. */
     IoStatus (*meta)(void* ctx, IoId id, IoEndpointMeta* outMeta);
+    /** Read the latest typed value for any endpoint kind. */
+    IoStatus (*readValue)(void* ctx, IoId id, IoValue* outValue);
 
     /** Read the latest digital value (DI or DO). */
     IoStatus (*readDigital)(void* ctx, IoId id, uint8_t* outOn, uint32_t* outTsMs, IoSeq* outSeq);

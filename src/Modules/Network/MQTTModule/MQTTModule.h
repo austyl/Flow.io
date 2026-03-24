@@ -11,6 +11,7 @@
 #include "Core/NvsKeys.h"
 #include "Core/ConfigTypes.h"
 #include "Core/ErrorCodes.h"
+#include "Core/RuntimeUi.h"
 #include "Core/ServiceBinding.h"
 #include "Core/SystemLimits.h"
 #include "Core/WokwiDefaultOverrides.h"
@@ -34,9 +35,10 @@ struct MQTTConfig {
 /** @brief MQTT connection state. */
 enum class MQTTState : uint8_t { Disabled, WaitingNetwork, Connecting, Connected, ErrorWait };
 
-class MQTTModule : public Module {
+class MQTTModule : public Module, public IRuntimeUiValueProvider {
 public:
     ModuleId moduleId() const override { return ModuleId::Mqtt; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     const char* taskName() const override { return "mqtt"; }
     BaseType_t taskCore() const override { return 0; }
     uint8_t taskCount() const override { return 1; }
@@ -67,6 +69,7 @@ public:
     bool registerRuntimeProvider(const IRuntimeSnapshotProvider* provider);
     bool enqueue(uint8_t producerId, uint16_t messageId, MqttPublishPriority priority, uint8_t flags = 0);
     bool registerProducer(const MqttPublishProducer* producer);
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
     void formatTopic(char* out, size_t outLen, const char* suffix) const;
     bool isConnected() const { return state_ == MQTTState::Connected; }
@@ -74,6 +77,15 @@ public:
     DataStore* dataStorePtr() const { return dataStore_; }
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiReady = 1,
+        RuntimeUiServer = 2,
+        RuntimeUiRxDrop = 3,
+        RuntimeUiParseFail = 4,
+        RuntimeUiHandlerFail = 5,
+        RuntimeUiOversizeDrop = 6,
+    };
+
     struct RxMsg {
         char topic[Limits::Mqtt::Buffers::RxTopic];
         char payload[Limits::Mqtt::Buffers::RxPayload];
@@ -126,6 +138,12 @@ private:
         uint16_t head = 0;
         uint16_t tail = 0;
         uint16_t count = 0;
+    };
+
+    struct ScratchBuffers {
+        char topic[Limits::Mqtt::Buffers::Topic] = {0};
+        char payload[Limits::Mqtt::Buffers::Publish] = {0};
+        char reply[Limits::Mqtt::Buffers::Reply] = {0};
     };
 
     static constexpr uint8_t ProducerIdAck = 1;
@@ -226,9 +244,7 @@ private:
     JobRing<LowQueueCap> lowQ_{};
     portMUX_TYPE jobsMux_ = portMUX_INITIALIZER_UNLOCKED;
 
-    char topicBuf_[Limits::Mqtt::Buffers::Topic] = {0};
-    char payloadBuf_[Limits::Mqtt::Buffers::Publish] = {0};
-    char replyBuf_[Limits::Mqtt::Buffers::Reply] = {0};
+    ScratchBuffers* scratch_ = nullptr;
 
     AckMessage ackMessages_[MaxAckMessages]{};
     uint8_t ackWriteCursor_ = 0;
@@ -265,6 +281,7 @@ private:
     bool enqueueSvc_(uint8_t producerId, uint16_t messageId, uint8_t prio, uint8_t flags);
     void formatTopicSvc_(const char* suffix, char* out, size_t outLen) const;
     void setState_(MQTTState s);
+    bool allocateScratchBuffers_();
     void refreshTopicDeviceId_();
     void buildTopics_();
     static void onEventStatic_(const Event& e, void* user);

@@ -129,6 +129,24 @@
     .drawer.collapsed .app-meta {
       display: none;
     }
+    .app-runtime-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      text-align: center;
+    }
+    .app-runtime-line {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--menu-inactive-fg);
+      line-height: 1.25;
+      opacity: 0.86;
+      white-space: nowrap;
+    }
+    .drawer.collapsed .app-runtime-meta {
+      display: none;
+    }
     .menu-item {
       border: 0;
       border-left: 6px solid transparent;
@@ -239,6 +257,11 @@
       .drawer.collapsed .menu-item .ico { width: auto; }
       .drawer.collapsed .app-icon-shell { display: none; }
     }
+    @media (max-width: 900px) {
+      .app-runtime-meta {
+        display: none;
+      }
+    }
     .content {
       flex: 1;
       padding: 18px;
@@ -274,6 +297,14 @@
       background: #F7FAFC;
       color: #5D7288;
       border: 1px solid #D4DFE9;
+    }
+    .status-chip-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      margin-bottom: 12px;
     }
     .autoscroll-chip {
       display: inline-flex;

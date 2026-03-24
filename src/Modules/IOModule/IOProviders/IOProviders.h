@@ -17,6 +17,7 @@ typedef bool (*IOProviderBeginFn)(void* ctx);
 typedef void (*IOProviderTickFn)(void* ctx, uint32_t nowMs);
 typedef bool (*IOProviderReadAnalogFn)(void* ctx, uint8_t channel, IOAnalogSample& out);
 typedef bool (*IOProviderReadDigitalFn)(void* ctx, bool& outOn);
+typedef bool (*IOProviderReadCounterFn)(void* ctx, int32_t& outCount);
 typedef bool (*IOProviderWriteDigitalFn)(void* ctx, bool on);
 typedef bool (*IOProviderReadMaskFn)(void* ctx, uint8_t& outMask);
 typedef bool (*IOProviderWriteMaskFn)(void* ctx, uint8_t mask);
@@ -46,6 +47,16 @@ struct IODigitalProvider {
     bool begin() const { return beginFn ? beginFn(ctx) : false; }
     bool read(bool& outOn) const { return readFn ? readFn(ctx, outOn) : false; }
     bool write(bool on) const { return writeFn ? writeFn(ctx, on) : false; }
+};
+
+struct IOCounterProvider {
+    void* ctx = nullptr;
+    IOProviderBeginFn beginFn = nullptr;
+    IOProviderReadCounterFn readFn = nullptr;
+
+    bool isBound() const { return ctx != nullptr && readFn != nullptr; }
+    bool begin() const { return beginFn ? beginFn(ctx) : false; }
+    bool readCount(int32_t& outCount) const { return readFn ? readFn(ctx, outCount) : false; }
 };
 
 struct IOMaskProvider {
@@ -85,6 +96,11 @@ inline bool ioProviderWriteDigitalFromDriver_(void* ctx, bool on)
     return ctx ? static_cast<IDigitalPinDriver*>(ctx)->write(on) : false;
 }
 
+inline bool ioProviderReadCounterFromDriver_(void* ctx, int32_t& outCount)
+{
+    return ctx ? static_cast<IDigitalCounterDriver*>(ctx)->readCount(outCount) : false;
+}
+
 inline bool ioProviderReadMaskFromDriver_(void* ctx, uint8_t& outMask)
 {
     return ctx ? static_cast<IMaskOutputDriver*>(ctx)->readMask(outMask) : false;
@@ -112,6 +128,15 @@ inline IODigitalProvider makeDigitalProvider(IDigitalPinDriver* driver)
     provider.beginFn = ioProviderBeginFromDriver_;
     provider.readFn = ioProviderReadDigitalFromDriver_;
     provider.writeFn = ioProviderWriteDigitalFromDriver_;
+    return provider;
+}
+
+inline IOCounterProvider makeCounterProvider(IDigitalCounterDriver* driver)
+{
+    IOCounterProvider provider{};
+    provider.ctx = driver;
+    provider.beginFn = ioProviderBeginFromDriver_;
+    provider.readFn = ioProviderReadCounterFromDriver_;
     return provider;
 }
 

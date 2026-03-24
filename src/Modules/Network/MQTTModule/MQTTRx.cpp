@@ -29,6 +29,8 @@ void MQTTModule::processRx_(const RxMsg& msg)
 
 void MQTTModule::processRxCmd_(const RxMsg& msg)
 {
+    if (!scratch_) return;
+
     static constexpr size_t CMD_DOC_CAPACITY = Limits::JsonCmdBuf;
     static StaticJsonDocument<CMD_DOC_CAPACITY> doc;
 
@@ -85,36 +87,40 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
         argsJson = argsBuf;
     }
 
-    const bool ok = cmdSvc_->execute(cmdSvc_->ctx, cmd, msg.payload, argsJson, replyBuf_, sizeof(replyBuf_));
+    const bool ok = cmdSvc_->execute(
+        cmdSvc_->ctx, cmd, msg.payload, argsJson, scratch_->reply, sizeof(scratch_->reply)
+    );
     if (!ok) {
         publishRxError_(MqttTopics::SuffixAck, ErrorCode::CmdHandlerFailed, "cmd", false);
         return;
     }
     BufferUsageTracker::note(TrackedBufferId::MqttReplyBuf,
-                             strnlen(replyBuf_, sizeof(replyBuf_)),
-                             sizeof(replyBuf_),
+                             strnlen(scratch_->reply, sizeof(scratch_->reply)),
+                             sizeof(scratch_->reply),
                              cmd,
                              nullptr);
 
-    const int wrote = snprintf(payloadBuf_, sizeof(payloadBuf_),
+    const int wrote = snprintf(scratch_->payload, sizeof(scratch_->payload),
                                "{\"ok\":true,\"cmd\":\"%s\",\"reply\":%s}",
                                cmd,
-                               replyBuf_);
-    if (!(wrote > 0 && (size_t)wrote < sizeof(payloadBuf_))) {
+                               scratch_->reply);
+    if (!(wrote > 0 && (size_t)wrote < sizeof(scratch_->payload))) {
         publishRxError_(MqttTopics::SuffixAck, ErrorCode::InternalAckOverflow, "cmd", false);
         return;
     }
     BufferUsageTracker::note(TrackedBufferId::MqttPayloadBuf,
                              (size_t)wrote,
-                             sizeof(payloadBuf_),
+                             sizeof(scratch_->payload),
                              cmd,
                              nullptr);
 
-    (void)enqueueAck_(MqttTopics::SuffixAck, payloadBuf_, 0, false, MqttPublishPriority::High);
+    (void)enqueueAck_(MqttTopics::SuffixAck, scratch_->payload, 0, false, MqttPublishPriority::High);
 }
 
 void MQTTModule::processRxCfgSet_(const RxMsg& msg)
 {
+    if (!scratch_) return;
+
     if (!cfgSvc_ || !cfgSvc_->applyJson) {
         publishRxError_(MqttTopics::SuffixCfgAck, ErrorCode::CfgServiceUnavailable, "cfg/set", false);
         return;
@@ -151,34 +157,36 @@ void MQTTModule::processRxCfgSet_(const RxMsg& msg)
         return;
     }
 
-    if (!writeOkJson(payloadBuf_, sizeof(payloadBuf_), "cfg/set")) {
-        snprintf(payloadBuf_, sizeof(payloadBuf_), "{\"ok\":true}");
+    if (!writeOkJson(scratch_->payload, sizeof(scratch_->payload), "cfg/set")) {
+        snprintf(scratch_->payload, sizeof(scratch_->payload), "{\"ok\":true}");
     }
     BufferUsageTracker::note(TrackedBufferId::MqttPayloadBuf,
-                             strnlen(payloadBuf_, sizeof(payloadBuf_)),
-                             sizeof(payloadBuf_),
+                             strnlen(scratch_->payload, sizeof(scratch_->payload)),
+                             sizeof(scratch_->payload),
                              "cfg/set",
                              nullptr);
-    (void)enqueueAck_(MqttTopics::SuffixCfgAck, payloadBuf_, 1, false, MqttPublishPriority::High);
+    (void)enqueueAck_(MqttTopics::SuffixCfgAck, scratch_->payload, 1, false, MqttPublishPriority::High);
 }
 
 void MQTTModule::publishRxError_(const char* ackTopicSuffix, ErrorCode code, const char* where, bool parseFailure)
 {
+    if (!scratch_) return;
+
     if (parseFailure) ++parseFailCount_;
     else ++handlerFailCount_;
 
     syncRxMetrics_();
 
-    if (!writeErrorJson(payloadBuf_, sizeof(payloadBuf_), code, where)) {
-        snprintf(payloadBuf_, sizeof(payloadBuf_), "{\"ok\":false}");
+    if (!writeErrorJson(scratch_->payload, sizeof(scratch_->payload), code, where)) {
+        snprintf(scratch_->payload, sizeof(scratch_->payload), "{\"ok\":false}");
     }
     BufferUsageTracker::note(TrackedBufferId::MqttPayloadBuf,
-                             strnlen(payloadBuf_, sizeof(payloadBuf_)),
-                             sizeof(payloadBuf_),
+                             strnlen(scratch_->payload, sizeof(scratch_->payload)),
+                             sizeof(scratch_->payload),
                              where,
                              nullptr);
 
-    (void)enqueueAck_(ackTopicSuffix, payloadBuf_, 0, false, MqttPublishPriority::High);
+    (void)enqueueAck_(ackTopicSuffix, scratch_->payload, 0, false, MqttPublishPriority::High);
 }
 
 void MQTTModule::syncRxMetrics_()

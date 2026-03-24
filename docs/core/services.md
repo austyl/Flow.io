@@ -127,6 +127,7 @@ Le service MQTT est **job-based**:
 
 ### `IOServiceV2`
 - découverte endpoints: `count`, `idAt`, `meta`
+- lecture typée générique: `readValue`
 - I/O digital: `readDigital`, `writeDigital`
 - I/O analog: `readAnalog`
 - tick/cycle: `tick`, `lastCycle`

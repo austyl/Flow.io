@@ -1,0 +1,92 @@
+{
+  "moduleId": "io",
+  "values": [
+    {
+      "valueId": 1,
+      "key": "pool.water_temp",
+      "label": "Temperature eau",
+      "type": "float",
+      "domain": "pool",
+      "group": "Sonde",
+      "display": "circ-gauge",
+      "displayConfig": {
+        "bands": {
+          "min": 0,
+          "criticalLowEnd": 8,
+          "warningLowEnd": 14,
+          "warningHighStart": 30,
+          "criticalHighStart": 34,
+          "max": 40
+        }
+      },
+      "unit": "\u00b0C",
+      "decimals": 1,
+      "order": 10
+    },
+    {
+      "valueId": 2,
+      "key": "pool.air_temp",
+      "label": "Temperature air",
+      "type": "float",
+      "domain": "pool",
+      "group": "Sonde",
+      "display": "circ-gauge",
+      "displayConfig": {
+        "bands": {
+          "min": -10,
+          "criticalLowEnd": 0,
+          "warningLowEnd": 8,
+          "warningHighStart": 28,
+          "criticalHighStart": 35,
+          "max": 45
+        }
+      },
+      "unit": "\u00b0C",
+      "decimals": 1,
+      "order": 20
+    },
+    {
+      "valueId": 3,
+      "key": "pool.ph",
+      "label": "pH",
+      "type": "float",
+      "domain": "pool",
+      "group": "Sonde",
+      "display": "circ-gauge",
+      "displayConfig": {
+        "bands": {
+          "min": 6.4,
+          "criticalLowEnd": 6.8,
+          "warningLowEnd": 7.0,
+          "warningHighStart": 7.6,
+          "criticalHighStart": 7.8,
+          "max": 8.4
+        }
+      },
+      "decimals": 2,
+      "order": 30
+    },
+    {
+      "valueId": 4,
+      "key": "pool.orp",
+      "label": "ORP",
+      "type": "float",
+      "domain": "pool",
+      "group": "Sonde",
+      "display": "circ-gauge",
+      "displayConfig": {
+        "bands": {
+          "min": 350,
+          "criticalLowEnd": 500,
+          "warningLowEnd": 620,
+          "warningHighStart": 760,
+          "criticalHighStart": 820,
+          "max": 900
+        }
+      },
+      "unit": "mV",
+      "decimals": 0,
+      "order": 40
+    }
+  ]
+}

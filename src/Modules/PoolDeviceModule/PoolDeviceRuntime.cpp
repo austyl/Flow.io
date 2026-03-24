@@ -7,6 +7,7 @@
 #include "Core/BufferUsageTracker.h"
 #include "Core/ErrorCodes.h"
 #include "Core/SystemLimits.h"
+#include "Domain/Pool/PoolBindings.h"
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::PoolDeviceModule)
 #include "Core/ModuleLog.h"
 #include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
@@ -109,6 +110,36 @@ const char* PoolDeviceModule::blockReasonStr_(uint8_t reason)
 uint8_t PoolDeviceModule::runtimeSnapshotCount() const
 {
     return (uint8_t)(activeCount_() * 2U);
+}
+
+bool PoolDeviceModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    if (!dataStore_) return writer.writeUnavailable(makeRuntimeUiId(moduleId(), valueId));
+
+    uint8_t slotIdx = 0xFF;
+    switch (valueId) {
+        case RuntimeUiFiltrationOn:
+            slotIdx = PoolBinding::kDeviceSlotFiltrationPump;
+            break;
+        case RuntimeUiPhPumpOn:
+            slotIdx = PoolBinding::kDeviceSlotPhPump;
+            break;
+        case RuntimeUiChlorinePumpOn:
+            slotIdx = PoolBinding::kDeviceSlotChlorinePump;
+            break;
+        case RuntimeUiRobotOn:
+            slotIdx = PoolBinding::kDeviceSlotRobot;
+            break;
+        default:
+            return false;
+    }
+
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+    PoolDeviceRuntimeStateEntry state{};
+    if (!poolDeviceRuntimeState(*dataStore_, slotIdx, state)) {
+        return writer.writeUnavailable(runtimeId);
+    }
+    return writer.writeBool(runtimeId, state.actualOn);
 }
 
 bool PoolDeviceModule::snapshotRouteFromIndex_(uint8_t snapshotIdx, uint8_t& slotIdxOut, bool& metricsOut) const

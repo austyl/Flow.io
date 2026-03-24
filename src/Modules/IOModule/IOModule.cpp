@@ -6,6 +6,7 @@
 #include "IOModule.h"
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::IOModule)
 #include "Core/ModuleLog.h"
+#include "Domain/Pool/PoolBindings.h"
 #include "Modules/IOModule/IORuntime.h"
 #include <Arduino.h>
 #include <new>
@@ -203,6 +204,8 @@ bool IOModule::defineDigitalInput(const IODigitalInputDefinition& def)
             digitalInCfg_[logicalIdx].pin = def.pin;
             digitalInCfg_[logicalIdx].activeHigh = def.activeHigh;
             digitalInCfg_[logicalIdx].pullMode = def.pullMode;
+            digitalInCfg_[logicalIdx].mode = def.mode;
+            digitalInCfg_[logicalIdx].counterDebounceUs = def.counterDebounceUs;
         }
         return true;
     }
@@ -266,6 +269,15 @@ bool IOModule::digitalInputSlotUsed(uint8_t logicalIdx) const
     return logicalIdx < MAX_DIGITAL_INPUTS && findDigitalSlotByLogical_(DIGITAL_SLOT_INPUT, logicalIdx, slotIdx);
 }
 
+uint8_t IOModule::digitalInputValueType(uint8_t logicalIdx) const
+{
+    uint8_t slotIdx = 0xFF;
+    if (logicalIdx >= MAX_DIGITAL_INPUTS) return IO_VAL_BOOL;
+    if (!findDigitalSlotByLogical_(DIGITAL_SLOT_INPUT, logicalIdx, slotIdx)) return IO_VAL_BOOL;
+    const DigitalSlot& s = digitalSlots_[slotIdx];
+    return (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_INT32 : IO_VAL_BOOL;
+}
+
 bool IOModule::digitalOutputSlotUsed(uint8_t logicalIdx) const
 {
     uint8_t slotIdx = 0xFF;
@@ -316,6 +328,37 @@ bool IOModule::buildInputSnapshot(char* out, size_t len, uint32_t& maxTsOut) con
 bool IOModule::buildOutputSnapshot(char* out, size_t len, uint32_t& maxTsOut) const
 {
     return buildGroupSnapshot_(out, len, false, maxTsOut);
+}
+
+bool IOModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    if (!dataStore_) return writer.writeUnavailable(makeRuntimeUiId(moduleId(), valueId));
+
+    float value = 0.0f;
+    uint8_t runtimeIndex = 0xFF;
+
+    switch (valueId) {
+        case RuntimeUiWaterTemp:
+            runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].runtimeIndex;
+            break;
+        case RuntimeUiAirTemp:
+            runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].runtimeIndex;
+            break;
+        case RuntimeUiPh:
+            runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].runtimeIndex;
+            break;
+        case RuntimeUiOrp:
+            runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].runtimeIndex;
+            break;
+        default:
+            return false;
+    }
+
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+    if (!ioEndpointFloat(*dataStore_, runtimeIndex, value)) {
+        return writer.writeUnavailable(runtimeId);
+    }
+    return writer.writeF32(runtimeId, value);
 }
 
 uint8_t IOModule::runtimeSnapshotCount() const
@@ -702,10 +745,39 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
 {
     if (slotIdx >= MAX_DIGITAL_SLOTS) return false;
     DigitalSlot& slot = digitalSlots_[slotIdx];
-    if (!slot.used || slot.kind != DIGITAL_SLOT_INPUT || !slot.provider.isBound() || !slot.endpoint) return false;
+    if (!slot.used || slot.kind != DIGITAL_SLOT_INPUT || !slot.endpoint) return false;
     if (slot.endpoint->type() != IO_EP_DIGITAL_SENSOR) return false;
 
     DigitalSensorEndpoint* inputEp = static_cast<DigitalSensorEndpoint*>(slot.endpoint);
+
+    if (slot.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
+        if (!slot.provider.isBound()) return false;
+        IDigitalCounterDriver* counterDriver = static_cast<IDigitalCounterDriver*>(slot.provider.ctx);
+        if (!counterDriver) return false;
+
+        int32_t count = 0;
+        if (!counterDriver->readCount(count)) {
+            if (slot.lastValid) {
+                inputEp->updateCount(slot.lastCount, false, nowMs);
+                slot.lastValid = false;
+            }
+            return false;
+        }
+
+        const bool changed = (!slot.lastValid) || (slot.lastCount != count);
+        if (changed) {
+            inputEp->updateCount(count, true, nowMs);
+            slot.lastCount = count;
+            slot.lastValid = true;
+            markIoCycleChanged_(slot.ioId);
+            if (slot.inDef.onCounterChanged) {
+                slot.inDef.onCounterChanged(slot.inDef.onCounterCtx, count);
+            }
+        }
+        return true;
+    }
+
+    if (!slot.provider.isBound()) return false;
 
     bool on = false;
     if (!slot.provider.read(on)) {
@@ -855,6 +927,9 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         if (!s.used) return IO_ERR_UNKNOWN_ID;
 
         outMeta->kind = (s.kind == DIGITAL_SLOT_OUTPUT) ? IO_KIND_DIGITAL_OUT : IO_KIND_DIGITAL_IN;
+        outMeta->valueType = (s.kind == DIGITAL_SLOT_OUTPUT)
+            ? IO_VAL_BOOL
+            : ((s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_INT32 : IO_VAL_BOOL);
         outMeta->backend = IO_BACKEND_GPIO;
         outMeta->channel = (s.kind == DIGITAL_SLOT_OUTPUT) ? s.outDef.pin : s.inDef.pin;
         outMeta->capabilities = (s.kind == DIGITAL_SLOT_OUTPUT) ? (IO_CAP_R | IO_CAP_W) : IO_CAP_R;
@@ -882,6 +957,7 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         if (!s.used) return IO_ERR_UNKNOWN_ID;
 
         outMeta->kind = IO_KIND_ANALOG_IN;
+        outMeta->valueType = IO_VAL_FLOAT;
         outMeta->capabilities = IO_CAP_R;
         outMeta->channel = s.def.channel;
         if (s.def.source == IO_SRC_ADS_INTERNAL_SINGLE) outMeta->backend = IO_BACKEND_ADS1115_INT;
@@ -902,6 +978,54 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
     return IO_ERR_UNKNOWN_ID;
 }
 
+IoStatus IOModule::ioReadValue_(IoId id, IoValue* outValue) const
+{
+    if (!outValue) return IO_ERR_INVALID_ARG;
+    *outValue = IoValue{};
+
+    uint8_t slotIdx = 0xFF;
+    if (findDigitalSlotByIoId_(id, slotIdx)) {
+        const DigitalSlot& s = digitalSlots_[slotIdx];
+        if (!s.used || !s.endpoint) return IO_ERR_NOT_READY;
+
+        IOEndpointValue v{};
+        if (!s.endpoint->read(v) || !v.valid) return IO_ERR_NOT_READY;
+
+        outValue->valid = 1U;
+        outValue->tsMs = v.timestampMs;
+        outValue->cycleSeq = lastCycle_.seq;
+        if (v.valueType == IO_EP_VALUE_BOOL) {
+            outValue->type = IO_VAL_BOOL;
+            outValue->v.b = v.v.b ? 1U : 0U;
+            return IO_OK;
+        }
+        if (v.valueType == IO_EP_VALUE_INT32) {
+            outValue->type = IO_VAL_INT32;
+            outValue->v.i32 = v.v.i;
+            return IO_OK;
+        }
+        return IO_ERR_TYPE_MISMATCH;
+    }
+
+    if (id >= IO_ID_AI_BASE && id < IO_ID_AI_MAX) {
+        const uint8_t analogIdx = (uint8_t)(id - IO_ID_AI_BASE);
+        const AnalogSlot& s = analogSlots_[analogIdx];
+        if (!s.used || !s.endpoint) return IO_ERR_NOT_READY;
+
+        IOEndpointValue v{};
+        if (!s.endpoint->read(v) || !v.valid || v.valueType != IO_EP_VALUE_FLOAT) return IO_ERR_NOT_READY;
+
+        outValue->valid = 1U;
+        outValue->type = IO_VAL_FLOAT;
+        outValue->tsMs = v.timestampMs;
+        outValue->cycleSeq = lastCycle_.seq;
+        outValue->v.f = v.v.f;
+        return IO_OK;
+    }
+
+    return IO_ERR_UNKNOWN_ID;
+}
+
 IoStatus IOModule::ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, IoSeq* outSeq) const
 {
     if (!outOn) return IO_ERR_INVALID_ARG;
@@ -912,7 +1036,8 @@ IoStatus IOModule::ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, Io
     if (!s.used || !s.endpoint) return IO_ERR_NOT_READY;
 
     IOEndpointValue v{};
-    if (!s.endpoint->read(v) || !v.valid || v.valueType != IO_EP_VALUE_BOOL) return IO_ERR_NOT_READY;
+    if (!s.endpoint->read(v) || !v.valid) return IO_ERR_NOT_READY;
+    if (v.valueType != IO_EP_VALUE_BOOL) return IO_ERR_TYPE_MISMATCH;
 
     *outOn = v.v.b ? 1U : 0U;
     if (outTsMs) *outTsMs = v.timestampMs;
@@ -1135,22 +1260,27 @@ bool IOModule::configureRuntime_()
                 uint8_t pull = digitalInCfg_[cfgIdx].pullMode;
                 if (pull > IO_PULL_DOWN) pull = IO_PULL_NONE;
                 s.inDef.pullMode = pull;
+                s.inDef.mode = digitalInCfg_[cfgIdx].mode;
+                s.inDef.counterDebounceUs = digitalInCfg_[cfgIdx].counterDebounceUs;
             }
 
             snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
-            IDigitalPinDriver* driver = allocGpioDriver_(
+            IDigitalCounterDriver* driver = allocGpioDriver_(
                 s.endpointId,
                 s.inDef.pin,
                 false,
                 s.inDef.activeHigh,
-                s.inDef.pullMode
+                s.inDef.pullMode,
+                s.inDef.mode == IO_DIGITAL_INPUT_COUNTER,
+                s.inDef.counterDebounceUs
             );
             if (!driver) continue;
 
             s.provider = makeDigitalProvider(driver);
             if (!s.provider.begin()) continue;
 
-            s.endpoint = allocDigitalSensorEndpoint_(s.endpointId);
+            const uint8_t valueType = (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_EP_VALUE_INT32 : IO_EP_VALUE_BOOL;
+            s.endpoint = allocDigitalSensorEndpoint_(s.endpointId, valueType);
             if (!s.endpoint) continue;
             registry_.add(s.endpoint);
             (void)processDigitalInputDefinition_(i, millis());
@@ -1348,11 +1478,11 @@ AnalogSensorEndpoint* IOModule::allocAnalogEndpoint_(const char* endpointId)
     return new (mem) AnalogSensorEndpoint(endpointId);
 }
 
-DigitalSensorEndpoint* IOModule::allocDigitalSensorEndpoint_(const char* endpointId)
+DigitalSensorEndpoint* IOModule::allocDigitalSensorEndpoint_(const char* endpointId, uint8_t valueType)
 {
     if (digitalSensorEndpointPoolUsed_ >= MAX_DIGITAL_INPUTS) return nullptr;
     void* mem = digitalSensorEndpointPool_[digitalSensorEndpointPoolUsed_++];
-    return new (mem) DigitalSensorEndpoint(endpointId);
+    return new (mem) DigitalSensorEndpoint(endpointId, valueType);
 }
 
 DigitalActuatorEndpoint* IOModule::allocDigitalActuatorEndpoint_(const char* endpointId, DigitalWriteFn writeFn, void* writeCtx)
@@ -1362,11 +1492,23 @@ DigitalActuatorEndpoint* IOModule::allocDigitalActuatorEndpoint_(const char* end
     return new (mem) DigitalActuatorEndpoint(endpointId, writeFn, writeCtx);
 }
 
-IDigitalPinDriver* IOModule::allocGpioDriver_(const char* driverId, uint8_t pin, bool output, bool activeHigh, uint8_t inputPullMode)
+IDigitalCounterDriver* IOModule::allocGpioDriver_(const char* driverId,
+                                                  uint8_t pin,
+                                                  bool output,
+                                                  bool activeHigh,
+                                                  uint8_t inputPullMode,
+                                                  bool counterEnabled,
+                                                  uint32_t counterDebounceUs)
 {
+    if (counterEnabled && !output) {
+        if (gpioCounterDriverPoolUsed_ >= MAX_DIGITAL_INPUTS) return nullptr;
+        void* mem = gpioCounterDriverPool_[gpioCounterDriverPoolUsed_++];
+        return new (mem) GpioCounterDriver(driverId, pin, activeHigh, inputPullMode, counterDebounceUs);
+    }
+
     if (gpioDriverPoolUsed_ >= MAX_DIGITAL_SLOTS) return nullptr;
     void* mem = gpioDriverPool_[gpioDriverPoolUsed_++];
-    return new (mem) GpioDriver(driverId, pin, output, activeHigh, inputPullMode);
+    return new (mem) GpioDriver(driverId, pin, output, activeHigh, inputPullMode, false, 0);
 }
 
 IAnalogSourceDriver* IOModule::allocAdsDriver_(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg)

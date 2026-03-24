@@ -132,6 +132,24 @@ uint8_t PoolLogicModule::runtimeSnapshotCount() const
     return 2;
 }
 
+bool PoolLogicModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
+{
+    const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
+
+    switch (valueId) {
+        case RuntimeUiAutoMode:
+            return writer.writeBool(runtimeId, autoMode_);
+        case RuntimeUiWinterMode:
+            return writer.writeBool(runtimeId, winterMode_);
+        case RuntimeUiPhAutoMode:
+            return writer.writeBool(runtimeId, phAutoMode_);
+        case RuntimeUiOrpAutoMode:
+            return writer.writeBool(runtimeId, orpAutoMode_);
+        default:
+            return false;
+    }
+}
+
 const char* PoolLogicModule::runtimeSnapshotSuffix(uint8_t idx) const
 {
     if (idx == 0) return "rt/poollogic/ph";

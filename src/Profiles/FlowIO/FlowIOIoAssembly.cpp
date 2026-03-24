@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include <string.h>
+#include <esp_heap_caps.h>
 
 #include "App/AppContext.h"
 #include "Board/BoardSpec.h"
@@ -47,13 +48,26 @@ constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
     {2, "io_chl_lvl", "Chlorine Level", "mdi:test-tube"},
 };
 
-// Discovery strings stay in fixed static tables so FlowIO assembly does not add heap usage.
+struct FlowIoDiscoveryHeap {
+    char analogValueTpl[sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])][128]{};
+    char switchPayloadOn[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
+    char switchPayloadOff[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
+};
+
+// Small discovery state suffixes stay static; large templates/payloads move to boot heap.
 char gAnalogStateSuffix[sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])][24]{};
-char gAnalogValueTpl[sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])][128]{};
 char gDigitalStateSuffix[sizeof(kDigitalHaSpecs) / sizeof(kDigitalHaSpecs[0])][24]{};
 char gSwitchStateSuffix[PoolBinding::kDeviceBindingCount][24]{};
-char gSwitchPayloadOn[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
-char gSwitchPayloadOff[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
+FlowIoDiscoveryHeap* gDiscoveryHeap = nullptr;
+
+bool ensureDiscoveryHeap()
+{
+    if (gDiscoveryHeap) return true;
+    gDiscoveryHeap = static_cast<FlowIoDiscoveryHeap*>(
+        heap_caps_calloc(1, sizeof(FlowIoDiscoveryHeap), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+    );
+    return gDiscoveryHeap != nullptr;
+}
 
 const DomainIoBinding* findBindingByRole(const DomainSpec& domain, DomainRole role)
 {
@@ -103,6 +117,14 @@ void onIoBoolValue(void* ctx, bool value)
     if (!modules.ioDataStore) return;
     const uint8_t idx = (uint8_t)(uintptr_t)ctx;
     setIoEndpointBool(*modules.ioDataStore, idx, value, millis());
+}
+
+void onIoIntValue(void* ctx, int32_t value)
+{
+    ModuleInstances& modules = Profiles::FlowIO::moduleInstances();
+    if (!modules.ioDataStore) return;
+    const uint8_t idx = (uint8_t)(uintptr_t)ctx;
+    setIoEndpointInt(*modules.ioDataStore, idx, value, millis());
 }
 
 void applyAnalogDefaultsForRole(DomainRole role, IOAnalogDefinition& def)
@@ -183,20 +205,26 @@ void buildAnalogValueTemplate(const IOModule& ioModule, uint8_t analogIdx, char*
 void syncAnalogSensors(ModuleInstances& modules)
 {
     if (!modules.haService || !modules.haService->addSensor) return;
+    requireSetup(ensureDiscoveryHeap(), "ha discovery heap");
     static constexpr const char* kAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
 
     for (uint8_t i = 0; i < (uint8_t)(sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])); ++i) {
         const FlowIoAnalogHaSpec& spec = kAnalogHaSpecs[i];
         if (!modules.ioModule.analogSlotUsed(spec.analogIdx)) continue;
 
-        buildAnalogValueTemplate(modules.ioModule, spec.analogIdx, gAnalogValueTpl[i], sizeof(gAnalogValueTpl[i]));
+        buildAnalogValueTemplate(
+            modules.ioModule,
+            spec.analogIdx,
+            gDiscoveryHeap->analogValueTpl[i],
+            sizeof(gDiscoveryHeap->analogValueTpl[i])
+        );
         snprintf(gAnalogStateSuffix[i], sizeof(gAnalogStateSuffix[i]), "rt/io/input/a%u", (unsigned)spec.analogIdx);
         const HASensorEntry entry{
             "io",
             spec.objectSuffix,
             spec.name,
             gAnalogStateSuffix[i],
-            gAnalogValueTpl[i],
+            gDiscoveryHeap->analogValueTpl[i],
             nullptr,
             spec.icon,
             spec.unit,
@@ -209,14 +237,34 @@ void syncAnalogSensors(ModuleInstances& modules)
 
 void syncDigitalInputBinarySensors(ModuleInstances& modules)
 {
-    if (!modules.haService || !modules.haService->addBinarySensor) return;
+    if (!modules.haService || !modules.haService->addBinarySensor || !modules.haService->addSensor) return;
     static constexpr const char* kBoolTpl = "{{ 'True' if value_json.value else 'False' }}";
+    static constexpr const char* kAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
+    static constexpr const char* kCountTpl =
+        "{% if value_json.value is number %}{{ value_json.value | int }}{% else %}unavailable{% endif %}";
 
     for (uint8_t i = 0; i < (uint8_t)(sizeof(kDigitalHaSpecs) / sizeof(kDigitalHaSpecs[0])); ++i) {
         const FlowIoDigitalHaSpec& spec = kDigitalHaSpecs[i];
         if (!modules.ioModule.digitalInputSlotUsed(spec.logicalIdx)) continue;
 
         snprintf(gDigitalStateSuffix[i], sizeof(gDigitalStateSuffix[i]), "rt/io/input/i%u", (unsigned)spec.logicalIdx);
+        if (modules.ioModule.digitalInputValueType(spec.logicalIdx) == IO_VAL_INT32) {
+            const HASensorEntry entry{
+                "io",
+                spec.objectSuffix,
+                spec.name,
+                gDigitalStateSuffix[i],
+                kCountTpl,
+                nullptr,
+                spec.icon,
+                "pulses",
+                false,
+                kAvailabilityTpl
+            };
+            (void)modules.haService->addSensor(modules.haService->ctx, &entry);
+            continue;
+        }
+
         const HABinarySensorEntry entry{
             "io",
             spec.objectSuffix,
@@ -234,6 +282,7 @@ void syncDigitalInputBinarySensors(ModuleInstances& modules)
 void syncSwitches(ModuleInstances& modules)
 {
     if (!modules.haService || !modules.haService->addSwitch) return;
+    requireSetup(ensureDiscoveryHeap(), "ha discovery heap");
 
     for (uint8_t i = 0; i < PoolBinding::kDeviceBindingCount; ++i) {
         const PoolIoBinding& binding = PoolBinding::kIoBindings[i];
@@ -247,32 +296,32 @@ void syncSwitches(ModuleInstances& modules)
 
         if (binding.slot == PoolBinding::kDeviceSlotFiltrationPump) {
             int wrote = snprintf(
-                gSwitchPayloadOn[i],
-                sizeof(gSwitchPayloadOn[i]),
+                gDiscoveryHeap->switchPayloadOn[i],
+                sizeof(gDiscoveryHeap->switchPayloadOn[i]),
                 "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":true}}"
             );
-            if (!(wrote > 0 && wrote < (int)sizeof(gSwitchPayloadOn[i]))) payloadOk = false;
+            if (!(wrote > 0 && wrote < (int)sizeof(gDiscoveryHeap->switchPayloadOn[i]))) payloadOk = false;
             wrote = snprintf(
-                gSwitchPayloadOff[i],
-                sizeof(gSwitchPayloadOff[i]),
+                gDiscoveryHeap->switchPayloadOff[i],
+                sizeof(gDiscoveryHeap->switchPayloadOff[i]),
                 "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":false}}"
             );
-            if (!(wrote > 0 && wrote < (int)sizeof(gSwitchPayloadOff[i]))) payloadOk = false;
+            if (!(wrote > 0 && wrote < (int)sizeof(gDiscoveryHeap->switchPayloadOff[i]))) payloadOk = false;
         } else {
             int wrote = snprintf(
-                gSwitchPayloadOn[i],
-                sizeof(gSwitchPayloadOn[i]),
+                gDiscoveryHeap->switchPayloadOn[i],
+                sizeof(gDiscoveryHeap->switchPayloadOn[i]),
                 "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":true}}",
                 (unsigned)binding.slot
             );
-            if (!(wrote > 0 && wrote < (int)sizeof(gSwitchPayloadOn[i]))) payloadOk = false;
+            if (!(wrote > 0 && wrote < (int)sizeof(gDiscoveryHeap->switchPayloadOn[i]))) payloadOk = false;
             wrote = snprintf(
-                gSwitchPayloadOff[i],
-                sizeof(gSwitchPayloadOff[i]),
+                gDiscoveryHeap->switchPayloadOff[i],
+                sizeof(gDiscoveryHeap->switchPayloadOff[i]),
                 "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":false}}",
                 (unsigned)binding.slot
             );
-            if (!(wrote > 0 && wrote < (int)sizeof(gSwitchPayloadOff[i]))) payloadOk = false;
+            if (!(wrote > 0 && wrote < (int)sizeof(gDiscoveryHeap->switchPayloadOff[i]))) payloadOk = false;
         }
 
         if (!payloadOk) {
@@ -287,8 +336,8 @@ void syncSwitches(ModuleInstances& modules)
             gSwitchStateSuffix[i],
             "{% if value_json.value %}ON{% else %}OFF{% endif %}",
             MqttTopics::SuffixCmd,
-            gSwitchPayloadOn[i],
-            gSwitchPayloadOff[i],
+            gDiscoveryHeap->switchPayloadOn[i],
+            gDiscoveryHeap->switchPayloadOff[i],
             binding.haIcon,
             nullptr
         };
@@ -328,6 +377,8 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
             def.pullMode = preset.pullMode;
             def.onValueChanged = onIoBoolValue;
             def.onValueCtx = (void*)(uintptr_t)compat->runtimeIndex;
+            def.onCounterChanged = onIoIntValue;
+            def.onCounterCtx = (void*)(uintptr_t)compat->runtimeIndex;
             requireSetup(modules.ioModule.defineDigitalInput(def), "define digital input");
             continue;
         }

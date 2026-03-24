@@ -5,12 +5,16 @@
     const flowCfgMenuIcon = document.querySelector('.menu-item[data-page="page-control"] .ico');
     const pages = Array.from(document.querySelectorAll('.page'));
     const appMeta = document.querySelector('.app-meta');
+    const appRuntimeMeta = document.getElementById('appRuntimeMeta');
+    const appHeapFree = document.getElementById('appHeapFree');
+    const appHeapMin = document.getElementById('appHeapMin');
     let webAssetVersion = '';
     let supervisorFirmwareVersion = '-';
-    let hideMenuSvg = false;
-    let unifyStatusCardIcons = false;
     let supervisorUptimeMs = 0;
     let supervisorHeap = {};
+    let hideMenuSvg = false;
+    let unifyStatusCardIcons = false;
+    let flowStatusLiveTimer = null;
 
     function applyMenuIconPreference(hidden) {
       hideMenuSvg = !!hidden;
@@ -36,7 +40,6 @@
     }
 
     supervisorFirmwareVersion = resolveSupervisorFirmwareVersion();
-    let flowStatusLiveTimer = null;
 
     function versionedWebAssetUrl(path) {
       if (!webAssetVersion) return path;
@@ -65,10 +68,9 @@
         }
         supervisorUptimeMs = Number(data.upms) || 0;
         supervisorHeap = (data.heap && typeof data.heap === 'object') ? data.heap : {};
-
-        const activePage = document.querySelector('.page.active');
-        if (activePage && activePage.id === 'page-status') {
-          refreshFlowStatus().catch(() => {});
+        refreshDrawerRuntimeMeta(false).catch(() => {});
+        if (isPageActive('page-status')) {
+          refreshFlowStatus(false).catch(() => {});
         }
       } catch (err) {
       }
@@ -102,12 +104,6 @@
       upgradeStatusPollTimer = null;
     }
 
-    function stopFlowStatusLiveTimer() {
-      if (!flowStatusLiveTimer) return;
-      clearInterval(flowStatusLiveTimer);
-      flowStatusLiveTimer = null;
-    }
-
     let flowRemoteFetchQueue = Promise.resolve();
 
     function fetchFlowRemoteQueued(url, options) {
@@ -116,6 +112,21 @@
         .then(() => fetch(url, options));
       flowRemoteFetchQueue = queued.catch(() => {});
       return queued;
+    }
+
+    function waitMs(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function isPageActive(pageId) {
+      const el = document.getElementById(pageId);
+      return !!(el && el.classList.contains('active'));
+    }
+
+    function stopFlowStatusLiveTimer() {
+      if (!flowStatusLiveTimer) return;
+      clearInterval(flowStatusLiveTimer);
+      flowStatusLiveTimer = null;
     }
 
     function showPage(pageId) {
@@ -128,8 +139,13 @@
         closeLogSocket();
         setWsStatusText('inactif');
       }
+      if (pageId === 'page-pool-measures') {
+        onPoolMeasuresPageShown().catch(() => {});
+      } else {
+        stopPoolMeasuresTimer();
+      }
       if (pageId === 'page-status') {
-        refreshFlowStatus().catch(() => {});
+        refreshFlowStatus(false).catch(() => {});
       } else {
         stopFlowStatusLiveTimer();
       }
@@ -139,6 +155,8 @@
       }
       if (pageId === 'page-control') {
         onControlPageShown().catch(() => {});
+      } else {
+        stopFlowCfgRetry();
       }
       if (pageId === 'page-local-config') {
         onLocalConfigPageShown().catch(() => {});
@@ -173,6 +191,7 @@
       } else {
         if (hideMenuSvg) return;
         drawer.classList.toggle('collapsed');
+        refreshDrawerRuntimeMeta(false).catch(() => {});
       }
     }));
 
@@ -181,6 +200,7 @@
       if (!isMobileLayout()) {
         setMobileDrawerOpen(false);
       }
+      refreshDrawerRuntimeMeta(false).catch(() => {});
     });
 
     const term = document.getElementById('term');
@@ -225,6 +245,9 @@
     const flowStatusChip = document.getElementById('flowStatusChip');
     const flowStatusGrid = document.getElementById('flowStatusGrid');
     const flowStatusRaw = document.getElementById('flowStatusRaw');
+    const poolMeasuresRefreshBtn = document.getElementById('poolMeasuresRefresh');
+    const poolMeasuresStatus = document.getElementById('poolMeasuresStatus');
+    const poolMeasuresGrid = document.getElementById('poolMeasuresGrid');
     const flowCfgTitle = document.getElementById('flowCfgTitle');
     const flowCfgRefreshBtn = document.getElementById('flowCfgRefresh');
     const flowCfgApplyBtn = document.getElementById('flowCfgApply');
@@ -245,6 +268,8 @@
     let cfgDocSources = [];
     let flowCfgDocsLoaded = false;
     let flowCfgLoadingDepth = 0;
+    let flowCfgLoadPromise = null;
+    let flowCfgRetryTimer = null;
     let upgradeCfgLoadedOnce = false;
     let wifiConfigLoadedOnce = false;
     let flowCfgLoadedOnce = false;
@@ -264,6 +289,10 @@
       pool: { data: null, fetchedAt: 0 },
       i2c: { data: null, fetchedAt: 0 }
     };
+    let runtimeManifestCache = null;
+    let poolMeasureEntries = [];
+    let poolMeasuresTimer = null;
+    let drawerRuntimeTimer = null;
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     let logSource = 'flow';
@@ -542,15 +571,7 @@
     }
 
     async function onControlPageShown() {
-      if (!flowCfgDocsLoaded) {
-        await chargerFlowCfgDocs();
-      }
-      if (!flowCfgLoadedOnce) {
-        flowCfgLoadedOnce = true;
-        await chargerFlowCfgModules(false);
-        return;
-      }
-      await chargerFlowCfgModules(false);
+      await ensureFlowCfgLoaded(false);
     }
 
     async function onLocalConfigPageShown() {
@@ -706,6 +727,15 @@
       return (n / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
+    function setDrawerRuntimeMetaValues(heapFreeText, heapMinText) {
+      if (appHeapFree) appHeapFree.textContent = 'Heap libre: ' + String(heapFreeText || '-');
+      if (appHeapMin) appHeapMin.textContent = 'Heap min: ' + String(heapMinText || '-');
+    }
+
+    function isDrawerRuntimeMetaVisible() {
+      return !!appRuntimeMeta && !isMobileLayout() && !drawer.classList.contains('collapsed');
+    }
+
     function fmtFlowFixed(value, decimals, unit) {
       if (value === null || typeof value === 'undefined') return '-';
       if (typeof value === 'string' && value.trim().length === 0) return '-';
@@ -734,61 +764,6 @@
       if (percent >= 55) return 'Bon';
       if (percent >= 35) return 'Correct';
       return 'Faible';
-    }
-
-    function createFlowLiveValue(kind, baseMs, refMs) {
-      const span = document.createElement('span');
-      span.dataset.flowLive = kind;
-      span.dataset.flowBaseMs = String(Math.max(0, Number(baseMs) || 0));
-      span.dataset.flowRefMs = String(Math.max(0, Number(refMs) || Date.now()));
-      return span;
-    }
-
-    function updateFlowLiveValue(el, nowMs) {
-      if (!el) return;
-      const kind = el.dataset.flowLive || '';
-      const baseMs = Number(el.dataset.flowBaseMs) || 0;
-      const refMs = Number(el.dataset.flowRefMs) || nowMs;
-      const totalMs = baseMs + Math.max(0, nowMs - refMs);
-      if (kind === 'uptime') {
-        el.textContent = fmtFlowUptime(totalMs);
-        return;
-      }
-      if (kind === 'elapsed') {
-        el.textContent = fmtFlowRelativeAge(totalMs);
-      }
-    }
-
-    function refreshFlowStatusLiveValues() {
-      const pageStatus = document.getElementById('page-status');
-      if (!pageStatus || !pageStatus.classList.contains('active')) return;
-      const nowMs = Date.now();
-      flowStatusGrid.querySelectorAll('[data-flow-live]').forEach((el) => updateFlowLiveValue(el, nowMs));
-    }
-
-    function ensureFlowStatusLiveTimer() {
-      if (flowStatusLiveTimer) return;
-      flowStatusLiveTimer = setInterval(refreshFlowStatusLiveValues, 1000);
-    }
-
-    function buildFlowStatusCardIcon(iconKey, ok, label) {
-      const unifiedIconSvg =
-        '<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V256c0 17.7 14.3 32 32 32s32-14.3 32-32V32zM143.5 120.6c13.6-11.3 15.4-31.5 4.1-45.1s-31.5-15.4-45.1-4.1C49.7 115.4 16 181.8 16 256c0 132.5 107.5 240 240 240s240-107.5 240-240c0-74.2-33.8-140.6-86.6-184.6c-13.6-11.3-33.8-9.4-45.1 4.1s-9.4 33.8 4.1 45.1c38.9 32.3 63.5 81 63.5 135.4c0 97.2-78.8 176-176 176s-176-78.8-176-176c0-54.4 24.7-103.1 63.5-135.4z"/></svg>';
-      const iconSvg = {
-        wifi: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.28 8.84a15.3 15.3 0 0 1 19.44 0l-1.42 1.42a13.3 13.3 0 0 0-16.6 0l-1.42-1.42zm3.54 3.54a10.3 10.3 0 0 1 12.36 0l-1.42 1.42a8.3 8.3 0 0 0-9.52 0l-1.42-1.42zm3.54 3.54a5.3 5.3 0 0 1 5.28 0L12 18.56l-2.64-2.64z"/></svg>',
-        supervisor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v2H7Zm0 4h10v2H7Zm0 4h6v2H7Z"/><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8l-5 0V5a2 2 0 0 1 2-2Zm0 2v14h14V5Z"/></svg>',
-        system: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h2.5A1.5 1.5 0 0 1 19 6.5V9h2v6h-2v2.5A1.5 1.5 0 0 1 17.5 19H15v2H9v-2H6.5A1.5 1.5 0 0 1 5 17.5V15H3V9h2V6.5A1.5 1.5 0 0 1 6.5 5H9Zm-2 4v10h10V7Zm2 2h6v6H9Z"/></svg>',
-        mqtt: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="6.594" cy="7.156" fill="#fff" stroke="currentColor" rx="2.844" ry="2.781"/><ellipse cx="19.094" cy="8.594" fill="#fff" stroke="currentColor" rx="2.844" ry="2.906"/><ellipse cx="11.687" cy="18.344" fill="#fff" stroke="currentColor" rx="3" ry="2.906"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="m9.625 7.375 6.625.875M7.312 10.062l2.875 5.625M13.375 15.937l4.125-4.875"/></svg>',
-        pool: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M1.125 10.875c1.5 0 2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5s1.5 1.5 3 1.5s2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5v2.5c-.75-.75-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5s-2.25-.75-3-1.5s-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5v-2.5zm0 4c1.5 0 2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5s1.5 1.5 3 1.5s2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5v2.5c-.75-.75-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5s-2.25-.75-3-1.5s-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5v-2.5z"/></svg>',
-        pump: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 1H6a5 5 0 0 0 0 10h12a5 5 0 0 0 0-10zm0 8a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm0 4H6a5 5 0 0 0 0 10h12a5 5 0 0 0 0-10zm-.2 9H6a4 4 0 0 1 0-8h11.8a4 4 0 1 1 0 8zM6 15a3 3 0 1 0 3 3 3 3 0 0 0-3-3zm0 5a2 2 0 1 1 2-2 2.003 2.003 0 0 1-2 2z"/></svg>'
-      };
-      const span = document.createElement('span');
-      span.className = ok ? 'status-card-icon is-true' : 'status-card-icon is-false';
-      span.setAttribute('role', 'img');
-      span.setAttribute('aria-label', label || (ok ? 'OK' : 'NOK'));
-      span.title = label || (ok ? 'OK' : 'NOK');
-      span.innerHTML = unifyStatusCardIcons ? unifiedIconSvg : (iconSvg[iconKey] || iconSvg.system);
-      return span;
     }
 
     function buildFlowRssiGauge(rssi, hasRssi) {
@@ -1035,6 +1010,73 @@
       createFiveZoneBands: createFlowFiveZoneBands
     });
 
+    function appendFlowStatusRow(kv, label, value) {
+      const line = document.createElement('div');
+      const key = document.createElement('span');
+      key.textContent = label;
+      const renderedValue = document.createElement('b');
+      if (value && typeof value === 'object' && typeof value.nodeType === 'number') {
+        renderedValue.appendChild(value);
+      } else {
+        renderedValue.textContent = fmtFlowStatusVal(value);
+      }
+      line.appendChild(key);
+      line.appendChild(renderedValue);
+      kv.appendChild(line);
+    }
+
+    function createFlowLiveValue(kind, initialMs, nowMs) {
+      const node = document.createElement('span');
+      node.dataset.flowLive = kind;
+      node.dataset.baseMs = String(Number(initialMs) || 0);
+      node.dataset.baseNow = String(Number(nowMs) || Date.now());
+      updateFlowLiveValue(node, Date.now());
+      return node;
+    }
+
+    function updateFlowLiveValue(node, nowMs) {
+      if (!node) return;
+      const kind = String(node.dataset.flowLive || '');
+      if (kind !== 'uptime') return;
+      const baseMs = Number(node.dataset.baseMs) || 0;
+      const baseNow = Number(node.dataset.baseNow) || nowMs;
+      const value = baseMs + Math.max(0, nowMs - baseNow);
+      node.textContent = formatRuntimeDurationMs(value);
+    }
+
+    function refreshFlowStatusLiveValues() {
+      if (!isPageActive('page-status') || !flowStatusGrid) return;
+      const nowMs = Date.now();
+      flowStatusGrid.querySelectorAll('[data-flow-live]').forEach((node) => updateFlowLiveValue(node, nowMs));
+    }
+
+    function ensureFlowStatusLiveTimer() {
+      if (flowStatusLiveTimer) return;
+      flowStatusLiveTimer = setInterval(() => {
+        refreshFlowStatusLiveValues();
+      }, 1000);
+    }
+
+    function buildFlowStatusCardIcon(iconKey, ok, label) {
+      const unifiedIconSvg =
+        '<svg viewBox="0 0 512 512" aria-hidden="true"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V256c0 17.7 14.3 32 32 32s32-14.3 32-32V32zM143.5 120.6c13.6-11.3 15.4-31.5 4.1-45.1s-31.5-15.4-45.1-4.1C49.7 115.4 16 181.8 16 256c0 132.5 107.5 240 240 240s240-107.5 240-240c0-74.2-33.8-140.6-86.6-184.6c-13.6-11.3-33.8-9.4-45.1 4.1s-9.4 33.8 4.1 45.1c38.9 32.3 63.5 81 63.5 135.4c0 97.2-78.8 176-176 176s-176-78.8-176-176c0-54.4 24.7-103.1 63.5-135.4z"/></svg>';
+      const iconSvg = {
+        wifi: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.28 8.84a15.3 15.3 0 0 1 19.44 0l-1.42 1.42a13.3 13.3 0 0 0-16.6 0l-1.42-1.42zm3.54 3.54a10.3 10.3 0 0 1 12.36 0l-1.42 1.42a8.3 8.3 0 0 0-9.52 0l-1.42-1.42zm3.54 3.54a5.3 5.3 0 0 1 5.28 0L12 18.56l-2.64-2.64z"/></svg>',
+        supervisor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v2H7Zm0 4h10v2H7Zm0 4h6v2H7Z"/><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8l-5 0V5a2 2 0 0 1 2-2Zm0 2v14h14V5Z"/></svg>',
+        system: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h2.5A1.5 1.5 0 0 1 19 6.5V9h2v6h-2v2.5A1.5 1.5 0 0 1 17.5 19H15v2H9v-2H6.5A1.5 1.5 0 0 1 5 17.5V15H3V9h2V6.5A1.5 1.5 0 0 1 6.5 5H9Zm-2 4v10h10V7Zm2 2h6v6H9Z"/></svg>',
+        mqtt: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="6.594" cy="7.156" fill="#fff" stroke="currentColor" rx="2.844" ry="2.781"/><ellipse cx="19.094" cy="8.594" fill="#fff" stroke="currentColor" rx="2.844" ry="2.906"/><ellipse cx="11.687" cy="18.344" fill="#fff" stroke="currentColor" rx="3" ry="2.906"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="m9.625 7.375 6.625.875M7.312 10.062l2.875 5.625M13.375 15.937l4.125-4.875"/></svg>',
+        pool: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M1.125 10.875c1.5 0 2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5s1.5 1.5 3 1.5s2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5v2.5c-.75-.75-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5s-2.25-.75-3-1.5s-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5v-2.5zm0 4c1.5 0 2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5s1.5 1.5 3 1.5s2.25-.75 3-1.5s1.5-1.5 3-1.5s2.25.75 3 1.5v2.5c-.75-.75-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5s-2.25-.75-3-1.5s-1.5-1.5-3-1.5s-2.25.75-3 1.5s-1.5 1.5-3 1.5v-2.5z"/></svg>',
+        pump: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 1H6a5 5 0 0 0 0 10h12a5 5 0 0 0 0-10zm0 8a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm0 4H6a5 5 0 0 0 0 10h12a5 5 0 0 0 0-10zm-.2 9H6a4 4 0 0 1 0-8h11.8a4 4 0 1 1 0 8zM6 15a3 3 0 1 0 3 3 3 3 0 0 0-3-3zm0 5a2 2 0 1 1 2-2 2.003 2.003 0 0 1-2 2z"/></svg>'
+      };
+      const span = document.createElement('span');
+      span.className = ok ? 'status-card-icon is-true' : 'status-card-icon is-false';
+      span.setAttribute('role', 'img');
+      span.setAttribute('aria-label', label || (ok ? 'OK' : 'NOK'));
+      span.title = label || (ok ? 'OK' : 'NOK');
+      span.innerHTML = unifyStatusCardIcons ? unifiedIconSvg : (iconSvg[iconKey] || iconSvg.system);
+      return span;
+    }
+
     function buildMqttStatsStrip(items) {
       const wrapper = document.createElement('div');
       wrapper.className = 'status-mqtt-strip';
@@ -1156,21 +1198,6 @@
         }
         throw err;
       }
-    }
-
-    function appendFlowStatusRow(kv, label, value) {
-      const line = document.createElement('div');
-      const key = document.createElement('span');
-      key.textContent = label;
-      const renderedValue = document.createElement('b');
-      if (value && typeof value === 'object' && typeof value.nodeType === 'number') {
-        renderedValue.appendChild(value);
-      } else {
-        renderedValue.textContent = fmtFlowStatusVal(value);
-      }
-      line.appendChild(key);
-      line.appendChild(renderedValue);
-      kv.appendChild(line);
     }
 
     function appendFlowStatusCard(config) {
@@ -1512,7 +1539,7 @@
         const fallbackData = getCachedFlowStatusData();
         if (fallbackData) {
           renderFlowStatus(fallbackData);
-          flowStatusChip.textContent = 'statut affiché depuis le cache local';
+          flowStatusChip.textContent = 'statut affiche depuis le cache local';
           return;
         }
         flowStatusRaw.hidden = true;
@@ -1520,6 +1547,533 @@
         flowStatusChip.textContent = 'erreur lecture statut';
         flowStatusGrid.innerHTML = '';
         flowStatusRaw.innerHTML = '';
+      }
+    }
+
+    function stopPoolMeasuresTimer() {
+      if (!poolMeasuresTimer) return;
+      clearInterval(poolMeasuresTimer);
+      poolMeasuresTimer = null;
+    }
+
+    function showPoolMeasuresError(err) {
+      poolMeasuresGrid.innerHTML = '';
+      poolMeasuresStatus.textContent = 'Chargement mesures echoue: ' + err;
+    }
+
+    function startPoolMeasuresTimer() {
+      if (poolMeasuresTimer) return;
+      poolMeasuresTimer = setInterval(() => {
+        const activePage = document.querySelector('.page.active');
+        if (!activePage || activePage.id !== 'page-pool-measures' || document.hidden) return;
+        refreshPoolMeasures(false).catch(() => {});
+      }, 10000);
+    }
+
+    async function loadRuntimeManifest(forceRefresh) {
+      if (!forceRefresh && runtimeManifestCache && Array.isArray(runtimeManifestCache.values)) {
+        return runtimeManifestCache;
+      }
+      const res = await fetch('/api/runtime/manifest', { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.values)) {
+        throw new Error('manifeste runtime indisponible');
+      }
+      runtimeManifestCache = data;
+      return data;
+    }
+
+    function runtimeManifestEntryByKey(manifest, key) {
+      const values = Array.isArray(manifest && manifest.values) ? manifest.values : [];
+      return values.find((entry) => entry && String(entry.key || '') === String(key || '')) || null;
+    }
+
+    async function refreshDrawerRuntimeMeta(forceRefresh) {
+      if (!appRuntimeMeta || !isDrawerRuntimeMetaVisible()) return;
+
+      try {
+        const manifest = await loadRuntimeManifest(!!forceRefresh);
+        const heapFreeEntry = runtimeManifestEntryByKey(manifest, 'system.heap_free');
+        const heapMinEntry = runtimeManifestEntryByKey(manifest, 'system.heap_min_free');
+        const ids = [heapFreeEntry, heapMinEntry]
+          .map((entry) => Number(entry && entry.id))
+          .filter((id) => Number.isFinite(id));
+
+        if (ids.length !== 2) {
+          setDrawerRuntimeMetaValues('-', '-');
+          return;
+        }
+
+        const values = await fetchRuntimeValues(ids);
+        const valueById = new Map();
+        (values || []).forEach((item) => {
+          const id = Number(item && item.id);
+          if (Number.isFinite(id)) valueById.set(id, item);
+        });
+
+        const heapFreeValue = valueById.get(Number(heapFreeEntry.id));
+        const heapMinValue = valueById.get(Number(heapMinEntry.id));
+        const heapFreeText =
+          heapFreeValue && heapFreeValue.status !== 'not_found' && heapFreeValue.status !== 'unavailable'
+            ? fmtFlowBytes(heapFreeValue.value)
+            : '-';
+        const heapMinText =
+          heapMinValue && heapMinValue.status !== 'not_found' && heapMinValue.status !== 'unavailable'
+            ? fmtFlowBytes(heapMinValue.value)
+            : '-';
+        setDrawerRuntimeMetaValues(heapFreeText, heapMinText);
+      } catch (err) {
+        setDrawerRuntimeMetaValues('-', '-');
+      }
+    }
+
+    function startDrawerRuntimeTimer() {
+      if (drawerRuntimeTimer) return;
+      drawerRuntimeTimer = setInterval(() => {
+        if (document.hidden || !isDrawerRuntimeMetaVisible()) return;
+        refreshDrawerRuntimeMeta(false).catch(() => {});
+      }, 15000);
+    }
+
+    function runtimeManifestMeasureEntries(manifest) {
+      const values = Array.isArray(manifest && manifest.values) ? manifest.values : [];
+      return values
+        .filter((entry) => entry && Number.isFinite(Number(entry.id)))
+        .sort((a, b) => {
+          const domainA = String(a.domain || '');
+          const domainB = String(b.domain || '');
+          if (domainA !== domainB) return domainA.localeCompare(domainB, 'fr');
+          const groupA = String(a.group || '');
+          const groupB = String(b.group || '');
+          if (groupA !== groupB) return groupA.localeCompare(groupB, 'fr');
+          const orderA = Number(a.order) || 0;
+          const orderB = Number(b.order) || 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return (Number(a.id) || 0) - (Number(b.id) || 0);
+        });
+    }
+
+    function formatRuntimeDomainLabel(domain) {
+      const key = String(domain || '').trim().toLowerCase();
+      if (key === 'pool') return 'Pool';
+      if (key === 'mqtt') return 'MQTT';
+      if (key === 'wifi') return 'WiFi';
+      if (key === 'i2c') return 'I2C';
+      if (key === 'system') return 'Systeme';
+      if (!key) return 'Runtime';
+      return key.charAt(0).toUpperCase() + key.slice(1);
+    }
+
+    function formatRuntimeGroupCardTitle(domain, group) {
+      const domainLabel = formatRuntimeDomainLabel(domain);
+      const groupLabel = String(group || '').trim();
+      if (!groupLabel) return domainLabel;
+      if (groupLabel.localeCompare(domainLabel, 'fr', { sensitivity: 'base' }) === 0) return domainLabel;
+      return domainLabel + ' · ' + groupLabel;
+    }
+
+    function formatRuntimeDurationMs(ms) {
+      const totalMs = Number(ms);
+      if (!Number.isFinite(totalMs) || totalMs < 0) return '-';
+      if (totalMs < 1000) return Math.round(totalMs) + ' ms';
+
+      const totalSec = Math.floor(totalMs / 1000);
+      const days = Math.floor(totalSec / 86400);
+      const hours = Math.floor((totalSec % 86400) / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+      const parts = [];
+
+      if (days > 0) parts.push(days + ' j');
+      if (hours > 0) parts.push(hours + ' h');
+      if (minutes > 0) parts.push(minutes + ' min');
+      if (seconds > 0 || parts.length === 0) parts.push(seconds + ' s');
+
+      return parts.slice(0, 2).join(' ');
+    }
+
+    async function fetchRuntimeValues(ids) {
+      const res = await fetchFlowRemoteQueued('/api/runtime/values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ids })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.values)) {
+        throw new Error('lecture runtime indisponible');
+      }
+      return data.values;
+    }
+
+    async function fetchRuntimeAlarms() {
+      const res = await fetchFlowRemoteQueued('/api/runtime/alarms', { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok !== true) {
+        throw new Error('lecture alarmes indisponible');
+      }
+      if (Array.isArray(data.alarms)) {
+        return data;
+      }
+      if (data.alm && typeof data.alm === 'object' && Array.isArray(data.alm.codes)) {
+        const activeCount = Number(data.alm.cnt);
+        return {
+          ok: true,
+          active_count: Number.isFinite(activeCount) ? activeCount : data.alm.codes.length,
+          highest_severity: data.alm.codes.length ? 2 : 0,
+          alarms: data.alm.codes.map((code, index) => ({
+            id: index + 1,
+            code: String(code || 'ALARM'),
+            title: String(code || 'Alarme'),
+            active: true,
+            acked: false,
+            severity: 2
+          }))
+        };
+      }
+      throw new Error('lecture alarmes indisponible');
+    }
+
+    async function fetchRuntimeAlarmsSafe() {
+      try {
+        return await fetchRuntimeAlarms();
+      } catch (err) {
+        console.warn('runtime alarms unavailable', err);
+        return { ok: false, unavailable: true };
+      }
+    }
+
+    function formatRuntimeMeasureValue(entry, runtimeValue) {
+      if (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable') {
+        return 'Indisponible';
+      }
+
+      const display = runtimeMeasureDisplayKind(entry);
+      const type = String(entry.type || runtimeValue.type || '');
+      const unit = entry.unit ? String(entry.unit) : '';
+      const decimals = Number.isFinite(Number(entry.decimals)) ? Number(entry.decimals) : null;
+      const rawValue = runtimeValue.value;
+
+      if (display === 'time' && Number.isFinite(Number(rawValue))) {
+        return formatRuntimeDurationMs(Number(rawValue));
+      }
+      if (type === 'bool') {
+        return rawValue ? 'Actif' : 'Arret';
+      }
+      if (type === 'float' && Number.isFinite(Number(rawValue))) {
+        const value = Number(rawValue);
+        const text = (decimals !== null) ? value.toFixed(decimals) : String(value);
+        return unit ? (text + ' ' + unit) : text;
+      }
+      if ((type === 'int32' || type === 'uint32' || type === 'enum') && Number.isFinite(Number(rawValue))) {
+        if (type === 'enum' && entry.enum && typeof entry.enum === 'object') {
+          const enumKey = String(Number(rawValue));
+          if (Object.prototype.hasOwnProperty.call(entry.enum, enumKey)) {
+            return String(entry.enum[enumKey]);
+          }
+        }
+        const text = String(Number(rawValue));
+        return unit ? (text + ' ' + unit) : text;
+      }
+      if (type === 'string') {
+        const text = (rawValue === null || rawValue === undefined || rawValue === '') ? '-' : String(rawValue);
+        return unit ? (text + ' ' + unit) : text;
+      }
+      if (rawValue === null || rawValue === undefined || rawValue === '') return '-';
+      return unit ? (String(rawValue) + ' ' + unit) : String(rawValue);
+    }
+
+    function runtimeMeasureDisplayKind(entry) {
+      const explicit = String(entry && entry.display ? entry.display : '').trim();
+      if (explicit === 'gauge') return 'circ-gauge';
+      if (explicit === 'circ-gauge' || explicit === 'horiz-gauge' || explicit === 'badge' || explicit === 'boolean' || explicit === 'time' || explicit === 'value') {
+        return explicit;
+      }
+      return String(entry && entry.type ? entry.type : '') === 'bool' ? 'boolean' : 'value';
+    }
+
+    function runtimeMeasureDisplayConfig(entry) {
+      return (entry && entry.displayConfig && typeof entry.displayConfig === 'object' && !Array.isArray(entry.displayConfig))
+        ? entry.displayConfig
+        : {};
+    }
+
+    function buildRuntimeMeasureCircGaugeNode(entry, runtimeValue) {
+      const displayConfig = runtimeMeasureDisplayConfig(entry);
+      let bands = [];
+      let min = Number(displayConfig.min);
+      let max = Number(displayConfig.max);
+      if (displayConfig.bands && typeof displayConfig.bands === 'object' && !Array.isArray(displayConfig.bands)) {
+        bands = createFlowFiveZoneBands(displayConfig.bands);
+        if (!Number.isFinite(min)) min = Number(displayConfig.bands.min);
+        if (!Number.isFinite(max)) max = Number(displayConfig.bands.max);
+      } else if (Array.isArray(displayConfig.bands)) {
+        bands = displayConfig.bands;
+      }
+
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        return null;
+      }
+
+      const value = (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable')
+        ? null
+        : runtimeValue.value;
+
+      return buildFlowArcGauge({
+        label: String(entry.label || entry.key || entry.id || 'Mesure'),
+        value: value,
+        min: min,
+        max: max,
+        unit: entry.unit ? String(entry.unit) : '',
+        decimals: Number.isFinite(Number(entry.decimals)) ? Number(entry.decimals) : 0,
+        bands: bands
+      });
+    }
+
+    function buildRuntimeMeasureHorizGaugeNode(entry, runtimeValue) {
+      const hasValue = !!runtimeValue && runtimeValue.status !== 'not_found' && runtimeValue.status !== 'unavailable' &&
+        Number.isFinite(Number(runtimeValue.value));
+      return buildFlowRssiGauge(hasValue ? Number(runtimeValue.value) : null, hasValue);
+    }
+
+    function buildRuntimeMeasureBooleanNode(entry, runtimeValue) {
+      const displayConfig = runtimeMeasureDisplayConfig(entry);
+      const value = (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable')
+        ? null
+        : (typeof runtimeValue.value === 'boolean' ? runtimeValue.value : null);
+
+      return buildFlowReadonlyStateTile(
+        String(entry.label || entry.key || entry.id || 'Etat'),
+        value,
+        {
+          activeText: displayConfig.activeText,
+          inactiveText: displayConfig.inactiveText,
+          unknownText: displayConfig.unknownText
+        }
+      );
+    }
+
+    function buildRuntimeMeasureBadgeNode(entry, runtimeValue) {
+      const displayConfig = runtimeMeasureDisplayConfig(entry);
+      let text = formatRuntimeMeasureValue(entry, runtimeValue);
+      if (String(entry.type || '') === 'bool') {
+        if (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable') {
+          text = String(displayConfig.unknownText || 'Indisponible');
+        } else {
+          text = runtimeValue.value
+            ? String(displayConfig.activeText || 'Actif')
+            : String(displayConfig.inactiveText || 'Arret');
+        }
+      }
+      const badge = document.createElement('span');
+      badge.className = 'status-chip';
+      const badgeLabel = String(displayConfig.badgeLabel || '').trim();
+      badge.textContent = badgeLabel ? (badgeLabel + ' : ' + text) : text;
+      return badge;
+    }
+
+    function runtimeAlarmSeverityLabel(severity) {
+      const value = Number(severity);
+      if (value === 3) return 'Critique';
+      if (value === 2) return 'Alarme';
+      if (value === 1) return 'Warning';
+      return 'Info';
+    }
+
+    function renderRuntimeAlarmCard(alarmData) {
+      const card = document.createElement('div');
+      card.className = 'status-card';
+
+      const heading = document.createElement('h3');
+      heading.textContent = 'Alarmes';
+      card.appendChild(heading);
+
+      const badgeRow = document.createElement('div');
+      badgeRow.className = 'status-chip-row';
+
+      if (!alarmData || alarmData.unavailable === true || alarmData.ok === false) {
+        const unavailableBadge = document.createElement('span');
+        unavailableBadge.className = 'status-chip';
+        unavailableBadge.textContent = 'Indisponible';
+        badgeRow.appendChild(unavailableBadge);
+        card.appendChild(badgeRow);
+
+        const kv = document.createElement('div');
+        kv.className = 'status-kv';
+        appendFlowStatusRow(kv, 'Etat', 'Lecture alarmes indisponible');
+        card.appendChild(kv);
+        return card;
+      }
+
+      const countBadge = document.createElement('span');
+      countBadge.className = 'status-chip';
+      const activeCount = Number(alarmData && alarmData.active_count);
+      countBadge.textContent = Number.isFinite(activeCount)
+        ? (activeCount + ' active' + (activeCount > 1 ? 's' : ''))
+        : '0 active';
+      badgeRow.appendChild(countBadge);
+
+      const severityBadge = document.createElement('span');
+      severityBadge.className = 'status-chip';
+      severityBadge.textContent = runtimeAlarmSeverityLabel(alarmData && alarmData.highest_severity);
+      badgeRow.appendChild(severityBadge);
+      card.appendChild(badgeRow);
+
+      const alarms = Array.isArray(alarmData && alarmData.alarms) ? alarmData.alarms : [];
+      const activeAlarms = alarms.filter((alarm) => alarm && alarm.active === true);
+      if (!activeAlarms.length) {
+        const kv = document.createElement('div');
+        kv.className = 'status-kv';
+        appendFlowStatusRow(kv, 'Etat', 'Aucune alarme active');
+        card.appendChild(kv);
+        return card;
+      }
+
+      const kv = document.createElement('div');
+      kv.className = 'status-kv';
+      activeAlarms.forEach((alarm) => {
+        const title = String(alarm.title || alarm.code || ('Alarme ' + String(alarm.id || '')));
+        let value = runtimeAlarmSeverityLabel(alarm.severity);
+        if (alarm.acked === true) value += ' · Acquittee';
+        appendFlowStatusRow(kv, title, value);
+      });
+      card.appendChild(kv);
+      return card;
+    }
+
+    function renderPoolMeasures(values, alarmData) {
+      const valueById = new Map();
+      (values || []).forEach((item) => {
+        const id = Number(item && item.id);
+        if (Number.isFinite(id)) valueById.set(id, item);
+      });
+
+      poolMeasuresGrid.innerHTML = '';
+      if (!poolMeasureEntries.length) {
+        poolMeasuresStatus.textContent = 'Aucune valeur runtime exposee.';
+        return;
+      }
+
+      const groups = [];
+      const groupsByName = new Map();
+      poolMeasureEntries.forEach((entry) => {
+        const domainKey = String(entry.domain || 'runtime');
+        const groupKey = String(entry.group || '').trim();
+        const cardKey = domainKey + '::' + groupKey;
+        const cardTitle = formatRuntimeGroupCardTitle(domainKey, groupKey);
+        let group = groupsByName.get(cardKey);
+        if (!group) {
+          group = { name: cardTitle, entries: [] };
+          groupsByName.set(cardKey, group);
+          groups.push(group);
+        }
+        group.entries.push(entry);
+      });
+
+      groups.forEach((group) => {
+        const card = document.createElement('div');
+        card.className = 'status-card';
+
+        const heading = document.createElement('h3');
+        heading.textContent = group.name;
+        card.appendChild(heading);
+        const badgeNodes = [];
+        const circGaugeNodes = [];
+        const horizGaugeRows = [];
+        const booleanNodes = [];
+        const valueRows = [];
+
+        group.entries.forEach((entry) => {
+          const runtimeValue = valueById.get(Number(entry.id));
+          const display = runtimeMeasureDisplayKind(entry);
+          if (display === 'badge') {
+            badgeNodes.push(buildRuntimeMeasureBadgeNode(entry, runtimeValue));
+            return;
+          }
+          if (display === 'circ-gauge') {
+            const gaugeNode = buildRuntimeMeasureCircGaugeNode(entry, runtimeValue);
+            if (gaugeNode) {
+              circGaugeNodes.push(gaugeNode);
+              return;
+            }
+          }
+          if (display === 'horiz-gauge') {
+            horizGaugeRows.push([
+              entry.label || entry.key || String(entry.id),
+              buildRuntimeMeasureHorizGaugeNode(entry, runtimeValue)
+            ]);
+            return;
+          }
+          if (display === 'boolean') {
+            booleanNodes.push(buildRuntimeMeasureBooleanNode(entry, runtimeValue));
+            return;
+          }
+          valueRows.push([
+            entry.label || entry.key || String(entry.id),
+            formatRuntimeMeasureValue(entry, runtimeValue)
+          ]);
+        });
+
+        if (badgeNodes.length) {
+          const badgeRow = document.createElement('div');
+          badgeRow.className = 'status-chip-row';
+          badgeNodes.forEach((node) => badgeRow.appendChild(node));
+          card.appendChild(badgeRow);
+        }
+
+        if (circGaugeNodes.length) {
+          const gaugeGrid = buildFlowArcGaugeGrid(circGaugeNodes);
+          if (gaugeGrid) card.appendChild(gaugeGrid);
+        }
+
+        if (booleanNodes.length) {
+          const stateGrid = buildFlowReadonlyStateGrid(booleanNodes);
+          if (stateGrid) card.appendChild(stateGrid);
+        }
+
+        if (horizGaugeRows.length || valueRows.length) {
+          const kv = document.createElement('div');
+          kv.className = 'status-kv';
+          horizGaugeRows.forEach((row) => appendFlowStatusRow(kv, row[0], row[1]));
+          valueRows.forEach((row) => appendFlowStatusRow(kv, row[0], row[1]));
+          card.appendChild(kv);
+        }
+
+        poolMeasuresGrid.appendChild(card);
+      });
+
+      if (alarmData) {
+        poolMeasuresGrid.appendChild(renderRuntimeAlarmCard(alarmData));
+      }
+
+      poolMeasuresStatus.textContent =
+        'Mesures chargees : ' + poolMeasureEntries.length + ' valeurs.';
+    }
+
+    async function refreshPoolMeasures(forceManifest) {
+      poolMeasuresStatus.textContent = 'chargement...';
+
+      const manifest = await loadRuntimeManifest(!!forceManifest);
+      poolMeasureEntries = runtimeManifestMeasureEntries(manifest);
+      const ids = poolMeasureEntries.map((entry) => Number(entry.id)).filter((id) => Number.isFinite(id));
+      if (!ids.length) {
+        const alarmData = await fetchRuntimeAlarmsSafe();
+        renderPoolMeasures([], alarmData);
+        return;
+      }
+
+      const [values, alarmData] = await Promise.all([
+        fetchRuntimeValues(ids),
+        fetchRuntimeAlarmsSafe()
+      ]);
+      renderPoolMeasures(values, alarmData);
+    }
+
+    async function onPoolMeasuresPageShown() {
+      try {
+        await refreshPoolMeasures(false);
+        startPoolMeasuresTimer();
+      } catch (err) {
+        showPoolMeasuresError(err);
       }
     }
 
@@ -1915,6 +2469,21 @@
         flowCfgTitle.classList.remove('is-loading');
         flowCfgRefreshBtn.disabled = false;
       }
+    }
+
+    function stopFlowCfgRetry() {
+      if (!flowCfgRetryTimer) return;
+      clearTimeout(flowCfgRetryTimer);
+      flowCfgRetryTimer = null;
+    }
+
+    function scheduleFlowCfgRetry(delayMs) {
+      stopFlowCfgRetry();
+      flowCfgRetryTimer = setTimeout(() => {
+        flowCfgRetryTimer = null;
+        if (!isPageActive('page-control')) return;
+        ensureFlowCfgLoaded(true).catch(() => {});
+      }, delayMs);
     }
 
     async function chargerFlowCfgDocs() {
@@ -2440,10 +3009,56 @@
           await chargerFlowCfgChildren('', force);
         }
         await renderFlowCfgNavigator(force);
+        return true;
       } catch (err) {
         flowCfgStatus.textContent = 'Chargement des branches échoué: ' + err;
+        return false;
       } finally {
         endFlowCfgLoading();
+      }
+    }
+
+    async function ensureFlowCfgLoaded(forceReload) {
+      const force = !!forceReload;
+      if (flowCfgLoadPromise) {
+        await flowCfgLoadPromise;
+        if (!force) {
+          return;
+        }
+      }
+
+      flowCfgLoadPromise = (async () => {
+        if (!flowCfgDocsLoaded) {
+          await chargerFlowCfgDocs();
+        }
+
+        const wasLoaded = flowCfgLoadedOnce;
+        const retryDelaysMs = (wasLoaded && !force) ? [0] : [0, 900, 2200, 3600];
+        for (let attempt = 0; attempt < retryDelaysMs.length; ++attempt) {
+          if (retryDelaysMs[attempt] > 0) {
+            await waitMs(retryDelaysMs[attempt]);
+          }
+          const loaded = await chargerFlowCfgModules(force || attempt > 0);
+          if (loaded) {
+            flowCfgLoadedOnce = true;
+            stopFlowCfgRetry();
+            return;
+          }
+          if (attempt + 1 < retryDelaysMs.length) {
+            flowCfgStatus.textContent = 'Flow.IO se prépare... nouvelle tentative.';
+          }
+        }
+
+        if (isPageActive('page-control')) {
+          flowCfgStatus.textContent = 'Flow.IO indisponible pour le moment. Nouvelle tentative automatique...';
+          scheduleFlowCfgRetry(2500);
+        }
+      })();
+
+      try {
+        await flowCfgLoadPromise;
+      } finally {
+        flowCfgLoadPromise = null;
       }
     }
 
@@ -2653,9 +3268,24 @@
         setUpgradeMessage('Échec de l\'enregistrement : ' + err);
       }
     });
-    flowStatusRefreshBtn.addEventListener('click', async () => {
-      await refreshFlowStatus(true);
-    });
+    if (flowStatusRefreshBtn) {
+      flowStatusRefreshBtn.addEventListener('click', async () => {
+        try {
+          await refreshFlowStatus(true);
+        } catch (err) {
+          flowStatusChip.textContent = 'erreur lecture statut';
+        }
+      });
+    }
+    if (poolMeasuresRefreshBtn) {
+      poolMeasuresRefreshBtn.addEventListener('click', async () => {
+        try {
+          await refreshPoolMeasures(true);
+        } catch (err) {
+          showPoolMeasuresError(err);
+        }
+      });
+    }
     upSupervisorBtn.addEventListener('click', () => startUpgrade('supervisor'));
     upFlowBtn.addEventListener('click', () => startUpgrade('flowio'));
     upNextionBtn.addEventListener('click', () => startUpgrade('nextion'));
@@ -2716,7 +3346,7 @@
       }
     });
     flowCfgRefreshBtn.addEventListener('click', async () => {
-      await chargerFlowCfgModules(true);
+      await ensureFlowCfgLoaded(true);
     });
     flowCfgApplyBtn.addEventListener('click', async () => {
       await appliquerFlowCfg();
@@ -2751,6 +3381,11 @@
       } else {
         startUpgradeStatusPolling();
       }
+      if (document.hidden || !active || active.id !== 'page-pool-measures') {
+        stopPoolMeasuresTimer();
+      } else {
+        startPoolMeasuresTimer();
+      }
       if (document.hidden || !onTerminalPage) {
         closeLogSocket();
         setWsStatusText('inactif');
@@ -2760,6 +3395,7 @@
     });
 
     setUpgradeProgress(0);
+    startDrawerRuntimeTimer();
     {
       showPage(resolveInitialPageId());
     }

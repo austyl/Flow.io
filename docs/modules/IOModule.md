@@ -5,6 +5,7 @@
 Couche I/O unifiée:
 - inventaire des endpoints (analogiques, entrées/sorties digitales)
 - drivers/bus (GPIO, ADS1115, DS18B20, PCF8574)
+- comptage d'impulsions sur entrée digitale GPIO via interruption (`counter`)
 - scheduler d'acquisition
 - exposition `IOServiceV2`
 - snapshots runtime pour MQTT
@@ -29,6 +30,7 @@ Type: module actif.
 
 - `io` -> `IOServiceV2`
   - découverte: `count`, `idAt`, `meta`
+  - lecture typée: `readValue`
   - lecture: `readDigital`, `readAnalog`
   - écriture: `writeDigital`
   - cycle: `tick`, `lastCycle`
@@ -87,4 +89,5 @@ Clés:
   - `ds_slow`
   - `din_poll`
 - support sorties impulsionnelles (`momentary/pulseMs`)
+- support entrées digitales `counter` exposées en `int32`
 - cycle info (`IoCycleInfo`) maintenu pour deltas

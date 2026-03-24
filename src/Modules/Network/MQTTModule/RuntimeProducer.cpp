@@ -143,4 +143,3 @@ void RuntimeProducer::onMessageDropped(uint16_t messageId)
     if (messageId >= routeCount_) return;
     routes_[messageId].pending = false;
 }
-

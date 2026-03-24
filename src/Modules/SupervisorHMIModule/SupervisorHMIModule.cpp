@@ -285,17 +285,15 @@ void SupervisorHMIModule::pollFlowStatus_()
         }
         doc.clear();
         const DeserializationError err = deserializeJson(doc, flowStatusScratchBuf_);
-        if (err || !doc.is<JsonObjectConst>()) {
-            doc.clear();
-            return JsonObjectConst();
+        if (!err && doc.is<JsonObjectConst>()) {
+            JsonObjectConst root = doc.as<JsonObjectConst>();
+            if (root["ok"] | false) {
+                anyDomainOk = true;
+                return root;
+            }
         }
-        JsonObjectConst root = doc.as<JsonObjectConst>();
-        if (!(root["ok"] | false)) {
-            doc.clear();
-            return JsonObjectConst();
-        }
-        anyDomainOk = true;
-        return root;
+        doc.clear();
+        return JsonObjectConst();
     };
 
     {

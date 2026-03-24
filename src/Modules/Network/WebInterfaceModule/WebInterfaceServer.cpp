@@ -7,6 +7,9 @@
 
 #include "Board/BoardSpec.h"
 #include "Core/FirmwareVersion.h"
+#include "Core/Generated/RuntimeUiManifest_Generated.h"
+#include "Core/I2cCfgProtocol.h"
+#include "Core/SystemLimits.h"
 
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::WebInterfaceModule)
 #include "Core/ModuleLog.h"
@@ -140,6 +143,135 @@ const char* httpMethodName_(uint8_t method)
     case HTTP_OPTIONS: return "OPTIONS";
     default: return "OTHER";
     }
+}
+
+const char* runtimeUiWireTypeName_(RuntimeUiWireType type)
+{
+    switch (type) {
+    case RuntimeUiWireType::NotFound: return "not_found";
+    case RuntimeUiWireType::Unavailable: return "unavailable";
+    case RuntimeUiWireType::Bool: return "bool";
+    case RuntimeUiWireType::Int32: return "int32";
+    case RuntimeUiWireType::UInt32: return "uint32";
+    case RuntimeUiWireType::Float32: return "float";
+    case RuntimeUiWireType::Enum: return "enum";
+    case RuntimeUiWireType::String: return "string";
+    default: return "unknown";
+    }
+}
+
+size_t runtimeUiWireEstimate_(const RuntimeUiManifestItem* item)
+{
+    if (!item || !item->type) return 20U;
+    if (strcmp(item->type, "bool") == 0) return 4U;
+    if (strcmp(item->type, "enum") == 0) return 4U;
+    if (strcmp(item->type, "int32") == 0) return 7U;
+    if (strcmp(item->type, "uint32") == 0) return 7U;
+    if (strcmp(item->type, "float") == 0) return 7U;
+    if (strcmp(item->type, "string") == 0) {
+        if (strcmp(item->key, "mqtt.server") == 0) return 72U;
+        return 24U;
+    }
+    return 20U;
+}
+
+uint32_t readLe32_(const uint8_t* in)
+{
+    return (uint32_t)in[0] |
+           ((uint32_t)in[1] << 8) |
+           ((uint32_t)in[2] << 16) |
+           ((uint32_t)in[3] << 24);
+}
+
+bool appendRuntimeUiJsonValues_(JsonArray values, const uint8_t* payload, size_t payloadLen)
+{
+    if (!payload || payloadLen == 0U) return true;
+
+    size_t offset = 0U;
+    const uint8_t count = payload[offset++];
+    for (uint8_t i = 0; i < count; ++i) {
+        if ((offset + 3U) > payloadLen) return false;
+        const RuntimeUiId runtimeId = (RuntimeUiId)((RuntimeUiId)payload[offset] |
+                                                    ((RuntimeUiId)payload[offset + 1U] << 8));
+        offset += 2U;
+        const RuntimeUiWireType wireType = (RuntimeUiWireType)payload[offset++];
+        const RuntimeUiManifestItem* manifestItem = findRuntimeUiManifestItem(runtimeId);
+
+        JsonObject value = values.createNestedObject();
+        value["id"] = runtimeId;
+        if (manifestItem) {
+            value["key"] = manifestItem->key;
+            value["type"] = manifestItem->type;
+            if (manifestItem->unit && manifestItem->unit[0] != '\0') {
+                value["unit"] = manifestItem->unit;
+            }
+        } else {
+            value["type"] = runtimeUiWireTypeName_(wireType);
+        }
+
+        switch (wireType) {
+        case RuntimeUiWireType::NotFound:
+            value["status"] = "not_found";
+            break;
+
+        case RuntimeUiWireType::Unavailable:
+            value["status"] = "unavailable";
+            break;
+
+        case RuntimeUiWireType::Bool:
+            if ((offset + 1U) > payloadLen) return false;
+            value["value"] = (payload[offset++] != 0U);
+            break;
+
+        case RuntimeUiWireType::Int32: {
+            if ((offset + 4U) > payloadLen) return false;
+            int32_t raw = 0;
+            const uint32_t bits = readLe32_(payload + offset);
+            memcpy(&raw, &bits, sizeof(raw));
+            value["value"] = raw;
+            offset += 4U;
+            break;
+        }
+
+        case RuntimeUiWireType::UInt32:
+            if ((offset + 4U) > payloadLen) return false;
+            value["value"] = readLe32_(payload + offset);
+            offset += 4U;
+            break;
+
+        case RuntimeUiWireType::Float32: {
+            if ((offset + 4U) > payloadLen) return false;
+            const uint32_t bits = readLe32_(payload + offset);
+            float raw = 0.0f;
+            memcpy(&raw, &bits, sizeof(raw));
+            value["value"] = raw;
+            offset += 4U;
+            break;
+        }
+
+        case RuntimeUiWireType::Enum:
+            if ((offset + 1U) > payloadLen) return false;
+            value["value"] = payload[offset++];
+            break;
+
+        case RuntimeUiWireType::String: {
+            if ((offset + 1U) > payloadLen) return false;
+            const uint8_t len = payload[offset++];
+            if ((offset + len) > payloadLen) return false;
+            char text[I2cCfgProtocol::MaxPayload + 1U] = {0};
+            memcpy(text, payload + offset, len);
+            text[len] = '\0';
+            value["value"] = text;
+            offset += len;
+            break;
+        }
+
+        default:
+            return false;
+        }
+    }
+
+    return offset == payloadLen;
 }
 
 struct HttpLatencyScope {
@@ -964,6 +1096,184 @@ void WebInterfaceModule::startServer_()
 
         request->send(200, "application/json", domainBuf);
     });
+
+    server_.on("/api/runtime/manifest", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/runtime/manifest");
+        if (!spiffsReady_ || !SPIFFS.exists("/webinterface/runtimeui.json")) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.manifest\"}}");
+            return;
+        }
+        AsyncWebServerResponse* response =
+            request->beginResponse(SPIFFS, "/webinterface/runtimeui.json", "application/json");
+        addNoCacheHeaders_(response);
+        request->send(response);
+    });
+
+    server_.on("/api/runtime/alarms", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request,
+                                 "/api/runtime/alarms",
+                                 kHttpLatencyFlowCfgInfoMs,
+                                 kHttpLatencyFlowCfgWarnMs);
+        if (!flowCfgSvc_ && services_) {
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
+        }
+        if (!flowCfgSvc_ || !flowCfgSvc_->runtimeAlarmSnapshotJson) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.alarms\"}}");
+            return;
+        }
+        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.alarms.link\"}}");
+            return;
+        }
+
+        char alarmBuf[Limits::Alarm::SnapshotJsonBuf] = {0};
+        if (!flowCfgSvc_->runtimeAlarmSnapshotJson(flowCfgSvc_->ctx, alarmBuf, sizeof(alarmBuf))) {
+            if (alarmBuf[0] != '\0') {
+                request->send(500, "application/json", alarmBuf);
+            } else {
+                request->send(500, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.alarms.fetch\"}}");
+            }
+            return;
+        }
+
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        addNoCacheHeaders_(response);
+        response->print(alarmBuf);
+        request->send(response);
+    });
+
+    server_.on(
+        "/api/runtime/values",
+        HTTP_POST,
+        [this](AsyncWebServerRequest* request) {
+            HttpLatencyScope latency(request,
+                                     "/api/runtime/values",
+                                     kHttpLatencyFlowCfgInfoMs,
+                                     kHttpLatencyFlowCfgWarnMs);
+            if (!flowCfgSvc_ && services_) {
+                flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
+            }
+            if (!flowCfgSvc_ || !flowCfgSvc_->runtimeUiValues) {
+                request->send(503, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values\"}}");
+                return;
+            }
+            if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
+                request->send(503, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values.link\"}}");
+                return;
+            }
+            if (!request->_tempObject) {
+                request->send(400, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.body\"}}");
+                return;
+            }
+
+            char* body = static_cast<char*>(request->_tempObject);
+            request->_tempObject = nullptr;
+
+            DynamicJsonDocument reqDoc(2048);
+            const DeserializationError reqErr = deserializeJson(reqDoc, body);
+            free(body);
+            if (reqErr) {
+                request->send(400, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.json\"}}");
+                return;
+            }
+
+            JsonArrayConst idsIn = reqDoc["ids"].as<JsonArrayConst>();
+            if (idsIn.isNull()) {
+                request->send(400, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+                return;
+            }
+
+            static constexpr size_t kMaxRuntimeHttpIds = 48U;
+            RuntimeUiId ids[kMaxRuntimeHttpIds] = {};
+            size_t idCount = 0U;
+            for (JsonVariantConst item : idsIn) {
+                if (!item.is<uint32_t>()) continue;
+                if (idCount >= kMaxRuntimeHttpIds) break;
+                const uint32_t raw = item.as<uint32_t>();
+                if (raw == 0U || raw > 65535U) continue;
+                ids[idCount++] = (RuntimeUiId)raw;
+            }
+
+            DynamicJsonDocument respDoc(6144);
+            respDoc["ok"] = true;
+            JsonArray valuesOut = respDoc.createNestedArray("values");
+
+            size_t start = 0U;
+            while (start < idCount) {
+                size_t batchCount = 0U;
+                size_t batchBudget = 1U;  // record count byte
+                while ((start + batchCount) < idCount) {
+                    const RuntimeUiManifestItem* item = findRuntimeUiManifestItem(ids[start + batchCount]);
+                    const bool isString = item && item->type && strcmp(item->type, "string") == 0;
+                    const size_t estimate = runtimeUiWireEstimate_(item);
+
+                    if (batchCount > 0U && (isString || (batchBudget + estimate) > I2cCfgProtocol::MaxPayload)) {
+                        break;
+                    }
+                    batchBudget += estimate;
+                    ++batchCount;
+                    if (isString) break;
+                }
+                if (batchCount == 0U) batchCount = 1U;
+
+                uint8_t payload[I2cCfgProtocol::MaxPayload] = {0};
+                size_t written = 0U;
+                if (!flowCfgSvc_->runtimeUiValues(flowCfgSvc_->ctx,
+                                                  ids + start,
+                                                  (uint8_t)batchCount,
+                                                  payload,
+                                                  sizeof(payload),
+                                                  &written)) {
+                    request->send(502, "application/json",
+                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.fetch\"}}");
+                    return;
+                }
+                if (!appendRuntimeUiJsonValues_(valuesOut, payload, written)) {
+                    request->send(502, "application/json",
+                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.decode\"}}");
+                    return;
+                }
+                start += batchCount;
+            }
+
+            AsyncResponseStream* response = request->beginResponseStream("application/json");
+            addNoCacheHeaders_(response);
+            serializeJson(respDoc, *response);
+            request->send(response);
+        },
+        nullptr,
+        [](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+            static constexpr size_t kMaxBodyBytes = 2048U;
+            if (index == 0U) {
+                if (total == 0U || total > kMaxBodyBytes) {
+                    request->send(413, "application/json",
+                                  "{\"ok\":false,\"err\":{\"code\":\"ArgsTooLarge\",\"where\":\"runtime.values.body\"}}");
+                    return;
+                }
+                char* body = static_cast<char*>(malloc(total + 1U));
+                if (!body) {
+                    request->send(500, "application/json",
+                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.alloc\"}}");
+                    return;
+                }
+                request->_tempObject = body;
+            }
+
+            char* body = static_cast<char*>(request->_tempObject);
+            if (!body) return;
+            memcpy(body + index, data, len);
+            if ((index + len) < total) return;
+            body[total] = '\0';
+        });
 
     server_.on("/api/flowcfg/modules", HTTP_GET, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request,

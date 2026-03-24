@@ -12,6 +12,7 @@
 #include "Core/I2cLink.h"
 #include "Core/ServiceBinding.h"
 #include "Core/I2cCfgProtocol.h"
+#include "Core/RuntimeUi.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/ConfigTypes.h"
 #include "Core/NvsKeys.h"
@@ -84,6 +85,8 @@ private:
         ServiceBinding::bind<&I2CCfgClientModule::getModuleJson_>,
         ServiceBinding::bind<&I2CCfgClientModule::runtimeStatusDomainJson_>,
         ServiceBinding::bind<&I2CCfgClientModule::runtimeStatusJson_>,
+        ServiceBinding::bind<&I2CCfgClientModule::runtimeAlarmSnapshotJson_>,
+        ServiceBinding::bind<&I2CCfgClientModule::runtimeUiValues_>,
         ServiceBinding::bind<&I2CCfgClientModule::applyPatchJson_>,
         this
     };
@@ -97,6 +100,8 @@ private:
     bool getModuleJson_(const char* module, char* out, size_t outLen, bool* truncated);
     bool runtimeStatusDomainJson_(FlowStatusDomain domain, char* out, size_t outLen);
     bool runtimeStatusJson_(char* out, size_t outLen);
+    bool runtimeAlarmSnapshotJson_(char* out, size_t outLen);
+    bool runtimeUiValues_(const RuntimeUiId* ids, uint8_t count, uint8_t* out, size_t outLen, size_t* writtenOut);
     bool applyPatchJson_(const char* patch, char* out, size_t outLen);
     bool executeSystemActionJson_(uint8_t action, char* out, size_t outLen);
     bool pingFlow_(uint8_t& statusOut);

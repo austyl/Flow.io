@@ -4,15 +4,17 @@
  * @brief System command module (ping/reboot/factory reset).
  */
 #include "Core/ModulePassive.h"
+#include "Core/RuntimeUi.h"
 #include "Core/Services/Services.h"
 
 /**
  * @brief Passive module that registers system commands.
  */
-class SystemModule : public ModulePassive {
+class SystemModule : public ModulePassive, public IRuntimeUiValueProvider {
 public:
     /** @brief Module id. */
     ModuleId moduleId() const override { return ModuleId::System; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
 
     /** @brief Depends on log hub, command service and config service. */
     uint8_t dependencyCount() const override { return 3; }
@@ -25,8 +27,16 @@ public:
 
     /** @brief Register system commands. */
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiFirmware = 1,
+        RuntimeUiUptimeMs = 2,
+        RuntimeUiHeapFree = 3,
+        RuntimeUiHeapMinFree = 4,
+    };
+
     const CommandService* cmdSvc = nullptr;
     const ConfigStoreService* cfgSvc = nullptr;
     const LogHubService* logHub = nullptr;

@@ -37,11 +37,17 @@ enum IOAnalogSource : uint8_t {
 
 typedef void (*IOAnalogValueCallback)(void* ctx, float value);
 typedef void (*IODigitalValueCallback)(void* ctx, bool value);
+typedef void (*IODigitalCounterValueCallback)(void* ctx, int32_t value);
 
 enum IODigitalPullMode : uint8_t {
     IO_PULL_NONE = 0,
     IO_PULL_UP = 1,
     IO_PULL_DOWN = 2
+};
+
+enum IODigitalInputMode : uint8_t {
+    IO_DIGITAL_INPUT_STATE = 0,
+    IO_DIGITAL_INPUT_COUNTER = 1
 };
 
 struct IOAnalogDefinition {
@@ -95,6 +101,8 @@ struct IODigitalInputSlotConfig {
     uint8_t pin = 0;
     bool activeHigh = true;
     uint8_t pullMode = IO_PULL_NONE;
+    uint8_t mode = IO_DIGITAL_INPUT_STATE;
+    uint32_t counterDebounceUs = 0;
 };
 
 struct IODigitalInputDefinition {
@@ -104,6 +112,10 @@ struct IODigitalInputDefinition {
     uint8_t pin = 0;
     bool activeHigh = true;
     uint8_t pullMode = IO_PULL_NONE;
+    uint8_t mode = IO_DIGITAL_INPUT_STATE;
+    uint32_t counterDebounceUs = 0;
     IODigitalValueCallback onValueChanged = nullptr;
     void* onValueCtx = nullptr;
+    IODigitalCounterValueCallback onCounterChanged = nullptr;
+    void* onCounterCtx = nullptr;
 };

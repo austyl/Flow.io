@@ -6,6 +6,7 @@
 
 #include "Core/Module.h"
 #include "Core/NvsKeys.h"
+#include "Core/RuntimeUi.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/ServiceBinding.h"
 #include "Core/Services/Services.h"
@@ -14,6 +15,7 @@
 #include "Modules/IOModule/IOBus/I2CBus.h"
 #include "Modules/IOModule/IODrivers/Ads1115Driver.h"
 #include "Modules/IOModule/IODrivers/Ds18b20Driver.h"
+#include "Modules/IOModule/IODrivers/GpioCounterDriver.h"
 #include "Modules/IOModule/IODrivers/GpioDriver.h"
 #include "Modules/IOModule/IODrivers/Pcf8574Driver.h"
 #include "Modules/IOModule/IOEndpoints/AnalogSensorEndpoint.h"
@@ -30,9 +32,10 @@
 class DataStore;
 class OneWireBus;
 
-class IOModule : public Module, public IRuntimeSnapshotProvider {
+class IOModule : public Module, public IRuntimeSnapshotProvider, public IRuntimeUiValueProvider {
 public:
     ModuleId moduleId() const override { return ModuleId::Io; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     const char* taskName() const override { return "io"; }
     BaseType_t taskCore() const override { return 1; }
     uint16_t taskStackSize() const override { return 2560; }
@@ -67,6 +70,7 @@ public:
     const char* analogSlotName(uint8_t idx) const;
     bool analogSlotUsed(uint8_t idx) const;
     bool digitalInputSlotUsed(uint8_t logicalIdx) const;
+    uint8_t digitalInputValueType(uint8_t logicalIdx) const;
     bool digitalOutputSlotUsed(uint8_t logicalIdx) const;
     int32_t analogPrecision(uint8_t idx) const;
     uint16_t takeAnalogConfigDirtyMask();
@@ -78,10 +82,18 @@ public:
     RuntimeRouteClass runtimeSnapshotClass(uint8_t idx) const override;
     bool runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const override;
     bool buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const override;
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
     IORegistry& registry() { return registry_; }
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiWaterTemp = 1,
+        RuntimeUiAirTemp = 2,
+        RuntimeUiPh = 3,
+        RuntimeUiOrp = 4,
+    };
+
     static bool tickFastAds_(void* ctx, uint32_t nowMs);
     static bool tickSlowDs_(void* ctx, uint32_t nowMs);
     static bool tickDigitalInputs_(void* ctx, uint32_t nowMs);
@@ -89,6 +101,7 @@ private:
     uint8_t ioCount_() const;
     IoStatus ioIdAt_(uint8_t index, IoId* outId) const;
     IoStatus ioMeta_(IoId id, IoEndpointMeta* outMeta) const;
+    IoStatus ioReadValue_(IoId id, IoValue* outValue) const;
     IoStatus ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, IoSeq* outSeq) const;
     IoStatus ioWriteDigital_(IoId id, uint8_t on, uint32_t tsMs);
     IoStatus ioReadAnalog_(IoId id, float* outValue, uint32_t* outTsMs, IoSeq* outSeq) const;
@@ -122,9 +135,15 @@ private:
     static bool writeDigitalOut_(void* ctx, bool on);
     void pollPulseOutputs_(uint32_t nowMs);
     AnalogSensorEndpoint* allocAnalogEndpoint_(const char* endpointId);
-    DigitalSensorEndpoint* allocDigitalSensorEndpoint_(const char* endpointId);
+    DigitalSensorEndpoint* allocDigitalSensorEndpoint_(const char* endpointId, uint8_t valueType);
     DigitalActuatorEndpoint* allocDigitalActuatorEndpoint_(const char* endpointId, DigitalWriteFn writeFn, void* writeCtx);
-    IDigitalPinDriver* allocGpioDriver_(const char* driverId, uint8_t pin, bool output, bool activeHigh, uint8_t inputPullMode = GpioDriver::PullNone);
+    IDigitalCounterDriver* allocGpioDriver_(const char* driverId,
+                                            uint8_t pin,
+                                            bool output,
+                                            bool activeHigh,
+                                            uint8_t inputPullMode = GpioDriver::PullNone,
+                                            bool counterEnabled = false,
+                                            uint32_t counterDebounceUs = 0);
     IAnalogSourceDriver* allocAdsDriver_(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg);
     IAnalogSourceDriver* allocDsDriver_(const char* driverId, OneWireBus* bus, const uint8_t address[8], const Ds18b20DriverConfig& cfg);
     IMaskOutputDriver* allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address);
@@ -171,6 +190,7 @@ private:
         uint32_t pulseDeadlineMs = 0;
         bool lastValid = false;
         bool lastValue = false;
+        int32_t lastCount = 0;
     };
 
     IOModuleConfig cfgData_{};
@@ -202,6 +222,7 @@ private:
         ServiceBinding::bind<&IOModule::ioCount_>,
         ServiceBinding::bind<&IOModule::ioIdAt_>,
         ServiceBinding::bind<&IOModule::ioMeta_>,
+        ServiceBinding::bind<&IOModule::ioReadValue_>,
         ServiceBinding::bind<&IOModule::ioReadDigital_>,
         ServiceBinding::bind<&IOModule::ioWriteDigital_>,
         ServiceBinding::bind<&IOModule::ioReadAnalog_>,
@@ -225,6 +246,7 @@ private:
     alignas(DigitalSensorEndpoint) uint8_t digitalSensorEndpointPool_[MAX_DIGITAL_INPUTS][sizeof(DigitalSensorEndpoint)]{};
     alignas(DigitalActuatorEndpoint) uint8_t digitalActuatorEndpointPool_[MAX_DIGITAL_OUTPUTS][sizeof(DigitalActuatorEndpoint)]{};
     alignas(GpioDriver) uint8_t gpioDriverPool_[MAX_DIGITAL_SLOTS][sizeof(GpioDriver)]{};
+    alignas(GpioCounterDriver) uint8_t gpioCounterDriverPool_[MAX_DIGITAL_INPUTS][sizeof(GpioCounterDriver)]{};
     alignas(Ads1115Driver) uint8_t adsDriverPool_[2][sizeof(Ads1115Driver)]{};
     alignas(Ds18b20Driver) uint8_t dsDriverPool_[2][sizeof(Ds18b20Driver)]{};
     alignas(Pcf8574Driver) uint8_t pcfDriverPool_[1][sizeof(Pcf8574Driver)]{};
@@ -233,6 +255,7 @@ private:
     uint8_t digitalSensorEndpointPoolUsed_ = 0;
     uint8_t digitalActuatorEndpointPoolUsed_ = 0;
     uint8_t gpioDriverPoolUsed_ = 0;
+    uint8_t gpioCounterDriverPoolUsed_ = 0;
     uint8_t adsDriverPoolUsed_ = 0;
     uint8_t dsDriverPoolUsed_ = 0;
     uint8_t pcfDriverPoolUsed_ = 0;

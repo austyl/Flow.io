@@ -117,6 +117,20 @@ void MQTTModule::setState_(MQTTState s)
     }
 }
 
+bool MQTTModule::allocateScratchBuffers_()
+{
+    if (scratch_) return true;
+
+    scratch_ = static_cast<ScratchBuffers*>(
+        heap_caps_calloc(1, sizeof(ScratchBuffers), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+    );
+    if (!scratch_) {
+        LOGE("mqtt scratch alloc failed (%u bytes)", (unsigned)sizeof(ScratchBuffers));
+        return false;
+    }
+    return true;
+}
+
 void MQTTModule::refreshTopicDeviceId_()
 {
     if (cfgData_.topicDeviceId[0] == '\0') {
@@ -311,6 +325,8 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services)
     makeDeviceId(deviceId_, sizeof(deviceId_));
     buildTopics_();
 
+    (void)allocateScratchBuffers_();
+
     const size_t rxItemSize = sizeof(RxMsg);
     const size_t rxQueueStorageLen = ((size_t)Limits::Mqtt::Capacity::RxQueueLen) * rxItemSize;
     rxQueueStorage_ = static_cast<uint8_t*>(heap_caps_malloc(rxQueueStorageLen, MALLOC_CAP_8BIT));
@@ -349,6 +365,11 @@ void MQTTModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 
 void MQTTModule::loop()
 {
+    if (!scratch_ && !allocateScratchBuffers_()) {
+        vTaskDelay(pdMS_TO_TICKS(Limits::Mqtt::Timing::DisabledDelayMs));
+        return;
+    }
+
     const uint32_t nowMs = millis();
     updateAndReportQueueOccupancy_(nowMs);
     tickProducers_(nowMs);

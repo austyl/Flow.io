@@ -33,6 +33,9 @@ const char* opName(uint8_t op)
         case I2cCfgProtocol::OpGetModuleChunk: return "get_chunk";
         case I2cCfgProtocol::OpGetRuntimeStatusBegin: return "status_begin";
         case I2cCfgProtocol::OpGetRuntimeStatusChunk: return "status_chunk";
+        case I2cCfgProtocol::OpGetRuntimeAlarmBegin: return "alarm_begin";
+        case I2cCfgProtocol::OpGetRuntimeAlarmChunk: return "alarm_chunk";
+        case I2cCfgProtocol::OpGetRuntimeUiValues: return "runtime_values";
         case I2cCfgProtocol::OpPatchBegin: return "patch_begin";
         case I2cCfgProtocol::OpPatchWrite: return "patch_write";
         case I2cCfgProtocol::OpPatchCommit: return "patch_commit";
@@ -845,6 +848,148 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
     return true;
 }
 
+bool I2CCfgClientModule::runtimeUiValues_(const RuntimeUiId* ids,
+                                          uint8_t count,
+                                          uint8_t* out,
+                                          size_t outLen,
+                                          size_t* writtenOut)
+{
+    if (writtenOut) *writtenOut = 0U;
+    if (!out || outLen == 0U) return false;
+    out[0] = 0U;
+
+    if (!ensureReady_()) {
+        LOGW("runtimeUiValues failed: link not ready");
+        return false;
+    }
+    if (!ids || count == 0U) {
+        if (writtenOut) *writtenOut = 0U;
+        return true;
+    }
+
+    const size_t reqLen = 1U + ((size_t)count * 2U);
+    if (reqLen > I2cCfgProtocol::MaxPayload) {
+        LOGW("runtimeUiValues request too large count=%u", (unsigned)count);
+        return false;
+    }
+
+    uint8_t req[I2cCfgProtocol::MaxPayload] = {0};
+    req[0] = count;
+    for (uint8_t i = 0; i < count; ++i) {
+        const size_t offset = 1U + ((size_t)i * 2U);
+        req[offset] = (uint8_t)(ids[i] & 0xFFU);
+        req[offset + 1U] = (uint8_t)((ids[i] >> 8) & 0xFFU);
+    }
+
+    uint8_t status = I2cCfgProtocol::StatusFailed;
+    size_t respLen = 0U;
+    const bool ok = transact_(I2cCfgProtocol::OpGetRuntimeUiValues,
+                              req,
+                              reqLen,
+                              status,
+                              out,
+                              outLen,
+                              respLen);
+    if (!ok || status != I2cCfgProtocol::StatusOk) {
+        markRemoteUnavailable_();
+        LOGW("runtimeUiValues failed transport=%s status=%u (%s) count=%u resp_len=%u",
+             ok ? "ok" : "failed",
+             (unsigned)status,
+             statusName(status),
+             (unsigned)count,
+             (unsigned)respLen);
+        return false;
+    }
+
+    markRemoteAvailable_();
+    if (writtenOut) *writtenOut = respLen;
+    return true;
+}
+
+bool I2CCfgClientModule::runtimeAlarmSnapshotJson_(char* out, size_t outLen)
+{
+    if (!out || outLen == 0) return false;
+    if (!ensureReady_()) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.runtime_alarm");
+        return false;
+    }
+
+    uint8_t status = 0;
+    uint8_t resp[96] = {0};
+    size_t respLen = 0;
+    const bool okBegin = transact_(I2cCfgProtocol::OpGetRuntimeAlarmBegin,
+                                   nullptr,
+                                   0U,
+                                   status,
+                                   resp,
+                                   sizeof(resp),
+                                   respLen);
+    if (!okBegin ||
+        status != I2cCfgProtocol::StatusOk ||
+        respLen < 3) {
+        LOGW("runtimeAlarm failed step=begin transport=%s status=%u (%s) resp_len=%u",
+             okBegin ? "ok" : "failed",
+             (unsigned)status,
+             statusName(status),
+             (unsigned)respLen);
+        (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.begin");
+        return false;
+    }
+
+    const size_t totalLen = (size_t)resp[0] | ((size_t)resp[1] << 8);
+    const bool isTruncated = (resp[2] & 0x02u) != 0;
+    if (totalLen + 1 > outLen) {
+        (void)writeErrorJson(out, outLen, ErrorCode::InternalAckOverflow, "flowcfg.runtime_alarm.len");
+        return false;
+    }
+
+    size_t written = 0;
+    while (written < totalLen) {
+        const size_t remain = totalLen - written;
+        const uint8_t want = (uint8_t)((remain > I2cCfgProtocol::MaxPayload) ? I2cCfgProtocol::MaxPayload : remain);
+        const uint8_t req[3] = {
+            (uint8_t)(written & 0xFFu),
+            (uint8_t)((written >> 8) & 0xFFu),
+            want
+        };
+        memset(resp, 0, sizeof(resp));
+        respLen = 0;
+        const bool okChunk = transact_(I2cCfgProtocol::OpGetRuntimeAlarmChunk,
+                                       req,
+                                       sizeof(req),
+                                       status,
+                                       resp,
+                                       sizeof(resp),
+                                       respLen);
+        if (!okChunk || status != I2cCfgProtocol::StatusOk) {
+            LOGW("runtimeAlarm failed step=chunk off=%u want=%u transport=%s status=%u (%s) resp_len=%u",
+                 (unsigned)written,
+                 (unsigned)want,
+                 okChunk ? "ok" : "failed",
+                 (unsigned)status,
+                 statusName(status),
+                 (unsigned)respLen);
+            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.chunk");
+            return false;
+        }
+        if (respLen == 0 || (written + respLen) > totalLen) {
+            LOGW("runtimeAlarm invalid chunk off=%u resp_len=%u total=%u",
+                 (unsigned)written,
+                 (unsigned)respLen,
+                 (unsigned)totalLen);
+            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.chunk_len");
+            return false;
+        }
+        memcpy(out + written, resp, respLen);
+        written += respLen;
+    }
+    out[written] = '\0';
+    if (isTruncated) {
+        LOGW("runtimeAlarm truncated bytes=%u", (unsigned)written);
+    }
+    return true;
+}
+
 bool I2CCfgClientModule::runtimeStatusJson_(char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
@@ -909,9 +1054,7 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
                                    resp,
                                    sizeof(resp),
                                    respLen);
-    if (!okBegin ||
-        status != I2cCfgProtocol::StatusOk ||
-        respLen < 3) {
+    if (!okBegin || status != I2cCfgProtocol::StatusOk || respLen < 3) {
         LOGW("runtimeStatus domain=%s failed step=begin transport=%s status=%u (%s) resp_len=%u",
              statusDomainName(domain),
              okBegin ? "ok" : "failed",

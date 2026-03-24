@@ -4,6 +4,7 @@
  * @brief WiFi connectivity module.
  */
 #include "Core/Module.h"
+#include "Core/RuntimeUi.h"
 #include "Core/ServiceBinding.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/NvsKeys.h"
@@ -30,10 +31,11 @@ struct WifiConfig {
 /**
  * @brief Active module that manages WiFi connectivity.
  */
-class WifiModule : public Module {
+class WifiModule : public Module, public IRuntimeUiValueProvider {
 public:
     /** @brief Module id. */
     ModuleId moduleId() const override { return ModuleId::Wifi; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     /** @brief Task name. */
     const char* taskName() const override { return "wifi"; }
     /** @brief Pin network module on core 0. */
@@ -63,8 +65,15 @@ public:
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief WiFi task loop. */
     void loop() override;
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiReady = 1,
+        RuntimeUiIp = 2,
+        RuntimeUiRssi = 3,
+    };
+
     static constexpr uint8_t kScanMaxResults = 24;
     static constexpr uint32_t kScanThrottleMs = Limits::Wifi::Timing::ScanThrottleMs;
     static constexpr uint32_t kInitialConnectDelayMs = Limits::Wifi::Timing::InitialConnectDelayMs;

@@ -325,23 +325,18 @@ bool AlarmModule::buildSnapshot_(char* out, size_t len) const
     bool first = true;
     for (uint16_t i = 0; i < Limits::Alarm::MaxAlarms; ++i) {
         const AlarmSlot& s = snap[i];
-        if (!s.used) continue;
+        if (!s.used || !s.active) continue;
 
         wrote = snprintf(
             out + pos,
             len - pos,
-            "%s{\"id\":%u,\"code\":\"%s\",\"active\":%s,\"acked\":%s,"
-            "\"severity\":%u,\"latched\":%s,\"cond\":\"%s\",\"active_since_ms\":%lu,\"last_change_ms\":%lu}",
+            "%s{\"id\":%u,\"code\":\"%s\",\"title\":\"%s\",\"active\":true,\"acked\":%s,\"severity\":%u}",
             first ? "" : ",",
             (unsigned)s.id,
             s.def.code,
-            s.active ? "true" : "false",
+            s.def.title,
             s.acked ? "true" : "false",
-            (unsigned)((uint8_t)s.def.severity),
-            s.def.latched ? "true" : "false",
-            condStateStr_(s.lastCond),
-            (unsigned long)s.activeSinceMs,
-            (unsigned long)s.lastChangeMs);
+            (unsigned)((uint8_t)s.def.severity));
         if (wrote <= 0 || (size_t)wrote >= (len - pos)) return false;
         pos += (size_t)wrote;
         first = false;

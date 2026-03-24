@@ -11,14 +11,16 @@
 #include "Core/ModulePassive.h"
 #include "Core/I2cLink.h"
 #include "Core/I2cCfgProtocol.h"
+#include "Core/RuntimeUi.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/ConfigTypes.h"
 #include "Core/NvsKeys.h"
 #include "Core/Services/Services.h"
 
-class I2CCfgServerModule : public ModulePassive {
+class I2CCfgServerModule : public ModulePassive, public IRuntimeUiValueProvider {
 public:
     ModuleId moduleId() const override { return ModuleId::I2cCfgServer; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
 
     uint8_t dependencyCount() const override { return 4; }
     ModuleId dependency(uint8_t i) const override {
@@ -33,6 +35,8 @@ public:
     void onConfigLoaded(ConfigStore&, ServiceRegistry&) override;
     uint8_t taskCount() const override { return started_ ? 1 : 0; }
     const ModuleTaskSpec* taskSpecs() const override;
+    bool registerRuntimeUiProvider(const IRuntimeUiValueProvider* provider);
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
 private:
     struct ConfigData {
@@ -103,6 +107,9 @@ private:
     char poolModeJsonScratch_[kPoolModeJsonBufSize] = {0};
     char alarmJsonScratch_[kAlarmSnapshotBufSize] = {0};
     char activeAlarmCodes_[kMaxAlarmCodes][24] = {{0}};
+    size_t alarmSnapshotLen_ = 0;
+    bool alarmSnapshotValid_ = false;
+    bool alarmSnapshotTruncated_ = false;
 
     char patchBuf_[kPatchBufSize] = {0};
     size_t patchExpected_ = 0;
@@ -116,6 +123,8 @@ private:
     size_t txFrameLen_ = 0;
     portMUX_TYPE txMux_ = portMUX_INITIALIZER_UNLOCKED;
     MqttConfigRouteProducer* cfgMqttPub_ = nullptr;
+    RuntimeUiRegistry runtimeUiRegistry_{};
+    RuntimeUiService runtimeUiSvc_{runtimeUiRegistry_};
 
     static void onReceiveStatic_(void* ctx, const uint8_t* data, size_t len);
     static size_t onRequestStatic_(void* ctx, uint8_t* out, size_t maxLen);
@@ -135,6 +144,7 @@ private:
     bool buildRuntimeStatusI2cJson_(bool& truncatedOut);
     bool buildRuntimeStatusPoolJson_(bool& truncatedOut);
     bool buildRuntimeStatusAlarmJson_(bool& truncatedOut);
+    bool buildRuntimeAlarmSnapshotJson_(bool& truncatedOut);
     void queueSystemAction_(PendingSystemAction action);
     PendingSystemAction takePendingSystemAction_();
     void actionLoop_();

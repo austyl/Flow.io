@@ -8,6 +8,7 @@
  */
 
 #include "Core/Module.h"
+#include "Core/RuntimeUi.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/ServiceBinding.h"
@@ -35,9 +36,10 @@ struct PoolDeviceDefinition {
     int32_t maxUptimeDaySec = 0;   // 0 means "unlimited"
 };
 
-class PoolDeviceModule : public Module, public IRuntimeSnapshotProvider {
+class PoolDeviceModule : public Module, public IRuntimeSnapshotProvider, public IRuntimeUiValueProvider {
 public:
     ModuleId moduleId() const override { return ModuleId::PoolDevice; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     const char* taskName() const override { return "pooldev"; }
     BaseType_t taskCore() const override { return 1; }
     uint8_t taskCount() const override { return 1; }
@@ -67,8 +69,16 @@ public:
     RuntimeRouteClass runtimeSnapshotClass(uint8_t idx) const override;
     bool runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const override;
     bool buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const override;
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiFiltrationOn = 1,
+        RuntimeUiPhPumpOn = 2,
+        RuntimeUiChlorinePumpOn = 3,
+        RuntimeUiRobotOn = 4,
+    };
+
     static constexpr uint8_t RESET_PENDING_DAY = (1u << 0);
     static constexpr uint8_t RESET_PENDING_WEEK = (1u << 1);
     static constexpr uint8_t RESET_PENDING_MONTH = (1u << 2);

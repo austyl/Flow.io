@@ -288,6 +288,7 @@ bool MQTTModule::enqueueJob_(uint8_t producerId, uint16_t messageId, uint8_t pri
 bool MQTTModule::enqueue(uint8_t producerId, uint16_t messageId, MqttPublishPriority priority, uint8_t flags)
 {
     if (producerId == 0U) return false;
+    if (state_ != MQTTState::Connected) return false;
     return enqueueJob_(producerId, messageId, (uint8_t)priority, flags);
 }
 
@@ -358,6 +359,8 @@ bool MQTTModule::tryPublishNow_(const char* topic, const char* payload, uint8_t 
 void MQTTModule::processJobs_(uint32_t nowMs)
 {
     for (uint8_t budget = 0; budget < ProcessBudgetPerTick; ++budget) {
+        if (!scratch_) return;
+
         uint8_t slotIdx = 0;
         if (!dequeueNextJob_(nowMs, slotIdx)) break;
 
@@ -379,14 +382,14 @@ void MQTTModule::processJobs_(uint32_t nowMs)
         MqttBuildResult buildResult = MqttBuildResult::PermanentError;
         bool published = false;
 
-        memset(topicBuf_, 0, sizeof(topicBuf_));
-        memset(payloadBuf_, 0, sizeof(payloadBuf_));
+        memset(scratch_->topic, 0, sizeof(scratch_->topic));
+        memset(scratch_->payload, 0, sizeof(scratch_->payload));
 
         MqttBuildContext ctx{};
-        ctx.topic = topicBuf_;
-        ctx.topicCapacity = (uint16_t)sizeof(topicBuf_);
-        ctx.payload = payloadBuf_;
-        ctx.payloadCapacity = (uint16_t)sizeof(payloadBuf_);
+        ctx.topic = scratch_->topic;
+        ctx.topicCapacity = (uint16_t)sizeof(scratch_->topic);
+        ctx.payload = scratch_->payload;
+        ctx.payloadCapacity = (uint16_t)sizeof(scratch_->payload);
 
         if (producer && producer->buildMessage) {
             buildResult = producer->buildMessage(producer->ctx, messageId, ctx);
@@ -403,7 +406,7 @@ void MQTTModule::processJobs_(uint32_t nowMs)
                 } else {
                     BufferUsageTracker::note(TrackedBufferId::MqttPayloadBuf,
                                              ctx.payloadLen,
-                                             sizeof(payloadBuf_),
+                                             sizeof(scratch_->payload),
                                              ctx.topic,
                                              nullptr);
                     published = tryPublishNow_(ctx.topic, ctx.payload, ctx.qos, ctx.retain);

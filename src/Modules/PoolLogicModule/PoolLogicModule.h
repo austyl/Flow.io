@@ -8,6 +8,7 @@
  */
 
 #include "Core/Module.h"
+#include "Core/RuntimeUi.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/ConfigTypes.h"
@@ -20,9 +21,10 @@
 constexpr uint16_t POOLLOGIC_EVENT_DAILY_RECALC = 0x2101;
 constexpr uint16_t POOLLOGIC_EVENT_FILTRATION_WINDOW = 0x2102;
 
-class PoolLogicModule : public Module, public IRuntimeSnapshotProvider {
+class PoolLogicModule : public Module, public IRuntimeSnapshotProvider, public IRuntimeUiValueProvider {
 public:
     ModuleId moduleId() const override { return ModuleId::PoolLogic; }
+    ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     const char* taskName() const override { return "poollogic"; }
     BaseType_t taskCore() const override { return 1; }
     uint8_t taskCount() const override { return 1; }
@@ -49,10 +51,18 @@ public:
     RuntimeRouteClass runtimeSnapshotClass(uint8_t idx) const override;
     bool runtimeSnapshotAffectsKey(uint8_t idx, DataKey key) const override;
     bool buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const override;
+    bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
     void setStartupReady(bool ready) { startupReady_ = ready; }
     static MqttBuildResult buildCfgBaseStatic_(void* ctx, uint16_t messageId, MqttBuildContext& buildCtx);
 
 private:
+    enum RuntimeUiValueId : uint8_t {
+        RuntimeUiAutoMode = 1,
+        RuntimeUiWinterMode = 2,
+        RuntimeUiPhAutoMode = 3,
+        RuntimeUiOrpAutoMode = 4,
+    };
+
     struct DeviceFsm {
         bool known = false;
         bool on = false;

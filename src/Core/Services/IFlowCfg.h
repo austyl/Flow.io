@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "Core/RuntimeUi.h"
+
 enum class FlowStatusDomain : uint8_t {
     System = 1,
     Wifi = 2,
@@ -23,6 +25,8 @@ struct FlowCfgRemoteService {
     bool (*getModuleJson)(void* ctx, const char* module, char* out, size_t outLen, bool* truncated);
     bool (*runtimeStatusDomainJson)(void* ctx, FlowStatusDomain domain, char* out, size_t outLen);
     bool (*runtimeStatusJson)(void* ctx, char* out, size_t outLen);
+    bool (*runtimeAlarmSnapshotJson)(void* ctx, char* out, size_t outLen);
+    bool (*runtimeUiValues)(void* ctx, const RuntimeUiId* ids, uint8_t count, uint8_t* out, size_t outLen, size_t* writtenOut);
     bool (*applyPatchJson)(void* ctx, const char* patch, char* out, size_t outLen);
     void* ctx;
 };

@@ -5,11 +5,13 @@ Cette documentation couvre l'architecture complète du firmware Flow.IO (ESP32),
 ## Sommaire
 
 - [Architecture Core](core/architecture.md)
+- [Empreinte memoire Flow.IO](core/memory-footprint-flowio.md)
 - [Profils, App, Board et Domain](core/profiles-board-domain-app.md)
 - [Services Core et invocation](core/services.md)
 - [Modèle DataStore + EventBus + Config](core/data-event-model.md)
 - [Topologie MQTT détaillée](core/mqtt-topics.md)
 - [Protocole Flow.IO <-> Supervisor (I2C cfg/status)](core/flow-supervisor-i2c-protocol.md)
+- [Exposition Runtime UI](core/runtime-ui-exposure.md)
 - [Quality Gates Modules (10 points)](core/module-quality-gates.md)
 
 ## Vue d'ensemble runtime

@@ -8,6 +8,10 @@ Le protocole repose sur:
 - des payloads courts binaires ou JSON selon l'opération
 - un séquencement requête/réponse initié uniquement par le Supervisor
 
+Deux familles de lecture runtime coexistent:
+- snapshots JSON par domaine (`OpGetRuntimeStatus*`) pour compatibilité
+- lectures batch binaires d'IDs runtime (`OpGetRuntimeUiValues`) pour le nouveau chemin recommandé
+
 ## Vue d'ensemble
 
 Rôles:
@@ -314,6 +318,53 @@ Important:
 - depuis la refactorisation par domaine, on ne construit plus un unique gros JSON status côté Flow.IO
 - l'agrégation multi-domaines se fait désormais côté Supervisor si besoin
 
+### `OpGetRuntimeUiValues` (`0x24`)
+
+But:
+- lire un batch ciblé de valeurs runtime exposées au `Supervisor`
+- éviter le JSON sur le lien I2C
+- router par `moduleId -> provider` avec un coût mémoire minimal côté `Flow.IO`
+
+Identité:
+- `runtimeId = moduleId * 100 + valueId`
+- `moduleId` réutilise les IDs de modules existants
+- `valueId` est local au module
+
+Payload requête:
+
+| Octet | Contenu |
+|---|---|
+| `0` | nombre de valeurs demandées |
+| `1..n` | liste des `runtimeId` en little-endian (`u16`) |
+
+Payload réponse:
+
+| Octet | Contenu |
+|---|---|
+| `0` | nombre d'enregistrements |
+| `1..n` | suite d'enregistrements binaires typés |
+
+Chaque enregistrement contient:
+- `runtimeId` (`u16`, little-endian)
+- `wireType` (`u8`)
+- payload typé éventuel
+
+Types supportés:
+- `not_found`
+- `unavailable`
+- `bool`
+- `int32`
+- `uint32`
+- `float32`
+- `enum`
+- `string`
+
+Notes d'implémentation:
+- pas de manifeste JSON conservé en RAM côté `Flow.IO`
+- pas de cache runtime dédié
+- sérialisation directe dans le buffer de réponse I2C existant
+- le manifeste textuel complet reste côté `Supervisor` / UI
+
 ### `OpPatchBegin` (`0x30`)
 
 But:
@@ -513,6 +564,15 @@ Champs:
 
 1. `OpGetRuntimeStatusBegin(domain)`
 2. boucle `OpGetRuntimeStatusChunk(offset, want)` jusqu'à avoir lu `totalLen`
+
+### Lecture batch runtime UI
+
+1. le `Supervisor` choisit une petite liste de `runtimeId`
+2. il envoie `OpGetRuntimeUiValues(count, ids...)`
+3. `Flow.IO` extrait `moduleId` et `valueId`
+4. le registre runtime résout le provider du module
+5. le module écrit la valeur typée dans le writer binaire
+6. le `Supervisor` convertit la réponse en JSON homogène pour l'UI
 
 ### Application d'un patch JSON
 

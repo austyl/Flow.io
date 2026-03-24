@@ -5,10 +5,10 @@
 
 #include "DigitalSensorEndpoint.h"
 
-DigitalSensorEndpoint::DigitalSensorEndpoint(const char* endpointId)
+DigitalSensorEndpoint::DigitalSensorEndpoint(const char* endpointId, uint8_t valueType)
     : endpointId_(endpointId)
 {
-    value_.valueType = IO_EP_VALUE_BOOL;
+    value_.valueType = valueType;
     value_.v.b = false;
     value_.valid = false;
     value_.timestampMs = 0;
@@ -24,6 +24,14 @@ void DigitalSensorEndpoint::update(bool on, bool valid, uint32_t timestampMs)
 {
     value_.valueType = IO_EP_VALUE_BOOL;
     value_.v.b = on;
+    value_.valid = valid;
+    value_.timestampMs = timestampMs;
+}
+
+void DigitalSensorEndpoint::updateCount(int32_t count, bool valid, uint32_t timestampMs)
+{
+    value_.valueType = IO_EP_VALUE_INT32;
+    value_.v.i = count;
     value_.valid = valid;
     value_.timestampMs = timestampMs;
 }
