@@ -192,6 +192,12 @@ Services recommandes:
 - conserver `IOServiceV2` pour compatibilite
 - ajouter `IOAdminService` pour le remapping runtime et l'inspection des bindings
 
+Decision d'implementation retenue a ce stade:
+- les changements de binding n'ont pas besoin d'etre appliques a chaud
+- la prise en compte au reboot est suffisante pour `v1`
+- la politique de conflit entre points peut etre differee
+- il faut simplement garder la possibilite de refuser une affectation plus tard
+
 ## 6. Modele de donnees recommande
 
 ### 6.1 Identites
@@ -709,6 +715,85 @@ Specifiques compteur:
 Specifiques DS18B20:
 - `ow_rom_hex`
 
+### 11.5.1 Decision v1 recommandee sur les valeurs de config
+
+Pour limiter le churn et rester proche de l'existant, la recommandation `v1` est:
+
+- analogiques:
+  - conserver semantiquement:
+    - `name`
+    - `c0`
+    - `c1`
+    - `precision`
+  - supprimer:
+    - `min_valid`
+    - `max_valid`
+  - remplacer:
+    - `source` + `channel`
+    - par `binding_port`
+
+- entrees digitales simples:
+  - conserver semantiquement:
+    - `name`
+    - `active_high`
+    - `pull_mode`
+  - remplacer:
+    - `pin`
+    - par `binding_port`
+
+- sorties digitales:
+  - conserver semantiquement:
+    - `name`
+    - `active_high`
+    - `initial_on`
+    - `momentary`
+    - `pulse_ms`
+  - remplacer:
+    - `pin`
+    - par `binding_port`
+
+- counters:
+  - conserver:
+    - `name`
+    - `binding_port`
+    - `debounce_us`
+  - ne pas surcharger `active_high` si l'on veut garder une semantique propre
+  - preferer un champ explicite:
+    - `edge_mode`
+      - `0 = falling`
+      - `1 = rising`
+      - `2 = both` reserve ou active plus tard
+
+Pourquoi ne pas reutiliser directement `active_high` pour les counters:
+- `active_high` est une semantique de niveau
+- un compteur raisonne en transitions
+- melanger les deux complique l'evolution future et brouille la lecture de config
+
+Si l'on veut une `v1` ultra-minimale:
+- `edge_mode` peut etre stocke sur un `uint8_t`
+- il ne coutera qu'une variable par compteur
+- ce cout est faible car le nombre de compteurs restera reduit
+
+### 11.5.2 Impact estime avec cette decision
+
+En supposant:
+- `6` points analogiques
+- `5` entrees digitales
+- `8` sorties digitales
+
+Alors le budget `IOModule` devient approximativement:
+
+- global: `16`
+- analogiques: `6 x 5 = 30`
+- entrees digitales: `5 x 4 = 20`
+- sorties digitales: `8 x 6 = 48`
+- total hors counters persistants: `114`
+
+Ce budget:
+- baisse par rapport aux `132` variables actuelles
+- reste compatible avec le plafond global actuel
+- laisse de la marge pour quelques compteurs persistants ou blobs runtime
+
 ### 11.6 Stockage des identites physiques
 
 Recommandation:
@@ -787,6 +872,9 @@ Recommandations pour tenir ce budget:
 - factoriser les parametres avances par type de point ou par driver
 - utiliser 1 blob runtime par compteur / point complexe plutot que 4 ou 5 variables separees si cela ne nuit pas a l'exploitation
 
+Recommendation complementaire:
+- ajouter un petit espace de persistance runtime dedie aux compteurs plutot que d'ouvrir la porte a un grand nombre de variables unitaires supplementaires
+
 Corollaire important:
 - si `IOModule v2` descend vraiment vers `80` variables, il deviendra possible de reduire `Limits::MaxConfigVars`
 - cela liberera de la DRAM non seulement dans le module, mais aussi dans le coeur `ConfigStore`
@@ -849,6 +937,11 @@ Politique conseillee:
 - `IOServiceV2` retourne `IO_ERR_NOT_READY` ou `IO_ERR_HW` selon le cas
 - les snapshots runtime indiquent `available=false`
 
+Decision d'implementation retenue a ce stade:
+- en cas d'absence d'equipement, la valeur exposee doit etre `undefined`
+- pas de valeur par defaut synthetique
+- pas de fallback opaque vers un autre equipement
+
 ### 14.1 Persistance des compteurs
 
 Les compteurs reboot-proof ne doivent pas revenir a zero si leur sens metier est celui d'un total monotone.
@@ -892,6 +985,10 @@ Politique de flush NVS recommandee:
   - ou a partir d'un delta mini de pulses
   - ou sur transition vers un etat idle stable
 
+Decision d'implementation retenue a ce stade:
+- le critere "toutes les `N` impulsions" est un bon premier declencheur
+- il peut etre complete plus tard par un garde-fou temporel si besoin
+
 Tradeoff assume:
 - on accepte une perte maximale egale au delta non encore flushe
 - si la perte doit etre strictement nulle, la flash NVS n'est pas le bon backend
@@ -915,6 +1012,29 @@ Avec le `ConfigStore` actuel, deux options sont robustes:
 
 Pour limiter le nombre de variables, l'option B est tres bonne si l'on reste sur peu de compteurs.
 Pour la proprete API, l'option A est meilleure si l'on accepte de faire evoluer `ConfigStore`.
+
+### 14.4 Acces NVS partage
+
+L'idee d'un service additionnel pour lire / ecrire une valeur runtime unique est bonne, mais avec une contrainte forte:
+
+- il ne faut pas creer un second proprietaire du NVS a cote de `ConfigStore`
+
+La bonne approche est:
+- `ConfigStore` reste l'unique facade vers `Preferences/NVS`
+- on lui ajoute une petite API runtime ou un service dedie, par exemple:
+  - `readRuntimeValue(key, ...)`
+  - `writeRuntimeValue(key, ...)`
+- cette API doit passer par la meme exclusion interne que les operations de config classiques
+
+Pourquoi:
+- aujourd'hui `ConfigStore` est deja l'unique utilisateur logique du NVS
+- cela evite les acces concurrents non coordonnes
+- cela garde les compteurs techniques dans le meme domaine de responsabilite
+
+Point important d'implementation:
+- il faudra ajouter une vraie serialisation interne a `ConfigStore`
+- pas seulement un nouveau service
+- sinon les acces directs au store et les acces via le nouveau service pourraient toujours se croiser
 
 ## 15. Scheduler cible
 
@@ -1024,6 +1144,10 @@ Migrer les entrees analogiques / multi-mesures:
 
 Migrer runtime snapshots, HA et HMI sur les metadonnees du nouveau catalogue.
 
+Decision d'implementation retenue a ce stade:
+- la migration pourra se faire en bigbang
+- il n'est pas necessaire de maintenir une longue coexistence entre ancien et nouveau coeur IO
+
 ## 18. Decisions fortes recommandees
 
 Je recommande sans ambiguite les decisions suivantes:
@@ -1037,6 +1161,15 @@ Je recommande sans ambiguite les decisions suivantes:
 - sortir la logique de debounce / edge policy dans un adapter compteur propre
 - conserver `IOServiceV2` pour limiter le rayon d'impact
 - ajouter un `IOAdminService` pour le remapping runtime
+
+Decisions validees a ce stade:
+- migration en `bigbang`
+- bindings appliques au reboot uniquement pour `v1`
+- equipement absent => valeur `undefined`
+- `edge_mode` explicite pour les counters
+- persistance compteur pilotee par `IOModule`
+- flush NVS compteur declenche d'abord sur seuil de `N` impulsions
+- `ConfigStore` reste l'unique facade NVS
 
 ## 19. Risques et points de vigilance
 
@@ -1062,3 +1195,130 @@ Autrement dit:
 - le metier raisonne en `IoId`
 - le hardware raisonne en `PhysicalPortId`
 - le module IO fait le pont, sans heap runtime et sans melanger les niveaux
+
+## 21. Defaults figes pour l'implementation
+
+Les defaults suivants sont retenus pour la `v1` et font foi pour l'implementation:
+
+- acces NVS:
+  - `ConfigStore` reste l'unique facade vers `Preferences/NVS`
+  - une petite API runtime dediee doit etre ajoutee dans `ConfigStore` ou exposee par `ConfigStoreModule`
+  - cette API doit reutiliser la meme serialisation interne que les acces config classiques
+
+- persistance des compteurs:
+  - le format retenu par defaut est le `runtime blob`
+  - pas d'extension immediate de `ConfigStore` vers `UInt64` en `v1`
+  - le blob porte au minimum le total brut persiste et les metadonnees de flush utiles
+
+- politique de flush des compteurs:
+  - le premier declencheur retenu est `toutes les N impulsions`
+  - un garde-fou temporel pourra etre ajoute plus tard si necessaire
+
+- capacites compile-time:
+  - elles seront dimensionnees sur le materiel cible avec une marge de `20 a 30%`
+  - elles doivent rester explicites dans les constantes IO dediees
+
+- securisation des sorties au boot:
+  - toutes les sorties doivent etre placees dans un etat `safe/off` tant que les drivers ne sont pas initialises
+  - les expanders type `PCF8574` doivent charger et appliquer leur shadow state safe avant toute exposition au service IO
+
+Avec ces defaults, l'architecture est consideree comme suffisamment gelee pour lancer l'implementation.
+
+## 22. Ajustements conseilles hors `IOModule`
+
+Le redesign peut se faire sans refactor massif des autres modules.
+En revanche, quelques ajustements cibles rendraient le developpement plus fluide et le systeme plus robuste.
+
+### 22.1 `ConfigStore` / `ConfigStoreModule`
+
+Changement recommande:
+- ajouter une petite API runtime NVS dediee aux etats techniques non exposes comme config utilisateur
+
+Pourquoi:
+- les compteurs persistants ont besoin d'un acces NVS coordonne
+- il faut garder `ConfigStore` comme unique facade vers `Preferences`
+- cela evite un second acces concurrent au NVS
+
+Forme conseillee:
+- nouvelles operations dediees:
+  - `readRuntimeBlob`
+  - `writeRuntimeBlob`
+  - eventuellement `readRuntimeU32`
+  - eventuellement `writeRuntimeU32`
+- aucune emission `ConfigChanged` pour ces ecritures runtime
+- mutex interne commun a toutes les operations NVS
+
+### 22.2 `PoolLogicModule`
+
+Changements recommandes:
+- stocker les capteurs configures avec le vrai type `IoId`, pas `uint8_t`
+- reduire la dependance aux tables `PoolBinding::kSensorBindings`
+
+Pourquoi:
+- `IoId` est deja `uint16_t` dans le contrat commun
+- cela evite un piege futur si le nombre de points logiques augmente
+- cela decouple mieux `PoolLogic` des anciens index fixes `a0/a1/i0...`
+
+Concretement:
+- remplacer les champs `uint8_t phIoId_`, etc. par `IoId`
+- faire evoluer les variables de config capteurs en consequence
+- garder les valeurs par defaut derivees du layout ou d'une table de roles, pas d'une hypothese sur les ranges historiques
+
+### 22.3 `PoolDeviceModule`
+
+Changement recommande:
+- rendre l'affectation de slot explicite au lieu de dependre du "premier slot libre"
+
+Pourquoi:
+- aujourd'hui `defineDevice()` remplit le premier slot libre
+- cela marche tant que l'ordre d'enregistrement reste strictement stable
+- pendant un bigbang refactor, expliciter le slot reduit un risque inutile
+
+Forme conseillee:
+- ajouter un `slotHint` ou un `slot` explicite dans `PoolDeviceDefinition`
+- conserver `pd0..pd7` comme identites stables
+
+### 22.4 `Domain/Pool` et `PoolBindings`
+
+Changement recommande:
+- faire evoluer les bindings piscine vers une resolution par role logique plutot que par index legacy calcule
+
+Pourquoi:
+- `PoolBindings.h` reste aujourd'hui tres lie aux ranges `IO_ID_DO_BASE`, `IO_ID_AI_BASE`, `IO_ID_DI_BASE`
+- le nouveau modele IO repose plutot sur un catalogue de points logiques stables
+
+Forme conseillee:
+- garder les roles `DomainRole`
+- faire deriver les `IoId` par une table issue du layout cible
+- eviter que `PoolLogic` et `FlowIOIoAssembly` recreent eux-memes la logique des anciens slots
+
+### 22.5 `FlowIOIoAssembly`
+
+Changement recommande:
+- le transformer en simple bootstrap lisant `FlowIOIoLayout.h`
+
+Pourquoi:
+- aujourd'hui cette couche connait encore trop de details historiques:
+  - `pin`
+  - `source`
+  - `channel`
+  - defaults analogiques lies aux macros `FLOW_WIRDEF_*`
+- cela ralentirait le redesign si on conservait cette logique imperative
+
+Objectif:
+- decrire la topologie dans le layout
+- laisser l'assembly ne faire que l'instanciation et les checks de coherence
+
+### 22.6 `IORuntime` / DataStore IO
+
+Petit ajustement recommande:
+- ajouter un helper explicite d'invalidation de point IO
+
+Pourquoi:
+- la `v1` doit exposer proprement les etats `undefined`
+- cela rend la propagation d'indisponibilite plus claire pour:
+  - runtime snapshots
+  - HMI
+  - MQTT / HA
+
+Cet ajustement est utile, mais non bloquant pour lancer le redesign.

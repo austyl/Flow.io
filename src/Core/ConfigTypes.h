@@ -23,6 +23,7 @@ enum class ConfigPersistence : uint8_t { Runtime, Persistent };
 /** @brief Supported config value types. */
 enum class ConfigType : uint8_t {
     Int32,
+    UInt16,
     UInt8,
     Bool,
     Float,

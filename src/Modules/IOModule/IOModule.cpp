@@ -92,6 +92,12 @@ void IOModule::setOneWireBuses(OneWireBus* water, OneWireBus* air)
     oneWireAir_ = air;
 }
 
+void IOModule::setBindingPorts(const IOBindingPortSpec* ports, uint8_t count)
+{
+    bindingPorts_ = ports;
+    bindingPortCount_ = count;
+}
+
 bool IOModule::defineAnalogInput(const IOAnalogDefinition& def)
 {
     if (def.id[0] == '\0') return false;
@@ -110,13 +116,10 @@ bool IOModule::defineAnalogInput(const IOAnalogDefinition& def)
     if (analogIdx < ANALOG_CFG_SLOTS) {
         strncpy(analogCfg_[analogIdx].name, def.id, sizeof(analogCfg_[analogIdx].name) - 1);
         analogCfg_[analogIdx].name[sizeof(analogCfg_[analogIdx].name) - 1] = '\0';
-        analogCfg_[analogIdx].source = def.source;
-        analogCfg_[analogIdx].channel = def.channel;
+        analogCfg_[analogIdx].bindingPort = def.bindingPort;
         analogCfg_[analogIdx].c0 = def.c0;
         analogCfg_[analogIdx].c1 = def.c1;
         analogCfg_[analogIdx].precision = def.precision;
-        analogCfg_[analogIdx].minValid = def.minValid;
-        analogCfg_[analogIdx].maxValid = def.maxValid;
     }
 
     return true;
@@ -181,7 +184,7 @@ void IOModule::markIoCycleChanged_(IoId id)
 bool IOModule::defineDigitalInput(const IODigitalInputDefinition& def)
 {
     if (def.id[0] == '\0') return false;
-    if (def.pin == 0) return false;
+    if (def.bindingPort == IO_PORT_INVALID) return false;
     if (def.ioId == IO_ID_INVALID) return false;
     if (def.ioId < IO_ID_DI_BASE || def.ioId >= IO_ID_DI_MAX) return false;
 
@@ -201,10 +204,11 @@ bool IOModule::defineDigitalInput(const IODigitalInputDefinition& def)
         if (logicalIdx < MAX_DIGITAL_INPUTS) {
             strncpy(digitalInCfg_[logicalIdx].name, def.id, sizeof(digitalInCfg_[logicalIdx].name) - 1);
             digitalInCfg_[logicalIdx].name[sizeof(digitalInCfg_[logicalIdx].name) - 1] = '\0';
-            digitalInCfg_[logicalIdx].pin = def.pin;
+            digitalInCfg_[logicalIdx].bindingPort = def.bindingPort;
             digitalInCfg_[logicalIdx].activeHigh = def.activeHigh;
             digitalInCfg_[logicalIdx].pullMode = def.pullMode;
             digitalInCfg_[logicalIdx].mode = def.mode;
+            digitalInCfg_[logicalIdx].edgeMode = def.edgeMode;
             digitalInCfg_[logicalIdx].counterDebounceUs = def.counterDebounceUs;
         }
         return true;
@@ -216,7 +220,7 @@ bool IOModule::defineDigitalInput(const IODigitalInputDefinition& def)
 bool IOModule::defineDigitalOutput(const IODigitalOutputDefinition& def)
 {
     if (def.id[0] == '\0') return false;
-    if (def.pin == 0) return false;
+    if (def.bindingPort == IO_PORT_INVALID) return false;
     if (def.ioId == IO_ID_INVALID) return false;
     if (def.ioId < IO_ID_DO_BASE || def.ioId >= IO_ID_DO_MAX) return false;
 
@@ -238,7 +242,7 @@ bool IOModule::defineDigitalOutput(const IODigitalOutputDefinition& def)
             const uint8_t cfgIdx = logicalIdx;
             strncpy(digitalCfg_[cfgIdx].name, def.id, sizeof(digitalCfg_[cfgIdx].name) - 1);
             digitalCfg_[cfgIdx].name[sizeof(digitalCfg_[cfgIdx].name) - 1] = '\0';
-            digitalCfg_[cfgIdx].pin = def.pin;
+            digitalCfg_[cfgIdx].bindingPort = def.bindingPort;
             digitalCfg_[cfgIdx].activeHigh = def.activeHigh;
             digitalCfg_[cfgIdx].initialOn = def.initialOn;
             digitalCfg_[cfgIdx].momentary = def.momentary;
@@ -616,7 +620,7 @@ bool IOModule::tickFastAds_(void* ctx, uint32_t nowMs)
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
-        uint8_t src = self->analogSlots_[i].def.source;
+        uint8_t src = self->analogSlots_[i].source;
         if (src == IO_SRC_ADS_INTERNAL_SINGLE || src == IO_SRC_ADS_EXTERNAL_DIFF) {
             self->processAnalogDefinition_(i, nowMs);
         }
@@ -634,7 +638,7 @@ bool IOModule::tickSlowDs_(void* ctx, uint32_t nowMs)
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
-        uint8_t src = self->analogSlots_[i].def.source;
+        uint8_t src = self->analogSlots_[i].source;
         if (src == IO_SRC_DS18_WATER || src == IO_SRC_DS18_AIR) {
             self->processAnalogDefinition_(i, nowMs);
         }
@@ -672,13 +676,13 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     AnalogSlot& slot = analogSlots_[idx];
     if (!slot.used || !slot.endpoint) return false;
 
-    const IOAnalogProvider* provider = analogProviderForSource_(slot.def.source);
+    const IOAnalogProvider* provider = analogProviderForSource_(slot.source);
     if (!provider || !provider->isBound()) return false;
 
     IOAnalogSample sample{};
-    if (!provider->readSample(slot.def.channel, sample)) {
+    if (!provider->readSample(slot.channel, sample)) {
         const bool isDsSource =
-            (slot.def.source == IO_SRC_DS18_WATER) || (slot.def.source == IO_SRC_DS18_AIR);
+            (slot.source == IO_SRC_DS18_WATER) || (slot.source == IO_SRC_DS18_AIR);
         if (isDsSource) {
             // Surface DS18 disconnect/failure once on transition to invalid; keep timestamp stable while invalid.
             if (slot.lastRoundedValid) {
@@ -700,29 +704,20 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
         slot.lastAdsSampleSeqValid = true;
     }
 
-    if (raw < slot.def.minValid || raw > slot.def.maxValid) {
-        // Transition to invalid only once; avoid timestamp churn while value stays unavailable.
-        if (slot.lastRoundedValid) {
-            slot.endpoint->update(raw, false, nowMs);
-            slot.lastRoundedValid = false;
-        }
-        return false;
-    }
-
     float filtered = slot.median.update(raw);
     float calibrated = (slot.def.c0 * filtered) + slot.def.c1;
     float rounded = ioRoundToPrecision(calibrated, slot.def.precision);
 
     // Trace pH/ORP/PSI calculation chain with configurable periodic ticker.
-    bool isAdsSource = (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) ||
-                       (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF);
+    bool isAdsSource = (slot.source == IO_SRC_ADS_INTERNAL_SINGLE) ||
+                       (slot.source == IO_SRC_ADS_EXTERNAL_DIFF);
     if (cfgData_.traceEnabled && isAdsSource && idx < 3) {
         uint32_t periodMs =
             (cfgData_.tracePeriodMs > 0) ? (uint32_t)cfgData_.tracePeriodMs : Limits::IoTracePeriodMs;
         uint32_t& lastMs = analogCalcLogLastMs_[idx];
         if (lastMs == 0U || (uint32_t)(nowMs - lastMs) >= periodMs) {
             const char* sensor = (idx == 0) ? "ORP" : ((idx == 1) ? "pH" : "PSI");
-            const char sourceMark = (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) ? 'I' : 'E';
+            const char sourceMark = (slot.source == IO_SRC_ADS_INTERNAL_SINGLE) ? 'I' : 'E';
             LOGI("Calc %c %-3s raw_bin=%7d raw_V=%10.6f median_V=%10.6f coeff=%9.3f rounded=%9.3f",
                  sourceMark,
                  sensor,
@@ -772,14 +767,17 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
             return false;
         }
 
-        const bool changed = (!slot.lastValid) || (slot.lastCount != count);
+        const int32_t totalCount = slot.counterPersistedTotal + count;
+        (void)persistCounterTotalIfNeeded_(slot, totalCount);
+
+        const bool changed = (!slot.lastValid) || (slot.lastCount != totalCount);
         if (changed) {
-            inputEp->updateCount(count, true, nowMs);
-            slot.lastCount = count;
+            inputEp->updateCount(totalCount, true, nowMs);
+            slot.lastCount = totalCount;
             slot.lastValid = true;
             markIoCycleChanged_(slot.ioId);
             if (slot.inDef.onCounterChanged) {
-                slot.inDef.onCounterChanged(slot.inDef.onCounterCtx, count);
+                slot.inDef.onCounterChanged(slot.inDef.onCounterCtx, totalCount);
             }
         }
         return true;
@@ -938,8 +936,8 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         outMeta->valueType = (s.kind == DIGITAL_SLOT_OUTPUT)
             ? IO_VAL_BOOL
             : ((s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_INT32 : IO_VAL_BOOL);
-        outMeta->backend = IO_BACKEND_GPIO;
-        outMeta->channel = (s.kind == DIGITAL_SLOT_OUTPUT) ? s.outDef.pin : s.inDef.pin;
+        outMeta->backend = s.backend;
+        outMeta->channel = s.channel;
         outMeta->capabilities = (s.kind == DIGITAL_SLOT_OUTPUT) ? (IO_CAP_R | IO_CAP_W) : IO_CAP_R;
 
         const char* name = nullptr;
@@ -967,13 +965,11 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         outMeta->kind = IO_KIND_ANALOG_IN;
         outMeta->valueType = IO_VAL_FLOAT;
         outMeta->capabilities = IO_CAP_R;
-        outMeta->channel = s.def.channel;
-        if (s.def.source == IO_SRC_ADS_INTERNAL_SINGLE) outMeta->backend = IO_BACKEND_ADS1115_INT;
-        else if (s.def.source == IO_SRC_ADS_EXTERNAL_DIFF) outMeta->backend = IO_BACKEND_ADS1115_EXT_DIFF;
-        else outMeta->backend = IO_BACKEND_DS18B20;
+        outMeta->channel = s.channel;
+        outMeta->backend = s.backend;
         outMeta->precision = s.def.precision;
-        outMeta->minValid = s.def.minValid;
-        outMeta->maxValid = s.def.maxValid;
+        outMeta->minValid = 0.0f;
+        outMeta->maxValid = 0.0f;
 
         const char* name = (analogIdx < ANALOG_CFG_SLOTS) ? analogCfg_[analogIdx].name : nullptr;
         if (!name || name[0] == '\0') name = s.def.id;
@@ -1200,6 +1196,137 @@ uint8_t IOModule::pcfLogicalFromPhysical_(uint8_t physicalMask) const
     return cfgData_.pcfActiveLow ? (uint8_t)~physicalMask : physicalMask;
 }
 
+const IOBindingPortSpec* IOModule::bindingPortSpec_(PhysicalPortId portId) const
+{
+    if (portId == IO_PORT_INVALID || !bindingPorts_ || bindingPortCount_ == 0) return nullptr;
+    for (uint8_t i = 0; i < bindingPortCount_; ++i) {
+        if (bindingPorts_[i].portId == portId) return &bindingPorts_[i];
+    }
+    return nullptr;
+}
+
+bool IOModule::resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, uint8_t& channelOut, uint8_t& backendOut) const
+{
+    const IOBindingPortSpec* spec = bindingPortSpec_(portId);
+    if (!spec) return false;
+
+    switch (spec->kind) {
+        case IO_PORT_KIND_ADS_INTERNAL_SINGLE:
+            sourceOut = IO_SRC_ADS_INTERNAL_SINGLE;
+            channelOut = spec->param0;
+            backendOut = IO_BACKEND_ADS1115_INT;
+            return true;
+        case IO_PORT_KIND_ADS_EXTERNAL_DIFF:
+            sourceOut = IO_SRC_ADS_EXTERNAL_DIFF;
+            channelOut = spec->param0;
+            backendOut = IO_BACKEND_ADS1115_EXT_DIFF;
+            return true;
+        case IO_PORT_KIND_DS18_WATER:
+            sourceOut = IO_SRC_DS18_WATER;
+            channelOut = 0U;
+            backendOut = IO_BACKEND_DS18B20;
+            return true;
+        case IO_PORT_KIND_DS18_AIR:
+            sourceOut = IO_SRC_DS18_AIR;
+            channelOut = 0U;
+            backendOut = IO_BACKEND_DS18B20;
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IOModule::resolveDigitalInputBinding_(PhysicalPortId portId, uint8_t& pinOut, uint8_t& backendOut, uint8_t& channelOut) const
+{
+    const IOBindingPortSpec* spec = bindingPortSpec_(portId);
+    if (!spec) return false;
+    if (spec->kind != IO_PORT_KIND_GPIO_INPUT) return false;
+
+    pinOut = spec->param0;
+    backendOut = IO_BACKEND_GPIO;
+    channelOut = spec->param0;
+    return true;
+}
+
+bool IOModule::resolveDigitalOutputBinding_(PhysicalPortId portId,
+                                            uint8_t& pinOut,
+                                            uint8_t& backendOut,
+                                            uint8_t& channelOut,
+                                            bool& usesPcfOut) const
+{
+    const IOBindingPortSpec* spec = bindingPortSpec_(portId);
+    if (!spec) return false;
+
+    if (spec->kind == IO_PORT_KIND_GPIO_OUTPUT) {
+        pinOut = spec->param0;
+        backendOut = IO_BACKEND_GPIO;
+        channelOut = spec->param0;
+        usesPcfOut = false;
+        return true;
+    }
+    if (spec->kind == IO_PORT_KIND_PCF8574_OUTPUT) {
+        pinOut = 0U;
+        backendOut = IO_BACKEND_PCF8574;
+        channelOut = spec->param0;
+        usesPcfOut = true;
+        return true;
+    }
+    return false;
+}
+
+bool IOModule::resolveDsBusAddress_(OneWireBus* bus, const char* runtimeKey, uint8_t outAddr[8])
+{
+    if (!bus || !runtimeKey || !outAddr) return false;
+
+    bus->begin();
+
+    size_t len = 0U;
+    if (cfgStore_ && cfgStore_->readRuntimeBlob(runtimeKey, outAddr, 8U, &len) && len == 8U) {
+        return true;
+    }
+
+    if (bus->deviceCount() != 1U) return false;
+    if (!bus->getAddress(0, outAddr)) return false;
+
+    if (cfgStore_) {
+        (void)cfgStore_->writeRuntimeBlob(runtimeKey, outAddr, 8U);
+    }
+    return true;
+}
+
+bool IOModule::loadCounterPersistedTotal_(uint8_t logicalIdx, int32_t& totalOut) const
+{
+    if (!cfgStore_) return false;
+
+    char key[16];
+    snprintf(key, sizeof(key), NvsKeys::Io::CounterRuntimeFmt, (unsigned)logicalIdx);
+    size_t len = 0U;
+    int32_t stored = 0;
+    if (!cfgStore_->readRuntimeBlob(key, &stored, sizeof(stored), &len) || len != sizeof(stored)) {
+        return false;
+    }
+    totalOut = stored;
+    return true;
+}
+
+bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t totalCount)
+{
+    static constexpr int32_t kCounterPersistPulseDelta = 32;
+
+    if (!cfgStore_) return false;
+    if (slot.kind != DIGITAL_SLOT_INPUT || slot.inDef.mode != IO_DIGITAL_INPUT_COUNTER) return false;
+    if (totalCount < slot.counterLastFlushedTotal) return false;
+    if ((totalCount - slot.counterLastFlushedTotal) < kCounterPersistPulseDelta) return false;
+
+    char key[16];
+    snprintf(key, sizeof(key), NvsKeys::Io::CounterRuntimeFmt, (unsigned)slot.logicalIdx);
+    if (!cfgStore_->writeRuntimeBlob(key, &totalCount, sizeof(totalCount))) {
+        return false;
+    }
+    slot.counterLastFlushedTotal = totalCount;
+    return true;
+}
+
 bool IOModule::configureRuntime_()
 {
     if (runtimeReady_) return true;
@@ -1220,28 +1347,43 @@ bool IOModule::configureRuntime_()
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!analogSlots_[i].used) continue;
         analogSlots_[i].ioId = (IoId)(IO_ID_AI_BASE + i);
+        analogSlots_[i].source = 0xFFu;
+        analogSlots_[i].channel = 0U;
+        analogSlots_[i].backend = IO_BACKEND_GPIO;
 
         if (i < ANALOG_CFG_SLOTS) {
             snprintf(analogSlots_[i].def.id, sizeof(analogSlots_[i].def.id), "a%u", (unsigned)i);
-            analogSlots_[i].def.source = analogCfg_[i].source;
-            analogSlots_[i].def.channel = analogCfg_[i].channel;
+            analogSlots_[i].def.bindingPort = analogCfg_[i].bindingPort;
             analogSlots_[i].def.c0 = analogCfg_[i].c0;
             analogSlots_[i].def.c1 = analogCfg_[i].c1;
             analogSlots_[i].def.precision = analogCfg_[i].precision;
-            analogSlots_[i].def.minValid = analogCfg_[i].minValid;
-            analogSlots_[i].def.maxValid = analogCfg_[i].maxValid;
 
-            if (i < 3) {
-                LOGI("Analog map %s source=%u channel=%u", analogSlots_[i].def.id,
-                     (unsigned)analogSlots_[i].def.source,
-                     (unsigned)analogSlots_[i].def.channel);
+            uint8_t source = 0xFFu;
+            uint8_t channel = 0U;
+            uint8_t backend = IO_BACKEND_GPIO;
+            if (resolveAnalogBinding_(analogSlots_[i].def.bindingPort, source, channel, backend)) {
+                analogSlots_[i].source = source;
+                analogSlots_[i].channel = channel;
+                analogSlots_[i].backend = backend;
+            } else {
+                LOGW("Analog %s unresolved binding_port=%u",
+                     analogSlots_[i].def.id,
+                     (unsigned)analogSlots_[i].def.bindingPort);
+            }
+
+            if (i < 3 && analogSlots_[i].source != 0xFFu) {
+                LOGI("Analog map %s binding_port=%u source=%u channel=%u",
+                     analogSlots_[i].def.id,
+                     (unsigned)analogSlots_[i].def.bindingPort,
+                     (unsigned)analogSlots_[i].source,
+                     (unsigned)analogSlots_[i].channel);
             }
         }
 
-        if (analogSlots_[i].def.source == IO_SRC_ADS_INTERNAL_SINGLE) needAdsInternal = true;
-        else if (analogSlots_[i].def.source == IO_SRC_ADS_EXTERNAL_DIFF) needAdsExternal = true;
-        else if (analogSlots_[i].def.source == IO_SRC_DS18_WATER) needDsWater = true;
-        else if (analogSlots_[i].def.source == IO_SRC_DS18_AIR) needDsAir = true;
+        if (analogSlots_[i].source == IO_SRC_ADS_INTERNAL_SINGLE) needAdsInternal = true;
+        else if (analogSlots_[i].source == IO_SRC_ADS_EXTERNAL_DIFF) needAdsExternal = true;
+        else if (analogSlots_[i].source == IO_SRC_DS18_WATER) needDsWater = true;
+        else if (analogSlots_[i].source == IO_SRC_DS18_AIR) needDsAir = true;
 
         analogSlots_[i].endpoint = allocAnalogEndpoint_(analogSlots_[i].def.id);
         if (!analogSlots_[i].endpoint) continue;
@@ -1263,23 +1405,36 @@ bool IOModule::configureRuntime_()
                     strncpy(s.inDef.id, digitalInCfg_[cfgIdx].name, sizeof(s.inDef.id) - 1);
                     s.inDef.id[sizeof(s.inDef.id) - 1] = '\0';
                 }
-                if (digitalInCfg_[cfgIdx].pin != 0) s.inDef.pin = digitalInCfg_[cfgIdx].pin;
+                s.inDef.bindingPort = digitalInCfg_[cfgIdx].bindingPort;
                 s.inDef.activeHigh = digitalInCfg_[cfgIdx].activeHigh;
                 uint8_t pull = digitalInCfg_[cfgIdx].pullMode;
                 if (pull > IO_PULL_DOWN) pull = IO_PULL_NONE;
                 s.inDef.pullMode = pull;
                 s.inDef.mode = digitalInCfg_[cfgIdx].mode;
+                s.inDef.edgeMode = digitalInCfg_[cfgIdx].edgeMode;
                 s.inDef.counterDebounceUs = digitalInCfg_[cfgIdx].counterDebounceUs;
             }
 
             snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
+            uint8_t pin = 0U;
+            uint8_t backend = IO_BACKEND_GPIO;
+            uint8_t channel = 0U;
+            if (!resolveDigitalInputBinding_(s.inDef.bindingPort, pin, backend, channel)) {
+                LOGW("Digital input %s unresolved binding_port=%u",
+                     s.endpointId,
+                     (unsigned)s.inDef.bindingPort);
+                continue;
+            }
+            s.backend = backend;
+            s.channel = channel;
             IDigitalCounterDriver* driver = allocGpioDriver_(
                 s.endpointId,
-                s.inDef.pin,
+                pin,
                 false,
                 s.inDef.activeHigh,
                 s.inDef.pullMode,
                 s.inDef.mode == IO_DIGITAL_INPUT_COUNTER,
+                s.inDef.edgeMode,
                 s.inDef.counterDebounceUs
             );
             if (!driver) continue;
@@ -1290,6 +1445,13 @@ bool IOModule::configureRuntime_()
             const uint8_t valueType = (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_EP_VALUE_INT32 : IO_EP_VALUE_BOOL;
             s.endpoint = allocDigitalSensorEndpoint_(s.endpointId, valueType);
             if (!s.endpoint) continue;
+            if (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
+                int32_t persistedTotal = 0;
+                if (loadCounterPersistedTotal_(s.logicalIdx, persistedTotal)) {
+                    s.counterPersistedTotal = persistedTotal;
+                    s.counterLastFlushedTotal = persistedTotal;
+                }
+            }
             registry_.add(s.endpoint);
             (void)processDigitalInputDefinition_(i, millis());
             continue;
@@ -1298,7 +1460,7 @@ bool IOModule::configureRuntime_()
         const uint8_t cfgIdx = s.logicalIdx;
         if (cfgIdx < DIGITAL_CFG_SLOTS) {
             snprintf(s.outDef.id, sizeof(s.outDef.id), "d%u", (unsigned)cfgIdx);
-            if (digitalCfg_[cfgIdx].pin != 0) s.outDef.pin = digitalCfg_[cfgIdx].pin;
+            s.outDef.bindingPort = digitalCfg_[cfgIdx].bindingPort;
             s.outDef.activeHigh = digitalCfg_[cfgIdx].activeHigh;
             s.outDef.initialOn = digitalCfg_[cfgIdx].initialOn;
             s.outDef.momentary = digitalCfg_[cfgIdx].momentary;
@@ -1313,7 +1475,42 @@ bool IOModule::configureRuntime_()
         strncpy(s.endpointId, s.outDef.id, sizeof(s.endpointId) - 1);
         s.endpointId[sizeof(s.endpointId) - 1] = '\0';
 
-        IDigitalPinDriver* driver = allocGpioDriver_(s.outDef.id, s.outDef.pin, true, s.outDef.activeHigh);
+        uint8_t pin = 0U;
+        uint8_t backend = IO_BACKEND_GPIO;
+        uint8_t channel = 0U;
+        bool usesPcfOut = false;
+        if (!resolveDigitalOutputBinding_(s.outDef.bindingPort, pin, backend, channel, usesPcfOut)) {
+            LOGW("Digital output %s unresolved binding_port=%u",
+                 s.endpointId,
+                 (unsigned)s.outDef.bindingPort);
+            continue;
+        }
+        s.backend = backend;
+        s.channel = channel;
+
+        IDigitalPinDriver* driver = nullptr;
+        if (usesPcfOut) {
+            if (!cfgData_.pcfEnabled) {
+                LOGW("Digital output %s requires PCF8574 but module is disabled", s.endpointId);
+                continue;
+            }
+            if (!pcfDriver_) {
+                IMaskOutputDriver* pcfMaskDriver = allocPcfDriver_("pcf8574", &i2cBus_, cfgData_.pcfAddress);
+                if (!pcfMaskDriver) {
+                    LOGW("PCF8574 pool exhausted");
+                    continue;
+                }
+                pcfDriver_ = static_cast<Pcf8574Driver*>(pcfMaskDriver);
+                if (!makeMaskProvider(pcfDriver_).begin()) {
+                    LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
+                    pcfDriver_ = nullptr;
+                    continue;
+                }
+            }
+            driver = allocPcfBitDriver_(s.outDef.id, pcfDriver_, channel, s.outDef.activeHigh);
+        } else {
+            driver = allocGpioDriver_(s.outDef.id, pin, true, s.outDef.activeHigh);
+        }
         if (!driver) continue;
 
         s.provider = makeDigitalProvider(driver);
@@ -1377,8 +1574,8 @@ bool IOModule::configureRuntime_()
     dsCfg.conversionWaitMs = 750;
 
     if (needDsWater && oneWireWater_) {
-        oneWireWater_->begin();
-        if (oneWireWater_->getAddress(0, oneWireWaterAddr_)) {
+        oneWireWaterAddrValid_ = resolveDsBusAddress_(oneWireWater_, NvsKeys::Io::DsRomWater, oneWireWaterAddr_);
+        if (oneWireWaterAddrValid_) {
             IAnalogSourceDriver* driver = allocDsDriver_("ds18_water", oneWireWater_, oneWireWaterAddr_, dsCfg);
             if (driver) {
                 dsWaterProvider_ = makeAnalogProvider(driver);
@@ -1387,13 +1584,13 @@ bool IOModule::configureRuntime_()
                 LOGW("DS18 water pool exhausted");
             }
         } else {
-            LOGW("No DS18B20 found on water OneWire bus");
+            LOGW("No resolvable DS18B20 found on water OneWire bus");
         }
     }
 
     if (needDsAir && oneWireAir_) {
-        oneWireAir_->begin();
-        if (oneWireAir_->getAddress(0, oneWireAirAddr_)) {
+        oneWireAirAddrValid_ = resolveDsBusAddress_(oneWireAir_, NvsKeys::Io::DsRomAir, oneWireAirAddr_);
+        if (oneWireAirAddrValid_) {
             IAnalogSourceDriver* driver = allocDsDriver_("ds18_air", oneWireAir_, oneWireAirAddr_, dsCfg);
             if (driver) {
                 dsAirProvider_ = makeAnalogProvider(driver);
@@ -1402,18 +1599,26 @@ bool IOModule::configureRuntime_()
                 LOGW("DS18 air pool exhausted");
             }
         } else {
-            LOGW("No DS18B20 found on air OneWire bus");
+            LOGW("No resolvable DS18B20 found on air OneWire bus");
         }
     }
 
     if (cfgData_.pcfEnabled) {
-        IMaskOutputDriver* driver = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
+        IMaskOutputDriver* driver = pcfDriver_ ? static_cast<IMaskOutputDriver*>(pcfDriver_)
+                                               : allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
         if (!driver) {
             LOGW("PCF8574 pool exhausted");
-        } else
-        if (!makeMaskProvider(driver).begin()) {
-            LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
         } else {
+            if (!pcfDriver_) {
+                pcfDriver_ = static_cast<Pcf8574Driver*>(driver);
+                if (!makeMaskProvider(driver).begin()) {
+                    LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
+                    pcfDriver_ = nullptr;
+                    driver = nullptr;
+                }
+            }
+        }
+        if (driver) {
             ledMaskProvider_ = makeMaskProvider(driver);
             ledMaskEp_ = allocMaskEndpoint_(
                 "status_leds_mask",
@@ -1506,12 +1711,13 @@ IDigitalCounterDriver* IOModule::allocGpioDriver_(const char* driverId,
                                                   bool activeHigh,
                                                   uint8_t inputPullMode,
                                                   bool counterEnabled,
+                                                  uint8_t edgeMode,
                                                   uint32_t counterDebounceUs)
 {
     if (counterEnabled && !output) {
         if (gpioCounterDriverPoolUsed_ >= MAX_DIGITAL_INPUTS) return nullptr;
         void* mem = gpioCounterDriverPool_[gpioCounterDriverPoolUsed_++];
-        return new (mem) GpioCounterDriver(driverId, pin, activeHigh, inputPullMode, counterDebounceUs);
+        return new (mem) GpioCounterDriver(driverId, pin, activeHigh, inputPullMode, edgeMode, counterDebounceUs);
     }
 
     if (gpioDriverPoolUsed_ >= MAX_DIGITAL_SLOTS) return nullptr;
@@ -1531,6 +1737,13 @@ IAnalogSourceDriver* IOModule::allocDsDriver_(const char* driverId, OneWireBus* 
     if (dsDriverPoolUsed_ >= 2) return nullptr;
     void* mem = dsDriverPool_[dsDriverPoolUsed_++];
     return new (mem) Ds18b20Driver(driverId, bus, address, cfg);
+}
+
+IDigitalPinDriver* IOModule::allocPcfBitDriver_(const char* driverId, Pcf8574Driver* parent, uint8_t bit, bool activeHigh)
+{
+    if (pcfBitDriverPoolUsed_ >= MAX_DIGITAL_OUTPUTS) return nullptr;
+    void* mem = pcfBitDriverPool_[pcfBitDriverPoolUsed_++];
+    return new (mem) Pcf8574BitDriver(driverId, parent, bit, activeHigh);
 }
 
 IMaskOutputDriver* IOModule::allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address)
@@ -1585,6 +1798,7 @@ bool IOModule::endpointIndexFromId_(const char* id, uint8_t& idxOut) const
 void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Io;
+    cfgStore_ = &cfg;
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
     const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
@@ -1612,37 +1826,33 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(traceEnabledVar_, kCfgModuleId, kCfgBranchIoDebug);
     cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchIoDebug);
 
-    cfg.registerVar(a0NameVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0SourceVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0ChannelVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0C0Var_, kCfgModuleId, kCfgBranchIoA0);
-    cfg.registerVar(a0C1Var_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0PrecVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0MinVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0MaxVar_, kCfgModuleId, kCfgBranchIoA0);
+    cfg.registerVar(a0NameVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0BindingVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0C0Var_, kCfgModuleId, kCfgBranchIoA0);
+    cfg.registerVar(a0C1Var_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0PrecVar_, kCfgModuleId, kCfgBranchIoA0);
+    cfg.registerVar(a1NameVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1BindingVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1C0Var_, kCfgModuleId, kCfgBranchIoA1);
+    cfg.registerVar(a1C1Var_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1PrecVar_, kCfgModuleId, kCfgBranchIoA1);
+    cfg.registerVar(a2NameVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2BindingVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2C0Var_, kCfgModuleId, kCfgBranchIoA2);
+    cfg.registerVar(a2C1Var_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2PrecVar_, kCfgModuleId, kCfgBranchIoA2);
+    cfg.registerVar(a3NameVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3BindingVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3C0Var_, kCfgModuleId, kCfgBranchIoA3);
+    cfg.registerVar(a3C1Var_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3PrecVar_, kCfgModuleId, kCfgBranchIoA3);
+    cfg.registerVar(a4NameVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4BindingVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4C0Var_, kCfgModuleId, kCfgBranchIoA4);
+    cfg.registerVar(a4C1Var_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4PrecVar_, kCfgModuleId, kCfgBranchIoA4);
+    cfg.registerVar(a5NameVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5BindingVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5C0Var_, kCfgModuleId, kCfgBranchIoA5);
+    cfg.registerVar(a5C1Var_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5PrecVar_, kCfgModuleId, kCfgBranchIoA5);
 
-    cfg.registerVar(a1NameVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1SourceVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1ChannelVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1C0Var_, kCfgModuleId, kCfgBranchIoA1);
-    cfg.registerVar(a1C1Var_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1PrecVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1MinVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1MaxVar_, kCfgModuleId, kCfgBranchIoA1);
+    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0BindingVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0EdgeModeVar_, kCfgModuleId, kCfgBranchIoI0);
+    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1BindingVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1EdgeModeVar_, kCfgModuleId, kCfgBranchIoI1);
+    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2BindingVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2EdgeModeVar_, kCfgModuleId, kCfgBranchIoI2);
+    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3BindingVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3EdgeModeVar_, kCfgModuleId, kCfgBranchIoI3);
+    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4BindingVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4EdgeModeVar_, kCfgModuleId, kCfgBranchIoI4);
 
-    cfg.registerVar(a2NameVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2SourceVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2ChannelVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2C0Var_, kCfgModuleId, kCfgBranchIoA2);
-    cfg.registerVar(a2C1Var_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2PrecVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2MinVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2MaxVar_, kCfgModuleId, kCfgBranchIoA2);
-
-    cfg.registerVar(a3NameVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3SourceVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3ChannelVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3C0Var_, kCfgModuleId, kCfgBranchIoA3);
-    cfg.registerVar(a3C1Var_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3PrecVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3MinVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3MaxVar_, kCfgModuleId, kCfgBranchIoA3);
-
-    cfg.registerVar(a4NameVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4SourceVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4ChannelVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4C0Var_, kCfgModuleId, kCfgBranchIoA4);
-    cfg.registerVar(a4C1Var_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4PrecVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MinVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MaxVar_, kCfgModuleId, kCfgBranchIoA4);
-    cfg.registerVar(a5NameVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5SourceVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5ChannelVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5C0Var_, kCfgModuleId, kCfgBranchIoA5);
-    cfg.registerVar(a5C1Var_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5PrecVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MinVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MaxVar_, kCfgModuleId, kCfgBranchIoA5);
-
-    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PinVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0);
-    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PinVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1);
-    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PinVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2);
-    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PinVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3);
-    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PinVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4);
-
-    cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PinVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
-    cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PinVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
-    cfg.registerVar(d2NameVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PinVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2ActiveHighVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2InitialOnVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2MomentaryVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PulseVar_, kCfgModuleId, kCfgBranchIoD2);
-    cfg.registerVar(d3NameVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PinVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3ActiveHighVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3InitialOnVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3MomentaryVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PulseVar_, kCfgModuleId, kCfgBranchIoD3);
-    cfg.registerVar(d4NameVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PinVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4ActiveHighVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4InitialOnVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4MomentaryVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PulseVar_, kCfgModuleId, kCfgBranchIoD4);
-    cfg.registerVar(d5NameVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PinVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5ActiveHighVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5InitialOnVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5MomentaryVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PulseVar_, kCfgModuleId, kCfgBranchIoD5);
-    cfg.registerVar(d6NameVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PinVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6ActiveHighVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6InitialOnVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6MomentaryVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PulseVar_, kCfgModuleId, kCfgBranchIoD6);
-    cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PinVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
+    cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0BindingVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
+    cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1BindingVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
+    cfg.registerVar(d2NameVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2BindingVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2ActiveHighVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2InitialOnVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2MomentaryVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PulseVar_, kCfgModuleId, kCfgBranchIoD2);
+    cfg.registerVar(d3NameVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3BindingVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3ActiveHighVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3InitialOnVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3MomentaryVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PulseVar_, kCfgModuleId, kCfgBranchIoD3);
+    cfg.registerVar(d4NameVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4BindingVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4ActiveHighVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4InitialOnVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4MomentaryVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PulseVar_, kCfgModuleId, kCfgBranchIoD4);
+    cfg.registerVar(d5NameVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5BindingVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5ActiveHighVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5InitialOnVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5MomentaryVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PulseVar_, kCfgModuleId, kCfgBranchIoD5);
+    cfg.registerVar(d6NameVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6BindingVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6ActiveHighVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6InitialOnVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6MomentaryVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PulseVar_, kCfgModuleId, kCfgBranchIoD6);
+    cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7BindingVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
 
     LOGI("I/O config registered");
     for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
@@ -1654,8 +1864,9 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     (void)logHub_;
 }
 
-void IOModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
+void IOModule::onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services)
 {
+    cfgStore_ = &cfg;
     if (!cfgMqttPubConfigured_) {
         cfgMqttPub_.configure(this,
                               kIoCfgProducerId,

@@ -7,18 +7,19 @@
 
 namespace {
 portMUX_TYPE gGpioCounterMux = portMUX_INITIALIZER_UNLOCKED;
-static constexpr uint32_t kCounterRearmInactiveUs = 5000U;
 }
 
 GpioCounterDriver::GpioCounterDriver(const char* driverId,
                                      uint8_t pin,
                                      bool activeHigh,
                                      uint8_t inputPullMode,
+                                     uint8_t edgeMode,
                                      uint32_t counterDebounceUs)
     : driverId_(driverId),
       pin_(pin),
       activeHigh_(activeHigh),
       inputPullMode_(inputPullMode),
+      edgeMode_(edgeMode),
       counterDebounceUs_(counterDebounceUs)
 {
 }
@@ -33,7 +34,6 @@ bool GpioCounterDriver::begin()
     lastLogicalState_ = activeHigh_ ? (rawLevel == HIGH) : (rawLevel == LOW);
     pulseCount_ = 0;
     lastPulseUs_ = 0;
-    lastInactiveUs_ = lastLogicalState_ ? 0U : micros();
     attachInterruptArg(pin_, &GpioCounterDriver::handleInterruptThunk_, this, CHANGE);
     return true;
 }
@@ -64,24 +64,20 @@ void IRAM_ATTR GpioCounterDriver::handleInterrupt_()
     int level = digitalRead(pin_);
     const bool logicalOn = activeHigh_ ? (level == HIGH) : (level == LOW);
     const uint32_t nowUs = micros();
+    const bool wasLogicalOn = lastLogicalState_;
+    if (logicalOn == wasLogicalOn) return;
+    lastLogicalState_ = logicalOn;
 
-    if (!logicalOn) {
-        lastLogicalState_ = false;
-        lastInactiveUs_ = nowUs;
-        return;
-    }
-
-    if (lastLogicalState_) return;
-    lastLogicalState_ = true;
+    const bool isRising = (!wasLogicalOn && logicalOn);
+    const bool isFalling = (wasLogicalOn && !logicalOn);
+    const bool shouldCount =
+        ((edgeMode_ == 1U) && isRising) ||
+        ((edgeMode_ == 0U) && isFalling) ||
+        ((edgeMode_ == 2U) && (isRising || isFalling));
+    if (!shouldCount) return;
 
     if (counterDebounceUs_ > 0 && lastPulseUs_ != 0U) {
         if ((uint32_t)(nowUs - lastPulseUs_) < counterDebounceUs_) {
-            return;
-        }
-    }
-
-    if (lastInactiveUs_ != 0U) {
-        if ((uint32_t)(nowUs - lastInactiveUs_) < kCounterRearmInactiveUs) {
             return;
         }
     }

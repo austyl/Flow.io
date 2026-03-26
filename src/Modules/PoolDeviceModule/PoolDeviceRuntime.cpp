@@ -38,49 +38,54 @@ bool isFiniteNonNegative_(float value)
 
 bool PoolDeviceModule::defineDevice(const PoolDeviceDefinition& def)
 {
-    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
-        if (slots_[i].used) continue;
-
-        PoolDeviceSlot& s = slots_[i];
-        s.used = true;
-        s.def = def;
-        snprintf(s.id, sizeof(s.id), "pd%u", (unsigned)i);
-
-        if (s.def.label[0] == '\0') {
-            strncpy(s.def.label, s.id, sizeof(s.def.label) - 1);
-            s.def.label[sizeof(s.def.label) - 1] = '\0';
-        }
-        if (s.def.ioId == IO_ID_INVALID) {
-            LOGW("Pool device %s missing ioId", s.id);
-            s.used = false;
-            return false;
-        }
-        if (s.def.maxUptimeDaySec < 0) {
-            s.def.maxUptimeDaySec = 0;
-        }
-        s.ioId = s.def.ioId;
-        s.desiredOn = false;
-        s.actualOn = false;
-        s.blockReason = POOL_DEVICE_BLOCK_NONE;
-
-        if (s.def.tankCapacityMl > 0.0f) {
-            float initial = (s.def.tankInitialMl > 0.0f) ? s.def.tankInitialMl : s.def.tankCapacityMl;
-            if (initial > s.def.tankCapacityMl) initial = s.def.tankCapacityMl;
-            if (initial < 0.0f) initial = 0.0f;
-            s.tankRemainingMl = initial;
-        } else {
-            s.tankRemainingMl = 0.0f;
-        }
-        s.dayKey = 0;
-        s.weekKey = 0;
-        s.monthKey = 0;
-        s.hasPersistedMetrics = false;
-        s.persistDirty = false;
-        s.persistImmediate = false;
-
-        return true;
+    if (def.slot >= POOL_DEVICE_MAX) {
+        LOGW("Pool device definition missing explicit valid slot");
+        return false;
     }
-    return false;
+
+    PoolDeviceSlot& s = slots_[def.slot];
+    if (s.used) {
+        LOGW("Pool device slot %u already defined", (unsigned)def.slot);
+        return false;
+    }
+
+    s.used = true;
+    s.def = def;
+    snprintf(s.id, sizeof(s.id), "pd%u", (unsigned)def.slot);
+
+    if (s.def.label[0] == '\0') {
+        strncpy(s.def.label, s.id, sizeof(s.def.label) - 1);
+        s.def.label[sizeof(s.def.label) - 1] = '\0';
+    }
+    if (s.def.ioId == IO_ID_INVALID) {
+        LOGW("Pool device %s missing ioId", s.id);
+        s.used = false;
+        return false;
+    }
+    if (s.def.maxUptimeDaySec < 0) {
+        s.def.maxUptimeDaySec = 0;
+    }
+    s.ioId = s.def.ioId;
+    s.desiredOn = false;
+    s.actualOn = false;
+    s.blockReason = POOL_DEVICE_BLOCK_NONE;
+
+    if (s.def.tankCapacityMl > 0.0f) {
+        float initial = (s.def.tankInitialMl > 0.0f) ? s.def.tankInitialMl : s.def.tankCapacityMl;
+        if (initial > s.def.tankCapacityMl) initial = s.def.tankCapacityMl;
+        if (initial < 0.0f) initial = 0.0f;
+        s.tankRemainingMl = initial;
+    } else {
+        s.tankRemainingMl = 0.0f;
+    }
+    s.dayKey = 0;
+    s.weekKey = 0;
+    s.monthKey = 0;
+    s.hasPersistedMetrics = false;
+    s.persistDirty = false;
+    s.persistImmediate = false;
+
+    return true;
 }
 
 const char* PoolDeviceModule::deviceLabel(uint8_t idx) const

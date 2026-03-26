@@ -20,6 +20,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <type_traits>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "ConfigTypes.h"
 #include "Core/BufferUsageTracker.h"
@@ -79,6 +81,12 @@ public:
     void savePersistent();
     /** @brief Erase all persistent keys in the active Preferences namespace. */
     bool erasePersistent();
+    /** @brief Read a small runtime blob guarded by the ConfigStore NVS exclusion. */
+    bool readRuntimeBlob(const char* key, void* out, size_t outLen, size_t* actualLen = nullptr);
+    /** @brief Write a small runtime blob guarded by the ConfigStore NVS exclusion. */
+    bool writeRuntimeBlob(const char* key, const void* value, size_t len);
+    /** @brief Remove one key guarded by the ConfigStore NVS exclusion. */
+    bool eraseKey(const char* key);
 
     /** @brief Serialize all registered config to JSON. */
     void toJson(char* out, size_t outLen) const;
@@ -111,11 +119,15 @@ private:
     void recordNvsWrite_(size_t bytesWritten);
     bool putInt_(const char* key, int32_t value);
     bool putUChar_(const char* key, uint8_t value);
+    bool putUShort_(const char* key, uint16_t value);
     bool putBool_(const char* key, bool value);
     bool putFloat_(const char* key, float value);
     bool putBytes_(const char* key, const void* value, size_t len);
     bool putString_(const char* key, const char* value);
     bool putUInt_(const char* key, uint32_t value);
+    void ensureMutex_();
+    bool lockPrefs_();
+    void unlockPrefs_();
 
     const ConfigMeta* findByJsonName(const char* jsonName) const;
     ConfigMeta* findByJsonName(const char* jsonName);
@@ -123,6 +135,8 @@ private:
     std::atomic<uint32_t> _nvsWriteTotal{0};
     std::atomic<uint32_t> _nvsWriteWindow{0};
     std::atomic<uint32_t> _nvsLastSummaryMs{0};
+    StaticSemaphore_t _prefsMutexBuf{};
+    SemaphoreHandle_t _prefsMutex = nullptr;
 };
 
 // -------------------------
@@ -212,6 +226,7 @@ bool ConfigStore::set(ConfigVariable<T, H>& var, const T& value)
         bool persisted = true;
         switch (var.type) {
         case ConfigType::Int32:  persisted = putInt_(var.nvsKey, *(int32_t*)var.value); break;
+        case ConfigType::UInt16: persisted = putUShort_(var.nvsKey, *(uint16_t*)var.value); break;
         case ConfigType::UInt8:  persisted = putUChar_(var.nvsKey, *(uint8_t*)var.value); break;
         case ConfigType::Bool:   persisted = putBool_(var.nvsKey, *(bool*)var.value); break;
         case ConfigType::Float:  persisted = putFloat_(var.nvsKey, *(float*)var.value); break;
@@ -238,9 +253,13 @@ void ConfigStore::loadPersistentVar(ConfigVariable<T, H>& var)
 {
     if (!_prefs || !var.value || var.persistence != ConfigPersistence::Persistent || !var.nvsKey) return;
 
+    if (!lockPrefs_()) return;
     switch (var.type) {
         case ConfigType::Int32:
             *(int32_t*)var.value = _prefs->getInt(var.nvsKey, *(int32_t*)var.value);
+            break;
+        case ConfigType::UInt16:
+            *(uint16_t*)var.value = _prefs->getUShort(var.nvsKey, *(uint16_t*)var.value);
             break;
         case ConfigType::UInt8:
             *(uint8_t*)var.value = _prefs->getUChar(var.nvsKey, *(uint8_t*)var.value);
@@ -261,6 +280,7 @@ void ConfigStore::loadPersistentVar(ConfigVariable<T, H>& var)
         default:
             break;
     }
+    unlockPrefs_();
 }
 
 template<size_t H>
@@ -283,7 +303,10 @@ bool ConfigStore::set(ConfigVariable<char, H>& var, const char* str)
     if (var.persistence == ConfigPersistence::Persistent && var.nvsKey && _prefs) {
         if (!putString_(var.nvsKey, var.value)) {
             // Keep memory and NVS consistent when persistence fails.
-            _prefs->getString(var.nvsKey, var.value, var.size);
+            if (lockPrefs_()) {
+                _prefs->getString(var.nvsKey, var.value, var.size);
+                unlockPrefs_();
+            }
             return false;
         }
     }
@@ -297,5 +320,7 @@ template<size_t H>
 void ConfigStore::loadPersistentVar(ConfigVariable<char, H>& var)
 {
     if (!_prefs || !var.value || var.persistence != ConfigPersistence::Persistent || !var.nvsKey || var.size == 0) return;
+    if (!lockPrefs_()) return;
     _prefs->getString(var.nvsKey, var.value, var.size);
+    unlockPrefs_();
 }

@@ -1,4 +1,5 @@
 #include "Profiles/FlowIO/FlowIOIoAssembly.h"
+#include "Profiles/FlowIO/FlowIOIoLayout.h"
 
 #include <Arduino.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@
 namespace {
 
 using Profiles::FlowIO::ModuleInstances;
+namespace FlowIoLayout = Profiles::FlowIO::IoLayout;
 static constexpr uint32_t kWaterCounterDebounceUs = 100000U;  // Accept at most 1 pulse every 100 ms.
 
 struct FlowIoAnalogHaSpec {
@@ -131,77 +133,22 @@ void onIoIntValue(void* ctx, int32_t value)
 
 void applyAnalogDefaultsForRole(DomainRole role, IOAnalogDefinition& def)
 {
-    switch (role) {
-        case DomainRole::OrpSensor:
-            def.source = FLOW_WIRDEF_IO_A0S;
-            def.channel = FLOW_WIRDEF_IO_A0C;
-            def.c0 = FLOW_WIRDEF_IO_A00;
-            def.c1 = FLOW_WIRDEF_IO_A01;
-            def.precision = FLOW_WIRDEF_IO_A0P;
-            def.minValid = FLOW_WIRDEF_IO_A0N;
-            def.maxValid = FLOW_WIRDEF_IO_A0X;
-            break;
-        case DomainRole::PhSensor:
-            def.source = FLOW_WIRDEF_IO_A1S;
-            def.channel = FLOW_WIRDEF_IO_A1C;
-            def.c0 = FLOW_WIRDEF_IO_A10;
-            def.c1 = FLOW_WIRDEF_IO_A11;
-            def.precision = FLOW_WIRDEF_IO_A1P;
-            def.minValid = FLOW_WIRDEF_IO_A1N;
-            def.maxValid = FLOW_WIRDEF_IO_A1X;
-            break;
-        case DomainRole::PsiSensor:
-            def.source = FLOW_WIRDEF_IO_A2S;
-            def.channel = FLOW_WIRDEF_IO_A2C;
-            def.c0 = FLOW_WIRDEF_IO_A20;
-            def.c1 = FLOW_WIRDEF_IO_A21;
-            def.precision = FLOW_WIRDEF_IO_A2P;
-            def.minValid = FLOW_WIRDEF_IO_A2N;
-            def.maxValid = FLOW_WIRDEF_IO_A2X;
-            break;
-        case DomainRole::SpareAnalog:
-            def.source = FLOW_WIRDEF_IO_A3S;
-            def.channel = FLOW_WIRDEF_IO_A3C;
-            def.c0 = FLOW_WIRDEF_IO_A30;
-            def.c1 = FLOW_WIRDEF_IO_A31;
-            def.precision = FLOW_WIRDEF_IO_A3P;
-            def.minValid = FLOW_WIRDEF_IO_A3N;
-            def.maxValid = FLOW_WIRDEF_IO_A3X;
-            break;
-        case DomainRole::WaterTemp:
-            def.source = FLOW_WIRDEF_IO_A4S;
-            def.channel = FLOW_WIRDEF_IO_A4C;
-            def.c0 = FLOW_WIRDEF_IO_A40;
-            def.c1 = FLOW_WIRDEF_IO_A41;
-            def.precision = FLOW_WIRDEF_IO_A4P;
-            def.minValid = FLOW_WIRDEF_IO_A4N;
-            def.maxValid = FLOW_WIRDEF_IO_A4X;
-            break;
-        case DomainRole::AirTemp:
-            def.source = FLOW_WIRDEF_IO_A5S;
-            def.channel = FLOW_WIRDEF_IO_A5C;
-            def.c0 = FLOW_WIRDEF_IO_A50;
-            def.c1 = FLOW_WIRDEF_IO_A51;
-            def.precision = FLOW_WIRDEF_IO_A5P;
-            def.minValid = FLOW_WIRDEF_IO_A5N;
-            def.maxValid = FLOW_WIRDEF_IO_A5X;
-            break;
-        default:
-            requireSetup(false, "unsupported analog domain role");
-            break;
-    }
+    const FlowIoLayout::AnalogRoleDefault* spec = FlowIoLayout::analogDefaultForRole(role);
+    requireSetup(spec != nullptr, "unsupported analog domain role");
+    def.bindingPort = spec->bindingPort;
+    def.c0 = spec->c0;
+    def.c1 = spec->c1;
+    def.precision = spec->precision;
 }
 
 void applyDigitalDefaultsForRole(DomainRole role, IODigitalInputDefinition& def)
 {
-    switch (role) {
-        case DomainRole::WaterCounterSensor:
-            def.mode = IO_DIGITAL_INPUT_COUNTER;
-            def.counterDebounceUs = kWaterCounterDebounceUs;
-            break;
-        default:
-            break;
-    }
+    const FlowIoLayout::DigitalInputRoleDefault* spec = FlowIoLayout::digitalInputDefaultForRole(role);
+    requireSetup(spec != nullptr, "unsupported digital input domain role");
+    def.bindingPort = spec->bindingPort;
+    def.mode = spec->mode;
+    def.edgeMode = spec->edgeMode;
+    def.counterDebounceUs = spec->debounceUs;
 }
 
 void buildAnalogValueTemplate(const IOModule& ioModule, uint8_t analogIdx, char* out, size_t outLen)
@@ -366,19 +313,16 @@ namespace FlowIO {
 
 void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
 {
-    requireSetup(ctx.board != nullptr, "missing board spec");
     requireSetup(ctx.domain != nullptr, "missing domain spec");
 
     modules.ioModule.setOneWireBuses(&modules.oneWireWater, &modules.oneWireAir);
+    modules.ioModule.setBindingPorts(
+        FlowIoLayout::kBindingPorts,
+        (uint8_t)(sizeof(FlowIoLayout::kBindingPorts) / sizeof(FlowIoLayout::kBindingPorts[0]))
+    );
 
     for (uint8_t i = 0; i < ctx.domain->sensorCount; ++i) {
         const DomainSensorPreset& preset = ctx.domain->sensors[i];
-        const DomainIoBinding* binding = findBindingByRole(*ctx.domain, preset.role);
-        requireSetup(binding != nullptr, "missing domain sensor binding");
-
-        const IoPointSpec* ioPoint = boardFindIoPoint(*ctx.board, binding->signal);
-        requireSetup(ioPoint != nullptr, "missing board sensor point");
-
         const PoolSensorBinding* compat = PoolBinding::sensorBindingBySlot(preset.legacySlot);
         requireSetup(compat != nullptr, "missing compatibility sensor binding");
 
@@ -386,7 +330,6 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
             IODigitalInputDefinition def{};
             snprintf(def.id, sizeof(def.id), "%s", compat->endpointId);
             def.ioId = compat->ioId;
-            def.pin = ioPoint->pin;
             def.activeHigh = preset.activeHigh;
             def.pullMode = preset.pullMode;
             applyDigitalDefaultsForRole(preset.role, def);
@@ -407,27 +350,21 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         requireSetup(modules.ioModule.defineAnalogInput(def), "define analog input");
     }
 
-    for (uint8_t i = 0; i < ctx.board->ioPointCount; ++i) {
-        const IoPointSpec& point = ctx.board->ioPoints[i];
-        if (point.capability != IoCapability::DigitalOut) continue;
-
-        const DomainIoBinding* binding = findBindingBySignal(*ctx.domain, point.signal);
-        requireSetup(binding != nullptr, "missing output domain binding");
-
-        const PoolDevicePreset* preset = findPoolPresetByRole(*ctx.domain, binding->role);
-        requireSetup(preset != nullptr, "missing output device preset");
-
-        const PoolIoBinding* compat = PoolBinding::ioBindingBySlot(preset->legacySlot);
+    for (uint8_t i = 0; i < ctx.domain->poolDeviceCount; ++i) {
+        const PoolDevicePreset& preset = ctx.domain->poolDevices[i];
+        const PoolIoBinding* compat = PoolBinding::ioBindingBySlot(preset.legacySlot);
         requireSetup(compat != nullptr, "missing compatibility output binding");
+        const FlowIoLayout::DigitalOutputRoleDefault* spec = FlowIoLayout::digitalOutputDefaultForRole(preset.role);
+        requireSetup(spec != nullptr, "missing output layout binding");
 
         IODigitalOutputDefinition def{};
         snprintf(def.id, sizeof(def.id), "%s", compat->objectSuffix ? compat->objectSuffix : "output");
         def.ioId = compat->ioId;
-        def.pin = point.pin;
-        def.activeHigh = false;
+        def.bindingPort = spec->bindingPort;
+        def.activeHigh = spec->activeHigh;
         def.initialOn = false;
-        def.momentary = point.momentary;
-        def.pulseMs = point.momentary ? point.pulseMs : 0;
+        def.momentary = spec->momentary;
+        def.pulseMs = spec->momentary ? spec->pulseMs : 0;
         requireSetup(modules.ioModule.defineDigitalOutput(def), "define digital output");
     }
 }

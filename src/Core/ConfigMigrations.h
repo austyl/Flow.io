@@ -12,6 +12,8 @@ constexpr uint32_t CURRENT_CFG_VERSION = 1;
 /** @brief Migration step from version 0 to 1. */
 static bool mig_0_to_1(Preferences& prefs, bool clearOnFail)
 {
+    (void)prefs;
+    (void)clearOnFail;
     // TODO migration logic
     return true; // true = OK, false = failed
 }

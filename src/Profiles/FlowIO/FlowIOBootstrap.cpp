@@ -183,6 +183,7 @@ void configurePoolDevices(const AppContext& ctx, ModuleInstances& modules)
 
         PoolDeviceDefinition def{};
         snprintf(def.label, sizeof(def.label), "%s", preset.displayName);
+        def.slot = preset.legacySlot;
         def.ioId = compat->ioId;
         def.type = preset.poolDeviceType;
         def.flowLPerHour = preset.flowLPerHour;

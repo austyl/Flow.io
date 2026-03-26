@@ -20,6 +20,27 @@ static bool strEquals(const char* a, const char* b) {
     return strcmp(a, b) == 0;
 }
 
+void ConfigStore::ensureMutex_()
+{
+    if (_prefsMutex) return;
+    _prefsMutex = xSemaphoreCreateMutexStatic(&_prefsMutexBuf);
+}
+
+bool ConfigStore::lockPrefs_()
+{
+    if (!_prefs) return false;
+    ensureMutex_();
+    if (!_prefsMutex) return false;
+    return xSemaphoreTake(_prefsMutex, portMAX_DELAY) == pdTRUE;
+}
+
+void ConfigStore::unlockPrefs_()
+{
+    if (_prefsMutex) {
+        (void)xSemaphoreGive(_prefsMutex);
+    }
+}
+
 void ConfigStore::notifyChanged(const char* nvsKey, const char* moduleName, uint8_t moduleId, uint8_t localBranchId)
 {
     if (!_eventBus || !nvsKey) return;
@@ -47,15 +68,29 @@ void ConfigStore::recordNvsWrite_(size_t bytesWritten)
 bool ConfigStore::putInt_(const char* key, int32_t value)
 {
     if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putInt(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == sizeof(int32_t);
+}
+
+bool ConfigStore::putUShort_(const char* key, uint16_t value)
+{
+    if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
+    const size_t wrote = _prefs->putUShort(key, value);
+    unlockPrefs_();
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(uint16_t);
 }
 
 bool ConfigStore::putUChar_(const char* key, uint8_t value)
 {
     if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putUChar(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == sizeof(uint8_t);
 }
@@ -63,7 +98,9 @@ bool ConfigStore::putUChar_(const char* key, uint8_t value)
 bool ConfigStore::putBool_(const char* key, bool value)
 {
     if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putBool(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == sizeof(bool);
 }
@@ -71,7 +108,9 @@ bool ConfigStore::putBool_(const char* key, bool value)
 bool ConfigStore::putFloat_(const char* key, float value)
 {
     if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putFloat(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == sizeof(float);
 }
@@ -79,7 +118,9 @@ bool ConfigStore::putFloat_(const char* key, float value)
 bool ConfigStore::putBytes_(const char* key, const void* value, size_t len)
 {
     if (!_prefs || !key || !value || len == 0) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putBytes(key, value, len);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == len;
 }
@@ -87,7 +128,9 @@ bool ConfigStore::putBytes_(const char* key, const void* value, size_t len)
 bool ConfigStore::putString_(const char* key, const char* value)
 {
     if (!_prefs || !key || !value) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putString(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return (wrote > 0U) || (value[0] == '\0');
 }
@@ -95,9 +138,37 @@ bool ConfigStore::putString_(const char* key, const char* value)
 bool ConfigStore::putUInt_(const char* key, uint32_t value)
 {
     if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
     const size_t wrote = _prefs->putUInt(key, value);
+    unlockPrefs_();
     recordNvsWrite_(wrote);
     return wrote == sizeof(uint32_t);
+}
+
+bool ConfigStore::readRuntimeBlob(const char* key, void* out, size_t outLen, size_t* actualLen)
+{
+    if (!_prefs || !key || !out || outLen == 0) return false;
+    if (!lockPrefs_()) return false;
+    const size_t storedLen = _prefs->getBytesLength(key);
+    const size_t toRead = (storedLen < outLen) ? storedLen : outLen;
+    const size_t readLen = (toRead > 0U) ? _prefs->getBytes(key, out, toRead) : 0U;
+    unlockPrefs_();
+    if (actualLen) *actualLen = storedLen;
+    return storedLen > 0U && readLen == toRead;
+}
+
+bool ConfigStore::writeRuntimeBlob(const char* key, const void* value, size_t len)
+{
+    return putBytes_(key, value, len);
+}
+
+bool ConfigStore::eraseKey(const char* key)
+{
+    if (!_prefs || !key) return false;
+    if (!lockPrefs_()) return false;
+    const bool ok = _prefs->remove(key);
+    unlockPrefs_();
+    return ok;
 }
 
 void ConfigStore::logNvsWriteSummaryIfDue(uint32_t nowMs, uint32_t periodMs)
@@ -130,6 +201,8 @@ bool ConfigStore::writePersistent(const ConfigMeta& m)
     switch (m.type) {
         case ConfigType::Int32:
             return putInt_(m.nvsKey, *(int32_t*)m.valuePtr);
+        case ConfigType::UInt16:
+            return putUShort_(m.nvsKey, *(uint16_t*)m.valuePtr);
         case ConfigType::UInt8:
             return putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr);
         case ConfigType::Bool:
@@ -148,6 +221,7 @@ bool ConfigStore::writePersistent(const ConfigMeta& m)
 void ConfigStore::loadPersistent()
 {
     if (!_prefs) return;
+    if (!lockPrefs_()) return;
 
     Log::debug(LOG_MODULE_ID, "loadPersistent: vars=%u", (unsigned)_metaCount);
     for (uint16_t i = 0; i < _metaCount; ++i) {
@@ -158,6 +232,9 @@ void ConfigStore::loadPersistent()
         switch (m.type) {
             case ConfigType::Int32:
                 *(int32_t*)m.valuePtr = _prefs->getInt(m.nvsKey, *(int32_t*)m.valuePtr);
+                break;
+            case ConfigType::UInt16:
+                *(uint16_t*)m.valuePtr = _prefs->getUShort(m.nvsKey, *(uint16_t*)m.valuePtr);
                 break;
             case ConfigType::UInt8:
                 *(uint8_t*)m.valuePtr = _prefs->getUChar(m.nvsKey, *(uint8_t*)m.valuePtr);
@@ -181,6 +258,7 @@ void ConfigStore::loadPersistent()
                 break;
         }
     }
+    unlockPrefs_();
 }
 
 void ConfigStore::savePersistent()
@@ -196,7 +274,9 @@ void ConfigStore::savePersistent()
 bool ConfigStore::erasePersistent()
 {
     if (!_prefs) return false;
+    if (!lockPrefs_()) return false;
     const bool ok = _prefs->clear();
+    unlockPrefs_();
     if (!ok) return false;
 
     _nvsWriteTotal.store(0U, std::memory_order_relaxed);
@@ -251,6 +331,9 @@ void ConfigStore::toJson(char* out, size_t outLen) const
         switch (m.type) {
             case ConfigType::Int32:
                 n = snprintf(out + pos, outLen - pos, "%ld", (long)*(int32_t*)m.valuePtr);
+                break;
+            case ConfigType::UInt16:
+                n = snprintf(out + pos, outLen - pos, "%u", (unsigned)*(uint16_t*)m.valuePtr);
                 break;
             case ConfigType::UInt8:
                 n = snprintf(out + pos, outLen - pos, "%u", (unsigned)*(uint8_t*)m.valuePtr);
@@ -329,6 +412,9 @@ bool ConfigStore::toJsonModule(const char* module,
         switch (m.type) {
             case ConfigType::Int32:
                 n = snprintf(out + pos, outLen - pos, "%ld", (long)*(int32_t*)m.valuePtr);
+                break;
+            case ConfigType::UInt16:
+                n = snprintf(out + pos, outLen - pos, "%u", (unsigned)*(uint16_t*)m.valuePtr);
                 break;
             case ConfigType::UInt8:
                 n = snprintf(out + pos, outLen - pos, "%u", (unsigned)*(uint8_t*)m.valuePtr);
@@ -458,6 +544,30 @@ bool ConfigStore::applyJson(const char* json)
             if (*(int32_t*)m.valuePtr != v) { *(int32_t*)m.valuePtr = v; changed = true; }
             break;
         }
+        case ConfigType::UInt16: {
+            uint16_t v = *(uint16_t*)m.valuePtr;
+            if (valueVar.is<uint16_t>() || valueVar.is<uint32_t>()) {
+                uint32_t u = valueVar.as<uint32_t>();
+                if (u > 65535U) u = 65535U;
+                v = (uint16_t)u;
+            } else if (valueVar.is<int32_t>()) {
+                int32_t n = valueVar.as<int32_t>();
+                if (n < 0) n = 0;
+                if (n > 65535) n = 65535;
+                v = (uint16_t)n;
+            } else if (valueVar.is<const char*>()) {
+                const char* s = valueVar.as<const char*>();
+                if (!s) break;
+                long n = strtol(s, nullptr, 10);
+                if (n < 0) n = 0;
+                if (n > 65535L) n = 65535L;
+                v = (uint16_t)n;
+            } else {
+                break;
+            }
+            if (*(uint16_t*)m.valuePtr != v) { *(uint16_t*)m.valuePtr = v; changed = true; }
+            break;
+        }
         case ConfigType::UInt8: {
             uint8_t v = *(uint8_t*)m.valuePtr;
             if (valueVar.is<uint8_t>()) {
@@ -552,6 +662,7 @@ bool ConfigStore::applyJson(const char* json)
             if (m.persistence == ConfigPersistence::Persistent && m.nvsKey && _prefs) {
                 switch (m.type) {
                 case ConfigType::Int32:     putInt_(m.nvsKey, *(int32_t*)m.valuePtr); break;
+                case ConfigType::UInt16:    putUShort_(m.nvsKey, *(uint16_t*)m.valuePtr); break;
                 case ConfigType::UInt8:     putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr); break;
                 case ConfigType::Bool:      putBool_(m.nvsKey, *(bool*)m.valuePtr); break;
                 case ConfigType::Float:     putFloat_(m.nvsKey, *(float*)m.valuePtr); break;
@@ -579,7 +690,9 @@ bool ConfigStore::runMigrations(uint32_t currentVersion,
     if (!_prefs || !steps || count == 0) return false;
     if (!versionKey) versionKey = NvsKeys::ConfigVersion;
 
+    if (!lockPrefs_()) return false;
     uint32_t storedVersion = _prefs->getUInt(versionKey, 0);
+    unlockPrefs_();
     Log::debug(LOG_MODULE_ID, "migrations: stored=%lu current=%lu",
                (unsigned long)storedVersion, (unsigned long)currentVersion);
 
@@ -607,7 +720,9 @@ bool ConfigStore::runMigrations(uint32_t currentVersion,
                     Log::warn(LOG_MODULE_ID, "migration failed: %lu -> %lu",
                               (unsigned long)s.fromVersion, (unsigned long)s.toVersion);
                     if (clearOnFail) {
+                        if (!lockPrefs_()) return false;
                         _prefs->clear();
+                        unlockPrefs_();
                         putUInt_(versionKey, 0);
                     }
                     return false;

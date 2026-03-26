@@ -28,6 +28,18 @@ bool ConfigStoreModule::erase_() {
     return registry ? registry->erasePersistent() : false;
 }
 
+bool ConfigStoreModule::readRuntimeBlob_(const char* key, void* out, size_t outLen, size_t* actualLen) {
+    return registry ? registry->readRuntimeBlob(key, out, outLen, actualLen) : false;
+}
+
+bool ConfigStoreModule::writeRuntimeBlob_(const char* key, const void* value, size_t len) {
+    return registry ? registry->writeRuntimeBlob(key, value, len) : false;
+}
+
+bool ConfigStoreModule::eraseKey_(const char* key) {
+    return registry ? registry->eraseKey(key) : false;
+}
+
 void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     registry = &cfg;
 

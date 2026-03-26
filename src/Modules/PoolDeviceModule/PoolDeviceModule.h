@@ -25,6 +25,7 @@ enum PoolDeviceType : uint8_t {
 
 struct PoolDeviceDefinition {
     char label[24] = {0};
+    uint8_t slot = 0xFF;
     /** Required IOServiceV2 digital output id bound to this pool device. */
     IoId ioId = IO_ID_INVALID;
     uint8_t type = POOL_DEVICE_RELAY_STD;

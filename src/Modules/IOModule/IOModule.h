@@ -17,6 +17,7 @@
 #include "Modules/IOModule/IODrivers/Ds18b20Driver.h"
 #include "Modules/IOModule/IODrivers/GpioCounterDriver.h"
 #include "Modules/IOModule/IODrivers/GpioDriver.h"
+#include "Modules/IOModule/IODrivers/Pcf8574BitDriver.h"
 #include "Modules/IOModule/IODrivers/Pcf8574Driver.h"
 #include "Modules/IOModule/IOEndpoints/AnalogSensorEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/DigitalActuatorEndpoint.h"
@@ -64,6 +65,7 @@ public:
     void loop() override;
 
     void setOneWireBuses(OneWireBus* water, OneWireBus* air);
+    void setBindingPorts(const IOBindingPortSpec* ports, uint8_t count);
     bool defineAnalogInput(const IOAnalogDefinition& def);
     bool defineDigitalInput(const IODigitalInputDefinition& def);
     bool defineDigitalOutput(const IODigitalOutputDefinition& def);
@@ -87,6 +89,8 @@ public:
     IORegistry& registry() { return registry_; }
 
 private:
+    struct DigitalSlot;
+
     enum RuntimeUiValueId : uint8_t {
         RuntimeUiWaterTemp = 1,
         RuntimeUiAirTemp = 2,
@@ -118,6 +122,15 @@ private:
     uint8_t pcfLogicalFromPhysical_(uint8_t physicalMask) const;
 
     bool configureRuntime_();
+    const IOBindingPortSpec* bindingPortSpec_(PhysicalPortId portId) const;
+    bool resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, uint8_t& channelOut, uint8_t& backendOut) const;
+    bool resolveDigitalInputBinding_(PhysicalPortId portId, uint8_t& pinOut, uint8_t& backendOut, uint8_t& channelOut) const;
+    bool resolveDigitalOutputBinding_(PhysicalPortId portId,
+                                      uint8_t& pinOut,
+                                      uint8_t& backendOut,
+                                      uint8_t& channelOut,
+                                      bool& usesPcfOut) const;
+    bool resolveDsBusAddress_(OneWireBus* bus, const char* runtimeKey, uint8_t outAddr[8]);
     bool runtimeSnapshotRouteFromIndex_(uint8_t snapshotIdx, uint8_t& routeTypeOut, uint8_t& slotIdxOut) const;
     bool buildEndpointSnapshot_(IOEndpoint* ep, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildGroupSnapshot_(char* out, size_t len, bool inputGroup, uint32_t& maxTsOut) const;
@@ -131,6 +144,8 @@ private:
     bool digitalLogicalUsed_(uint8_t kind, uint8_t logicalIdx) const;
     bool findDigitalSlotByLogical_(uint8_t kind, uint8_t logicalIdx, uint8_t& slotIdxOut) const;
     bool findDigitalSlotByIoId_(IoId id, uint8_t& slotIdxOut) const;
+    bool loadCounterPersistedTotal_(uint8_t logicalIdx, int32_t& totalOut) const;
+    bool persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t totalCount);
     void beginIoCycle_(uint32_t nowMs);
     void markIoCycleChanged_(IoId id);
     static bool writeDigitalOut_(void* ctx, bool on);
@@ -144,9 +159,11 @@ private:
                                             bool activeHigh,
                                             uint8_t inputPullMode = GpioDriver::PullNone,
                                             bool counterEnabled = false,
+                                            uint8_t edgeMode = IO_EDGE_RISING,
                                             uint32_t counterDebounceUs = 0);
     IAnalogSourceDriver* allocAdsDriver_(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg);
     IAnalogSourceDriver* allocDsDriver_(const char* driverId, OneWireBus* bus, const uint8_t address[8], const Ds18b20DriverConfig& cfg);
+    IDigitalPinDriver* allocPcfBitDriver_(const char* driverId, Pcf8574Driver* parent, uint8_t bit, bool activeHigh);
     IMaskOutputDriver* allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address);
     Pcf8574MaskEndpoint* allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx);
 
@@ -165,6 +182,9 @@ private:
         bool used = false;
         IoId ioId = IO_ID_INVALID;
         IOAnalogDefinition def{};
+        uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
+        uint8_t channel = 0;
+        uint8_t backend = IO_BACKEND_ADS1115_INT;
         AnalogSensorEndpoint* endpoint = nullptr;
         RunningMedianAverageFloat median{11, 5};
         bool lastAdsSampleSeqValid = false;
@@ -185,6 +205,8 @@ private:
         char endpointId[8] = {0};
         IODigitalInputDefinition inDef{};
         IODigitalOutputDefinition outDef{};
+        uint8_t backend = IO_BACKEND_GPIO;
+        uint8_t channel = 0;
         IODigitalProvider provider{};
         IOEndpoint* endpoint = nullptr;
         bool pulseArmed = false;
@@ -192,13 +214,18 @@ private:
         bool lastValid = false;
         bool lastValue = false;
         int32_t lastCount = 0;
+        int32_t counterPersistedTotal = 0;
+        int32_t counterLastFlushedTotal = 0;
     };
 
     IOModuleConfig cfgData_{};
     IOAnalogSlotConfig analogCfg_[ANALOG_CFG_SLOTS]{};
     IODigitalInputSlotConfig digitalInCfg_[MAX_DIGITAL_INPUTS]{};
     IODigitalOutputSlotConfig digitalCfg_[DIGITAL_CFG_SLOTS]{};
+    const IOBindingPortSpec* bindingPorts_ = nullptr;
+    uint8_t bindingPortCount_ = 0;
 
+    ConfigStore* cfgStore_ = nullptr;
     const LogHubService* logHub_ = nullptr;
     DataStore* dataStore_ = nullptr;
     MqttConfigRouteProducer cfgMqttPub_{};
@@ -212,6 +239,8 @@ private:
     OneWireBus* oneWireAir_ = nullptr;
     uint8_t oneWireWaterAddr_[8] = {0};
     uint8_t oneWireAirAddr_[8] = {0};
+    bool oneWireWaterAddrValid_ = false;
+    bool oneWireAirAddrValid_ = false;
 
     IOAnalogProvider adsInternalProvider_{};
     IOAnalogProvider adsExternalProvider_{};
@@ -219,6 +248,7 @@ private:
     IOAnalogProvider dsAirProvider_{};
     IOMaskProvider ledMaskProvider_{};
     Pcf8574MaskEndpoint* ledMaskEp_ = nullptr;
+    Pcf8574Driver* pcfDriver_ = nullptr;
     IOServiceV2 ioSvc_{
         ServiceBinding::bind<&IOModule::ioCount_>,
         ServiceBinding::bind<&IOModule::ioIdAt_>,
@@ -248,6 +278,7 @@ private:
     alignas(DigitalActuatorEndpoint) uint8_t digitalActuatorEndpointPool_[MAX_DIGITAL_OUTPUTS][sizeof(DigitalActuatorEndpoint)]{};
     alignas(GpioDriver) uint8_t gpioDriverPool_[MAX_DIGITAL_SLOTS][sizeof(GpioDriver)]{};
     alignas(GpioCounterDriver) uint8_t gpioCounterDriverPool_[MAX_DIGITAL_INPUTS][sizeof(GpioCounterDriver)]{};
+    alignas(Pcf8574BitDriver) uint8_t pcfBitDriverPool_[MAX_DIGITAL_OUTPUTS][sizeof(Pcf8574BitDriver)]{};
     alignas(Ads1115Driver) uint8_t adsDriverPool_[2][sizeof(Ads1115Driver)]{};
     alignas(Ds18b20Driver) uint8_t dsDriverPool_[2][sizeof(Ds18b20Driver)]{};
     alignas(Pcf8574Driver) uint8_t pcfDriverPool_[1][sizeof(Pcf8574Driver)]{};
@@ -257,6 +288,7 @@ private:
     uint8_t digitalActuatorEndpointPoolUsed_ = 0;
     uint8_t gpioDriverPoolUsed_ = 0;
     uint8_t gpioCounterDriverPoolUsed_ = 0;
+    uint8_t pcfBitDriverPoolUsed_ = 0;
     uint8_t adsDriverPoolUsed_ = 0;
     uint8_t dsDriverPoolUsed_ = 0;
     uint8_t pcfDriverPoolUsed_ = 0;
@@ -287,155 +319,122 @@ private:
     ConfigVariable<int32_t,0> tracePeriodVar_ { NVS_KEY(NvsKeys::Io::IO_TRMS),"trace_period_ms","io/debug",ConfigType::Int32,&cfgData_.tracePeriodMs,ConfigPersistence::Persistent,0 };
 
     ConfigVariable<char,0> a0NameVar_{NVS_KEY(NvsKeys::Io::IO_A0NM),"a0_name","io/input/a0",ConfigType::CharArray,(char*)analogCfg_[0].name,ConfigPersistence::Persistent,sizeof(analogCfg_[0].name)};
-    ConfigVariable<uint8_t,0> a0SourceVar_{NVS_KEY(NvsKeys::Io::IO_A0S),"a0_source","io/input/a0",ConfigType::UInt8,&analogCfg_[0].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a0ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A0C),"a0_channel","io/input/a0",ConfigType::UInt8,&analogCfg_[0].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a0BindingVar_{NVS_KEY(NvsKeys::Io::IO_A0BP),"binding_port","io/input/a0",ConfigType::UInt16,&analogCfg_[0].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a0C0Var_{NVS_KEY(NvsKeys::Io::IO_A00),"a0_c0","io/input/a0",ConfigType::Float,&analogCfg_[0].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a0C1Var_{NVS_KEY(NvsKeys::Io::IO_A01),"a0_c1","io/input/a0",ConfigType::Float,&analogCfg_[0].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a0PrecVar_{NVS_KEY(NvsKeys::Io::IO_A0P),"a0_prec","io/input/a0",ConfigType::Int32,&analogCfg_[0].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a0MinVar_{NVS_KEY(NvsKeys::Io::IO_A0N),"a0_min","io/input/a0",ConfigType::Float,&analogCfg_[0].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a0MaxVar_{NVS_KEY(NvsKeys::Io::IO_A0X),"a0_max","io/input/a0",ConfigType::Float,&analogCfg_[0].maxValid,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> a1NameVar_{NVS_KEY(NvsKeys::Io::IO_A1NM),"a1_name","io/input/a1",ConfigType::CharArray,(char*)analogCfg_[1].name,ConfigPersistence::Persistent,sizeof(analogCfg_[1].name)};
-    ConfigVariable<uint8_t,0> a1SourceVar_{NVS_KEY(NvsKeys::Io::IO_A1S),"a1_source","io/input/a1",ConfigType::UInt8,&analogCfg_[1].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a1ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A1C),"a1_channel","io/input/a1",ConfigType::UInt8,&analogCfg_[1].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a1BindingVar_{NVS_KEY(NvsKeys::Io::IO_A1BP),"binding_port","io/input/a1",ConfigType::UInt16,&analogCfg_[1].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a1C0Var_{NVS_KEY(NvsKeys::Io::IO_A10),"a1_c0","io/input/a1",ConfigType::Float,&analogCfg_[1].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a1C1Var_{NVS_KEY(NvsKeys::Io::IO_A11),"a1_c1","io/input/a1",ConfigType::Float,&analogCfg_[1].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a1PrecVar_{NVS_KEY(NvsKeys::Io::IO_A1P),"a1_prec","io/input/a1",ConfigType::Int32,&analogCfg_[1].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a1MinVar_{NVS_KEY(NvsKeys::Io::IO_A1N),"a1_min","io/input/a1",ConfigType::Float,&analogCfg_[1].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a1MaxVar_{NVS_KEY(NvsKeys::Io::IO_A1X),"a1_max","io/input/a1",ConfigType::Float,&analogCfg_[1].maxValid,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> a2NameVar_{NVS_KEY(NvsKeys::Io::IO_A2NM),"a2_name","io/input/a2",ConfigType::CharArray,(char*)analogCfg_[2].name,ConfigPersistence::Persistent,sizeof(analogCfg_[2].name)};
-    ConfigVariable<uint8_t,0> a2SourceVar_{NVS_KEY(NvsKeys::Io::IO_A2S),"a2_source","io/input/a2",ConfigType::UInt8,&analogCfg_[2].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a2ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A2C),"a2_channel","io/input/a2",ConfigType::UInt8,&analogCfg_[2].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a2BindingVar_{NVS_KEY(NvsKeys::Io::IO_A2BP),"binding_port","io/input/a2",ConfigType::UInt16,&analogCfg_[2].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a2C0Var_{NVS_KEY(NvsKeys::Io::IO_A20),"a2_c0","io/input/a2",ConfigType::Float,&analogCfg_[2].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a2C1Var_{NVS_KEY(NvsKeys::Io::IO_A21),"a2_c1","io/input/a2",ConfigType::Float,&analogCfg_[2].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a2PrecVar_{NVS_KEY(NvsKeys::Io::IO_A2P),"a2_prec","io/input/a2",ConfigType::Int32,&analogCfg_[2].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a2MinVar_{NVS_KEY(NvsKeys::Io::IO_A2N),"a2_min","io/input/a2",ConfigType::Float,&analogCfg_[2].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a2MaxVar_{NVS_KEY(NvsKeys::Io::IO_A2X),"a2_max","io/input/a2",ConfigType::Float,&analogCfg_[2].maxValid,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> a3NameVar_{NVS_KEY(NvsKeys::Io::IO_A3NM),"a3_name","io/input/a3",ConfigType::CharArray,(char*)analogCfg_[3].name,ConfigPersistence::Persistent,sizeof(analogCfg_[3].name)};
-    ConfigVariable<uint8_t,0> a3SourceVar_{NVS_KEY(NvsKeys::Io::IO_A3S),"a3_source","io/input/a3",ConfigType::UInt8,&analogCfg_[3].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a3ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A3C),"a3_channel","io/input/a3",ConfigType::UInt8,&analogCfg_[3].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a3BindingVar_{NVS_KEY(NvsKeys::Io::IO_A3BP),"binding_port","io/input/a3",ConfigType::UInt16,&analogCfg_[3].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a3C0Var_{NVS_KEY(NvsKeys::Io::IO_A30),"a3_c0","io/input/a3",ConfigType::Float,&analogCfg_[3].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a3C1Var_{NVS_KEY(NvsKeys::Io::IO_A31),"a3_c1","io/input/a3",ConfigType::Float,&analogCfg_[3].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a3PrecVar_{NVS_KEY(NvsKeys::Io::IO_A3P),"a3_prec","io/input/a3",ConfigType::Int32,&analogCfg_[3].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a3MinVar_{NVS_KEY(NvsKeys::Io::IO_A3N),"a3_min","io/input/a3",ConfigType::Float,&analogCfg_[3].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a3MaxVar_{NVS_KEY(NvsKeys::Io::IO_A3X),"a3_max","io/input/a3",ConfigType::Float,&analogCfg_[3].maxValid,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> a4NameVar_{NVS_KEY(NvsKeys::Io::IO_A4NM),"a4_name","io/input/a4",ConfigType::CharArray,(char*)analogCfg_[4].name,ConfigPersistence::Persistent,sizeof(analogCfg_[4].name)};
-    ConfigVariable<uint8_t,0> a4SourceVar_{NVS_KEY(NvsKeys::Io::IO_A4S),"a4_source","io/input/a4",ConfigType::UInt8,&analogCfg_[4].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a4ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A4C),"a4_channel","io/input/a4",ConfigType::UInt8,&analogCfg_[4].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a4BindingVar_{NVS_KEY(NvsKeys::Io::IO_A4BP),"binding_port","io/input/a4",ConfigType::UInt16,&analogCfg_[4].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a4C0Var_{NVS_KEY(NvsKeys::Io::IO_A40),"a4_c0","io/input/a4",ConfigType::Float,&analogCfg_[4].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a4C1Var_{NVS_KEY(NvsKeys::Io::IO_A41),"a4_c1","io/input/a4",ConfigType::Float,&analogCfg_[4].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a4PrecVar_{NVS_KEY(NvsKeys::Io::IO_A4P),"a4_prec","io/input/a4",ConfigType::Int32,&analogCfg_[4].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a4MinVar_{NVS_KEY(NvsKeys::Io::IO_A4N),"a4_min","io/input/a4",ConfigType::Float,&analogCfg_[4].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a4MaxVar_{NVS_KEY(NvsKeys::Io::IO_A4X),"a4_max","io/input/a4",ConfigType::Float,&analogCfg_[4].maxValid,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> a5NameVar_{NVS_KEY(NvsKeys::Io::IO_A5NM),"a5_name","io/input/a5",ConfigType::CharArray,(char*)analogCfg_[5].name,ConfigPersistence::Persistent,sizeof(analogCfg_[5].name)};
-    ConfigVariable<uint8_t,0> a5SourceVar_{NVS_KEY(NvsKeys::Io::IO_A5S),"a5_source","io/input/a5",ConfigType::UInt8,&analogCfg_[5].source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> a5ChannelVar_{NVS_KEY(NvsKeys::Io::IO_A5C),"a5_channel","io/input/a5",ConfigType::UInt8,&analogCfg_[5].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> a5BindingVar_{NVS_KEY(NvsKeys::Io::IO_A5BP),"binding_port","io/input/a5",ConfigType::UInt16,&analogCfg_[5].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a5C0Var_{NVS_KEY(NvsKeys::Io::IO_A50),"a5_c0","io/input/a5",ConfigType::Float,&analogCfg_[5].c0,ConfigPersistence::Persistent,0};
     ConfigVariable<float,0> a5C1Var_{NVS_KEY(NvsKeys::Io::IO_A51),"a5_c1","io/input/a5",ConfigType::Float,&analogCfg_[5].c1,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> a5PrecVar_{NVS_KEY(NvsKeys::Io::IO_A5P),"a5_prec","io/input/a5",ConfigType::Int32,&analogCfg_[5].precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a5MinVar_{NVS_KEY(NvsKeys::Io::IO_A5N),"a5_min","io/input/a5",ConfigType::Float,&analogCfg_[5].minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> a5MaxVar_{NVS_KEY(NvsKeys::Io::IO_A5X),"a5_max","io/input/a5",ConfigType::Float,&analogCfg_[5].maxValid,ConfigPersistence::Persistent,0};
 
-    // CFGDOC: {"label":"Nom entrée I0","help":"Nom lisible de l'entrée digitale I0."}
     ConfigVariable<char,0> i0NameVar_{NVS_KEY(NvsKeys::Io::IO_I0NM),"i0_name","io/input/i0",ConfigType::CharArray,(char*)digitalInCfg_[0].name,ConfigPersistence::Persistent,sizeof(digitalInCfg_[0].name)};
-    // CFGDOC: {"label":"GPIO entrée I0","help":"GPIO utilisée par l'entrée digitale I0."}
-    ConfigVariable<uint8_t,0> i0PinVar_{NVS_KEY(NvsKeys::Io::IO_I0PN),"i0_pin","io/input/i0",ConfigType::UInt8,&digitalInCfg_[0].pin,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Actif à 1 I0","help":"Si activé, l'entrée I0 est considérée active à l'état haut."}
+    ConfigVariable<PhysicalPortId,0> i0BindingVar_{NVS_KEY(NvsKeys::Io::IO_I0BP),"binding_port","io/input/i0",ConfigType::UInt16,&digitalInCfg_[0].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> i0ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_I0AH),"i0_active_high","io/input/i0",ConfigType::Bool,&digitalInCfg_[0].activeHigh,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Pull entrée I0","help":"Mode de résistance interne appliqué à l'entrée I0."}
     ConfigVariable<uint8_t,0> i0PullModeVar_{NVS_KEY(NvsKeys::Io::IO_I0PU),"i0_pull_mode","io/input/i0",ConfigType::UInt8,&digitalInCfg_[0].pullMode,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> i0EdgeModeVar_{NVS_KEY(NvsKeys::Io::IO_I0ED),"edge_mode","io/input/i0",ConfigType::UInt8,&digitalInCfg_[0].edgeMode,ConfigPersistence::Persistent,0};
 
-    // CFGDOC: {"label":"Nom entrée I1","help":"Nom lisible de l'entrée digitale I1."}
     ConfigVariable<char,0> i1NameVar_{NVS_KEY(NvsKeys::Io::IO_I1NM),"i1_name","io/input/i1",ConfigType::CharArray,(char*)digitalInCfg_[1].name,ConfigPersistence::Persistent,sizeof(digitalInCfg_[1].name)};
-    // CFGDOC: {"label":"GPIO entrée I1","help":"GPIO utilisée par l'entrée digitale I1."}
-    ConfigVariable<uint8_t,0> i1PinVar_{NVS_KEY(NvsKeys::Io::IO_I1PN),"i1_pin","io/input/i1",ConfigType::UInt8,&digitalInCfg_[1].pin,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Actif à 1 I1","help":"Si activé, l'entrée I1 est considérée active à l'état haut."}
+    ConfigVariable<PhysicalPortId,0> i1BindingVar_{NVS_KEY(NvsKeys::Io::IO_I1BP),"binding_port","io/input/i1",ConfigType::UInt16,&digitalInCfg_[1].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> i1ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_I1AH),"i1_active_high","io/input/i1",ConfigType::Bool,&digitalInCfg_[1].activeHigh,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Pull entrée I1","help":"Mode de résistance interne appliqué à l'entrée I1."}
     ConfigVariable<uint8_t,0> i1PullModeVar_{NVS_KEY(NvsKeys::Io::IO_I1PU),"i1_pull_mode","io/input/i1",ConfigType::UInt8,&digitalInCfg_[1].pullMode,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> i1EdgeModeVar_{NVS_KEY(NvsKeys::Io::IO_I1ED),"edge_mode","io/input/i1",ConfigType::UInt8,&digitalInCfg_[1].edgeMode,ConfigPersistence::Persistent,0};
 
-    // CFGDOC: {"label":"Nom entrée I2","help":"Nom lisible de l'entrée digitale I2."}
     ConfigVariable<char,0> i2NameVar_{NVS_KEY(NvsKeys::Io::IO_I2NM),"i2_name","io/input/i2",ConfigType::CharArray,(char*)digitalInCfg_[2].name,ConfigPersistence::Persistent,sizeof(digitalInCfg_[2].name)};
-    // CFGDOC: {"label":"GPIO entrée I2","help":"GPIO utilisée par l'entrée digitale I2."}
-    ConfigVariable<uint8_t,0> i2PinVar_{NVS_KEY(NvsKeys::Io::IO_I2PN),"i2_pin","io/input/i2",ConfigType::UInt8,&digitalInCfg_[2].pin,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Actif à 1 I2","help":"Si activé, l'entrée I2 est considérée active à l'état haut."}
+    ConfigVariable<PhysicalPortId,0> i2BindingVar_{NVS_KEY(NvsKeys::Io::IO_I2BP),"binding_port","io/input/i2",ConfigType::UInt16,&digitalInCfg_[2].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> i2ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_I2AH),"i2_active_high","io/input/i2",ConfigType::Bool,&digitalInCfg_[2].activeHigh,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Pull entrée I2","help":"Mode de résistance interne appliqué à l'entrée I2."}
     ConfigVariable<uint8_t,0> i2PullModeVar_{NVS_KEY(NvsKeys::Io::IO_I2PU),"i2_pull_mode","io/input/i2",ConfigType::UInt8,&digitalInCfg_[2].pullMode,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> i2EdgeModeVar_{NVS_KEY(NvsKeys::Io::IO_I2ED),"edge_mode","io/input/i2",ConfigType::UInt8,&digitalInCfg_[2].edgeMode,ConfigPersistence::Persistent,0};
 
-    // CFGDOC: {"label":"Nom entrée I3","help":"Nom lisible de l'entrée digitale I3."}
     ConfigVariable<char,0> i3NameVar_{NVS_KEY(NvsKeys::Io::IO_I3NM),"i3_name","io/input/i3",ConfigType::CharArray,(char*)digitalInCfg_[3].name,ConfigPersistence::Persistent,sizeof(digitalInCfg_[3].name)};
-    // CFGDOC: {"label":"GPIO entrée I3","help":"GPIO utilisée par l'entrée digitale I3."}
-    ConfigVariable<uint8_t,0> i3PinVar_{NVS_KEY(NvsKeys::Io::IO_I3PN),"i3_pin","io/input/i3",ConfigType::UInt8,&digitalInCfg_[3].pin,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Actif à 1 I3","help":"Si activé, l'entrée I3 est considérée active à l'état haut."}
+    ConfigVariable<PhysicalPortId,0> i3BindingVar_{NVS_KEY(NvsKeys::Io::IO_I3BP),"binding_port","io/input/i3",ConfigType::UInt16,&digitalInCfg_[3].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> i3ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_I3AH),"i3_active_high","io/input/i3",ConfigType::Bool,&digitalInCfg_[3].activeHigh,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Pull entrée I3","help":"Mode de résistance interne appliqué à l'entrée I3."}
     ConfigVariable<uint8_t,0> i3PullModeVar_{NVS_KEY(NvsKeys::Io::IO_I3PU),"i3_pull_mode","io/input/i3",ConfigType::UInt8,&digitalInCfg_[3].pullMode,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> i3EdgeModeVar_{NVS_KEY(NvsKeys::Io::IO_I3ED),"edge_mode","io/input/i3",ConfigType::UInt8,&digitalInCfg_[3].edgeMode,ConfigPersistence::Persistent,0};
 
-    // CFGDOC: {"label":"Nom entrée I4","help":"Nom lisible de l'entrée digitale I4."}
     ConfigVariable<char,0> i4NameVar_{NVS_KEY(NvsKeys::Io::IO_I4NM),"i4_name","io/input/i4",ConfigType::CharArray,(char*)digitalInCfg_[4].name,ConfigPersistence::Persistent,sizeof(digitalInCfg_[4].name)};
-    // CFGDOC: {"label":"GPIO entrée I4","help":"GPIO utilisée par l'entrée digitale I4."}
-    ConfigVariable<uint8_t,0> i4PinVar_{NVS_KEY(NvsKeys::Io::IO_I4PN),"i4_pin","io/input/i4",ConfigType::UInt8,&digitalInCfg_[4].pin,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Actif à 1 I4","help":"Si activé, l'entrée I4 est considérée active à l'état haut."}
+    ConfigVariable<PhysicalPortId,0> i4BindingVar_{NVS_KEY(NvsKeys::Io::IO_I4BP),"binding_port","io/input/i4",ConfigType::UInt16,&digitalInCfg_[4].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> i4ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_I4AH),"i4_active_high","io/input/i4",ConfigType::Bool,&digitalInCfg_[4].activeHigh,ConfigPersistence::Persistent,0};
-    // CFGDOC: {"label":"Pull entrée I4","help":"Mode de résistance interne appliqué à l'entrée I4."}
     ConfigVariable<uint8_t,0> i4PullModeVar_{NVS_KEY(NvsKeys::Io::IO_I4PU),"i4_pull_mode","io/input/i4",ConfigType::UInt8,&digitalInCfg_[4].pullMode,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> i4EdgeModeVar_{NVS_KEY(NvsKeys::Io::IO_I4ED),"edge_mode","io/input/i4",ConfigType::UInt8,&digitalInCfg_[4].edgeMode,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d0NameVar_{NVS_KEY(NvsKeys::Io::IO_D0NM),"d0_name","io/output/d0",ConfigType::CharArray,(char*)digitalCfg_[0].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[0].name)};
-    ConfigVariable<uint8_t,0> d0PinVar_{NVS_KEY(NvsKeys::Io::IO_D0PN),"d0_pin","io/output/d0",ConfigType::UInt8,&digitalCfg_[0].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d0BindingVar_{NVS_KEY(NvsKeys::Io::IO_D0BP),"binding_port","io/output/d0",ConfigType::UInt16,&digitalCfg_[0].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d0ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D0AH),"d0_active_high","io/output/d0",ConfigType::Bool,&digitalCfg_[0].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d0InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D0IN),"d0_initial_on","io/output/d0",ConfigType::Bool,&digitalCfg_[0].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d0MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D0MO),"d0_momentary","io/output/d0",ConfigType::Bool,&digitalCfg_[0].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d0PulseVar_{NVS_KEY(NvsKeys::Io::IO_D0PM),"d0_pulse_ms","io/output/d0",ConfigType::Int32,&digitalCfg_[0].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d1NameVar_{NVS_KEY(NvsKeys::Io::IO_D1NM),"d1_name","io/output/d1",ConfigType::CharArray,(char*)digitalCfg_[1].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[1].name)};
-    ConfigVariable<uint8_t,0> d1PinVar_{NVS_KEY(NvsKeys::Io::IO_D1PN),"d1_pin","io/output/d1",ConfigType::UInt8,&digitalCfg_[1].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d1BindingVar_{NVS_KEY(NvsKeys::Io::IO_D1BP),"binding_port","io/output/d1",ConfigType::UInt16,&digitalCfg_[1].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d1ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D1AH),"d1_active_high","io/output/d1",ConfigType::Bool,&digitalCfg_[1].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d1InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D1IN),"d1_initial_on","io/output/d1",ConfigType::Bool,&digitalCfg_[1].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d1MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D1MO),"d1_momentary","io/output/d1",ConfigType::Bool,&digitalCfg_[1].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d1PulseVar_{NVS_KEY(NvsKeys::Io::IO_D1PM),"d1_pulse_ms","io/output/d1",ConfigType::Int32,&digitalCfg_[1].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d2NameVar_{NVS_KEY(NvsKeys::Io::IO_D2NM),"d2_name","io/output/d2",ConfigType::CharArray,(char*)digitalCfg_[2].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[2].name)};
-    ConfigVariable<uint8_t,0> d2PinVar_{NVS_KEY(NvsKeys::Io::IO_D2PN),"d2_pin","io/output/d2",ConfigType::UInt8,&digitalCfg_[2].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d2BindingVar_{NVS_KEY(NvsKeys::Io::IO_D2BP),"binding_port","io/output/d2",ConfigType::UInt16,&digitalCfg_[2].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d2ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D2AH),"d2_active_high","io/output/d2",ConfigType::Bool,&digitalCfg_[2].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d2InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D2IN),"d2_initial_on","io/output/d2",ConfigType::Bool,&digitalCfg_[2].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d2MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D2MO),"d2_momentary","io/output/d2",ConfigType::Bool,&digitalCfg_[2].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d2PulseVar_{NVS_KEY(NvsKeys::Io::IO_D2PM),"d2_pulse_ms","io/output/d2",ConfigType::Int32,&digitalCfg_[2].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d3NameVar_{NVS_KEY(NvsKeys::Io::IO_D3NM),"d3_name","io/output/d3",ConfigType::CharArray,(char*)digitalCfg_[3].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[3].name)};
-    ConfigVariable<uint8_t,0> d3PinVar_{NVS_KEY(NvsKeys::Io::IO_D3PN),"d3_pin","io/output/d3",ConfigType::UInt8,&digitalCfg_[3].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d3BindingVar_{NVS_KEY(NvsKeys::Io::IO_D3BP),"binding_port","io/output/d3",ConfigType::UInt16,&digitalCfg_[3].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d3ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D3AH),"d3_active_high","io/output/d3",ConfigType::Bool,&digitalCfg_[3].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d3InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D3IN),"d3_initial_on","io/output/d3",ConfigType::Bool,&digitalCfg_[3].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d3MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D3MO),"d3_momentary","io/output/d3",ConfigType::Bool,&digitalCfg_[3].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d3PulseVar_{NVS_KEY(NvsKeys::Io::IO_D3PM),"d3_pulse_ms","io/output/d3",ConfigType::Int32,&digitalCfg_[3].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d4NameVar_{NVS_KEY(NvsKeys::Io::IO_D4NM),"d4_name","io/output/d4",ConfigType::CharArray,(char*)digitalCfg_[4].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[4].name)};
-    ConfigVariable<uint8_t,0> d4PinVar_{NVS_KEY(NvsKeys::Io::IO_D4PN),"d4_pin","io/output/d4",ConfigType::UInt8,&digitalCfg_[4].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d4BindingVar_{NVS_KEY(NvsKeys::Io::IO_D4BP),"binding_port","io/output/d4",ConfigType::UInt16,&digitalCfg_[4].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d4ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D4AH),"d4_active_high","io/output/d4",ConfigType::Bool,&digitalCfg_[4].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d4InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D4IN),"d4_initial_on","io/output/d4",ConfigType::Bool,&digitalCfg_[4].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d4MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D4MO),"d4_momentary","io/output/d4",ConfigType::Bool,&digitalCfg_[4].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d4PulseVar_{NVS_KEY(NvsKeys::Io::IO_D4PM),"d4_pulse_ms","io/output/d4",ConfigType::Int32,&digitalCfg_[4].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d5NameVar_{NVS_KEY(NvsKeys::Io::IO_D5NM),"d5_name","io/output/d5",ConfigType::CharArray,(char*)digitalCfg_[5].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[5].name)};
-    ConfigVariable<uint8_t,0> d5PinVar_{NVS_KEY(NvsKeys::Io::IO_D5PN),"d5_pin","io/output/d5",ConfigType::UInt8,&digitalCfg_[5].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d5BindingVar_{NVS_KEY(NvsKeys::Io::IO_D5BP),"binding_port","io/output/d5",ConfigType::UInt16,&digitalCfg_[5].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d5ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D5AH),"d5_active_high","io/output/d5",ConfigType::Bool,&digitalCfg_[5].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d5InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D5IN),"d5_initial_on","io/output/d5",ConfigType::Bool,&digitalCfg_[5].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d5MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D5MO),"d5_momentary","io/output/d5",ConfigType::Bool,&digitalCfg_[5].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d5PulseVar_{NVS_KEY(NvsKeys::Io::IO_D5PM),"d5_pulse_ms","io/output/d5",ConfigType::Int32,&digitalCfg_[5].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d6NameVar_{NVS_KEY(NvsKeys::Io::IO_D6NM),"d6_name","io/output/d6",ConfigType::CharArray,(char*)digitalCfg_[6].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[6].name)};
-    ConfigVariable<uint8_t,0> d6PinVar_{NVS_KEY(NvsKeys::Io::IO_D6PN),"d6_pin","io/output/d6",ConfigType::UInt8,&digitalCfg_[6].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d6BindingVar_{NVS_KEY(NvsKeys::Io::IO_D6BP),"binding_port","io/output/d6",ConfigType::UInt16,&digitalCfg_[6].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d6ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D6AH),"d6_active_high","io/output/d6",ConfigType::Bool,&digitalCfg_[6].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d6InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D6IN),"d6_initial_on","io/output/d6",ConfigType::Bool,&digitalCfg_[6].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d6MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D6MO),"d6_momentary","io/output/d6",ConfigType::Bool,&digitalCfg_[6].momentary,ConfigPersistence::Persistent,0};
     ConfigVariable<int32_t,0> d6PulseVar_{NVS_KEY(NvsKeys::Io::IO_D6PM),"d6_pulse_ms","io/output/d6",ConfigType::Int32,&digitalCfg_[6].pulseMs,ConfigPersistence::Persistent,0};
 
     ConfigVariable<char,0> d7NameVar_{NVS_KEY(NvsKeys::Io::IO_D7NM),"d7_name","io/output/d7",ConfigType::CharArray,(char*)digitalCfg_[7].name,ConfigPersistence::Persistent,sizeof(digitalCfg_[7].name)};
-    ConfigVariable<uint8_t,0> d7PinVar_{NVS_KEY(NvsKeys::Io::IO_D7PN),"d7_pin","io/output/d7",ConfigType::UInt8,&digitalCfg_[7].pin,ConfigPersistence::Persistent,0};
+    ConfigVariable<PhysicalPortId,0> d7BindingVar_{NVS_KEY(NvsKeys::Io::IO_D7BP),"binding_port","io/output/d7",ConfigType::UInt16,&digitalCfg_[7].bindingPort,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d7ActiveHighVar_{NVS_KEY(NvsKeys::Io::IO_D7AH),"d7_active_high","io/output/d7",ConfigType::Bool,&digitalCfg_[7].activeHigh,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d7InitialOnVar_{NVS_KEY(NvsKeys::Io::IO_D7IN),"d7_initial_on","io/output/d7",ConfigType::Bool,&digitalCfg_[7].initialOn,ConfigPersistence::Persistent,0};
     ConfigVariable<bool,0> d7MomentaryVar_{NVS_KEY(NvsKeys::Io::IO_D7MO),"d7_momentary","io/output/d7",ConfigType::Bool,&digitalCfg_[7].momentary,ConfigPersistence::Persistent,0};

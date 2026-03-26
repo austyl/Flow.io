@@ -91,22 +91,22 @@ private:
     static constexpr uint8_t SLOT_DAILY_RECALC = 3;
     static constexpr uint8_t SLOT_FILTR_WINDOW = 4;
 
-    static constexpr uint8_t IO_ID_PH_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].ioId;
-    static constexpr uint8_t IO_ID_ORP_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].ioId;
-    static constexpr uint8_t IO_ID_PSI_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPsi].ioId;
-    static constexpr uint8_t IO_ID_WATER_TEMP_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].ioId;
-    static constexpr uint8_t IO_ID_AIR_TEMP_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].ioId;
-    static constexpr uint8_t IO_ID_LEVEL_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPoolLevel].ioId;
-    static constexpr uint8_t IO_ID_PH_LEVEL_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPhLevel].ioId;
-    static constexpr uint8_t IO_ID_CHLORINE_LEVEL_DEFAULT =
-        (uint8_t)PoolBinding::kSensorBindings[PoolBinding::kSensorSlotChlorineLevel].ioId;
+    static constexpr IoId IO_ID_PH_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].ioId;
+    static constexpr IoId IO_ID_ORP_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].ioId;
+    static constexpr IoId IO_ID_PSI_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPsi].ioId;
+    static constexpr IoId IO_ID_WATER_TEMP_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].ioId;
+    static constexpr IoId IO_ID_AIR_TEMP_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].ioId;
+    static constexpr IoId IO_ID_LEVEL_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPoolLevel].ioId;
+    static constexpr IoId IO_ID_PH_LEVEL_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPhLevel].ioId;
+    static constexpr IoId IO_ID_CHLORINE_LEVEL_DEFAULT =
+        PoolBinding::kSensorBindings[PoolBinding::kSensorSlotChlorineLevel].ioId;
 
     // State and configuration storage
     bool enabled_ = true;
@@ -130,15 +130,14 @@ private:
     uint8_t filtrationCalcStop_ = PoolDefaults::FiltrationStopMaxHour;
 
     // Sensor IO ids for IOServiceV2 reads.
-    // Stored as uint8_t because current static id map stays <= 255.
-    uint8_t phIoId_ = IO_ID_PH_DEFAULT;
-    uint8_t orpIoId_ = IO_ID_ORP_DEFAULT;
-    uint8_t psiIoId_ = IO_ID_PSI_DEFAULT;
-    uint8_t waterTempIoId_ = IO_ID_WATER_TEMP_DEFAULT;
-    uint8_t airTempIoId_ = IO_ID_AIR_TEMP_DEFAULT;
-    uint8_t levelIoId_ = IO_ID_LEVEL_DEFAULT;
-    uint8_t phLevelIoId_ = IO_ID_PH_LEVEL_DEFAULT;
-    uint8_t chlorineLevelIoId_ = IO_ID_CHLORINE_LEVEL_DEFAULT;
+    IoId phIoId_ = IO_ID_PH_DEFAULT;
+    IoId orpIoId_ = IO_ID_ORP_DEFAULT;
+    IoId psiIoId_ = IO_ID_PSI_DEFAULT;
+    IoId waterTempIoId_ = IO_ID_WATER_TEMP_DEFAULT;
+    IoId airTempIoId_ = IO_ID_AIR_TEMP_DEFAULT;
+    IoId levelIoId_ = IO_ID_LEVEL_DEFAULT;
+    IoId phLevelIoId_ = IO_ID_PH_LEVEL_DEFAULT;
+    IoId chlorineLevelIoId_ = IO_ID_CHLORINE_LEVEL_DEFAULT;
 
     // Thresholds / delays
     float psiLowThreshold_ = 0.15f;
@@ -242,28 +241,28 @@ private:
                                            &filtrationCalcStop_, ConfigPersistence::Persistent, 0};
 
     // CFGDOC: {"label":"IO capteur pH","help":"Identifiant IO de la mesure pH."}
-    ConfigVariable<uint8_t,0> phIdVar_{NVS_KEY(NvsKeys::PoolLogic::PhIoId), "ph_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> phIdVar_{NVS_KEY(NvsKeys::PoolLogic::PhIoId), "ph_io_id", "poollogic", ConfigType::UInt16,
                                        &phIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO capteur ORP","help":"Identifiant IO de la mesure ORP."}
-    ConfigVariable<uint8_t,0> orpIdVar_{NVS_KEY(NvsKeys::PoolLogic::OrpIoId), "orp_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> orpIdVar_{NVS_KEY(NvsKeys::PoolLogic::OrpIoId), "orp_io_id", "poollogic", ConfigType::UInt16,
                                         &orpIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO pression","help":"Identifiant IO du capteur de pression."}
-    ConfigVariable<uint8_t,0> psiIdVar_{NVS_KEY(NvsKeys::PoolLogic::PsiIoId), "psi_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> psiIdVar_{NVS_KEY(NvsKeys::PoolLogic::PsiIoId), "psi_io_id", "poollogic", ConfigType::UInt16,
                                         &psiIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO température eau","help":"Identifiant IO de la sonde température eau."}
-    ConfigVariable<uint8_t,0> waterTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::WaterTempIoId), "wat_temp_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> waterTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::WaterTempIoId), "wat_temp_io_id", "poollogic", ConfigType::UInt16,
                                               &waterTempIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO température air","help":"Identifiant IO de la sonde température air."}
-    ConfigVariable<uint8_t,0> airTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::AirTempIoId), "air_temp_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> airTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::AirTempIoId), "air_temp_io_id", "poollogic", ConfigType::UInt16,
                                             &airTempIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO niveau bassin","help":"Identifiant IO de la mesure de niveau bassin."}
-    ConfigVariable<uint8_t,0> levelIdVar_{NVS_KEY(NvsKeys::PoolLogic::LevelIoId), "pool_lvl_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> levelIdVar_{NVS_KEY(NvsKeys::PoolLogic::LevelIoId), "pool_lvl_io_id", "poollogic", ConfigType::UInt16,
                                           &levelIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO niveau cuve pH","help":"Identifiant IO de l'entrée digitale niveau bas cuve pH."}
-    ConfigVariable<uint8_t,0> phLevelIdVar_{NVS_KEY(NvsKeys::PoolLogic::PhLevelIoId), "ph_lvl_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> phLevelIdVar_{NVS_KEY(NvsKeys::PoolLogic::PhLevelIoId), "ph_lvl_io_id", "poollogic", ConfigType::UInt16,
                                             &phLevelIoId_, ConfigPersistence::Persistent, 0};
     // CFGDOC: {"label":"IO niveau cuve chlore","help":"Identifiant IO de l'entrée digitale niveau bas cuve chlore."}
-    ConfigVariable<uint8_t,0> chlorineLevelIdVar_{NVS_KEY(NvsKeys::PoolLogic::ChlorineLevelIoId), "chl_lvl_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<IoId,0> chlorineLevelIdVar_{NVS_KEY(NvsKeys::PoolLogic::ChlorineLevelIoId), "chl_lvl_io_id", "poollogic", ConfigType::UInt16,
                                                   &chlorineLevelIoId_, ConfigPersistence::Persistent, 0};
 
     // CFGDOC: {"label":"Seuil pression basse","help":"Seuil de pression basse pour detection d'anomalie.","unit":"bar"}
@@ -392,8 +391,8 @@ private:
     bool writeDeviceDesired_(uint8_t deviceSlot, bool on);
     void syncDeviceState_(uint8_t deviceSlot, DeviceFsm& fsm, uint32_t nowMs, bool& turnedOnOut, bool& turnedOffOut);
     uint32_t stateUptimeSec_(const DeviceFsm& fsm, uint32_t nowMs) const;
-    bool loadAnalogSensor_(uint8_t ioId, float& out) const;
-    bool loadDigitalSensor_(uint8_t ioId, bool& out) const;
+    bool loadAnalogSensor_(IoId ioId, float& out) const;
+    bool loadDigitalSensor_(IoId ioId, bool& out) const;
     void resetTemporalPidState_(TemporalPidState& st, uint32_t nowMs);
     bool stepTemporalPid_(TemporalPidState& st,
                           float input,

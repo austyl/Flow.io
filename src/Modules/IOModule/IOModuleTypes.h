@@ -9,6 +9,9 @@
 #include "Core/Services/IIO.h"
 #include "Core/WokwiDefaultOverrides.h"
 
+typedef uint16_t PhysicalPortId;
+constexpr PhysicalPortId IO_PORT_INVALID = 0xFFFFu;
+
 struct IOModuleConfig {
     bool enabled = FLOW_WIRDEF_IO_EN;
     int32_t i2cSda = FLOW_WIRDEF_IO_SDA;
@@ -35,6 +38,28 @@ enum IOAnalogSource : uint8_t {
     IO_SRC_DS18_AIR = 3
 };
 
+enum IOBindingPortKind : uint8_t {
+    IO_PORT_KIND_NONE = 0,
+    IO_PORT_KIND_GPIO_INPUT = 1,
+    IO_PORT_KIND_GPIO_OUTPUT = 2,
+    IO_PORT_KIND_PCF8574_OUTPUT = 3,
+    IO_PORT_KIND_ADS_INTERNAL_SINGLE = 4,
+    IO_PORT_KIND_ADS_EXTERNAL_DIFF = 5,
+    IO_PORT_KIND_DS18_WATER = 6,
+    IO_PORT_KIND_DS18_AIR = 7,
+    IO_PORT_KIND_INA226 = 8,
+    IO_PORT_KIND_SHT40 = 9,
+    IO_PORT_KIND_BMP280 = 10,
+    IO_PORT_KIND_BME680 = 11
+};
+
+struct IOBindingPortSpec {
+    PhysicalPortId portId = IO_PORT_INVALID;
+    uint8_t kind = IO_PORT_KIND_NONE;
+    uint8_t param0 = 0;
+    uint8_t param1 = 0;
+};
+
 typedef void (*IOAnalogValueCallback)(void* ctx, float value);
 typedef void (*IODigitalValueCallback)(void* ctx, bool value);
 typedef void (*IODigitalCounterValueCallback)(void* ctx, int32_t value);
@@ -50,37 +75,37 @@ enum IODigitalInputMode : uint8_t {
     IO_DIGITAL_INPUT_COUNTER = 1
 };
 
+enum IODigitalEdgeMode : uint8_t {
+    IO_EDGE_FALLING = 0,
+    IO_EDGE_RISING = 1,
+    IO_EDGE_BOTH = 2
+};
+
 struct IOAnalogDefinition {
     char id[24] = {0};
     /** Required explicit AI id in [IO_ID_AI_BASE..IO_ID_AI_BASE+MAX_ANALOG_ENDPOINTS). */
     IoId ioId = IO_ID_INVALID;
-    uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
-    uint8_t channel = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     float c0 = 1.0f;
     float c1 = 0.0f;
     int32_t precision = 1;
-    float minValid = -32768.0f;
-    float maxValid = 32767.0f;
     IOAnalogValueCallback onValueChanged = nullptr;
     void* onValueCtx = nullptr;
 };
 
 struct IOAnalogSlotConfig {
     char name[24] = {0};
-    uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
-    uint8_t channel = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     float c0 = 1.0f;
     float c1 = 0.0f;
     int32_t precision = 1;
-    float minValid = -32768.0f;
-    float maxValid = 32767.0f;
 };
 
 struct IODigitalOutputDefinition {
     char id[24] = {0};
     /** Required explicit DO id in [IO_ID_DO_BASE..IO_ID_DO_BASE+MAX_DIGITAL_OUTPUTS). */
     IoId ioId = IO_ID_INVALID;
-    uint8_t pin = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     bool activeHigh = false;
     bool initialOn = false;
     bool momentary = false;
@@ -89,7 +114,7 @@ struct IODigitalOutputDefinition {
 
 struct IODigitalOutputSlotConfig {
     char name[24] = {0};
-    uint8_t pin = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     bool activeHigh = false;
     bool initialOn = false;
     bool momentary = false;
@@ -98,10 +123,11 @@ struct IODigitalOutputSlotConfig {
 
 struct IODigitalInputSlotConfig {
     char name[24] = {0};
-    uint8_t pin = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     bool activeHigh = true;
     uint8_t pullMode = IO_PULL_NONE;
     uint8_t mode = IO_DIGITAL_INPUT_STATE;
+    uint8_t edgeMode = IO_EDGE_RISING;
     uint32_t counterDebounceUs = 0;
 };
 
@@ -109,10 +135,11 @@ struct IODigitalInputDefinition {
     char id[24] = {0};
     /** Required explicit DI id in [IO_ID_DI_BASE..IO_ID_DI_BASE+MAX_DIGITAL_INPUTS). */
     IoId ioId = IO_ID_INVALID;
-    uint8_t pin = 0;
+    PhysicalPortId bindingPort = IO_PORT_INVALID;
     bool activeHigh = true;
     uint8_t pullMode = IO_PULL_NONE;
     uint8_t mode = IO_DIGITAL_INPUT_STATE;
+    uint8_t edgeMode = IO_EDGE_RISING;
     uint32_t counterDebounceUs = 0;
     IODigitalValueCallback onValueChanged = nullptr;
     void* onValueCtx = nullptr;

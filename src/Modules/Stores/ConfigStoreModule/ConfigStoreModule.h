@@ -31,6 +31,9 @@ private:
     bool toJsonModule_(const char* module, char* out, size_t outLen, bool* truncated);
     uint8_t listModules_(const char** out, uint8_t max);
     bool erase_();
+    bool readRuntimeBlob_(const char* key, void* out, size_t outLen, size_t* actualLen);
+    bool writeRuntimeBlob_(const char* key, const void* value, size_t len);
+    bool eraseKey_(const char* key);
 
     ConfigStoreService svc_{
         ServiceBinding::bind<&ConfigStoreModule::applyJson_>,
@@ -38,6 +41,9 @@ private:
         ServiceBinding::bind<&ConfigStoreModule::toJsonModule_>,
         ServiceBinding::bind<&ConfigStoreModule::listModules_>,
         ServiceBinding::bind<&ConfigStoreModule::erase_>,
+        ServiceBinding::bind<&ConfigStoreModule::readRuntimeBlob_>,
+        ServiceBinding::bind<&ConfigStoreModule::writeRuntimeBlob_>,
+        ServiceBinding::bind<&ConfigStoreModule::eraseKey_>,
         this
     };
 };

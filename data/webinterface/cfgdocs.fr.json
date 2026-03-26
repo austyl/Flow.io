@@ -1,10 +1,10 @@
 {
   "_meta": {
     "generated": true,
-    "total": 346,
-    "decl_total": 232,
-    "decl_with_cfgdoc": 119,
-    "missing_cfgdoc_count": 113,
+    "total": 333,
+    "decl_total": 219,
+    "decl_with_cfgdoc": 99,
+    "missing_cfgdoc_count": 120,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
   },
@@ -416,33 +416,6 @@
       "var": "a0C1Var_",
       "source": "auto-hint"
     },
-    "io/input/a0/a0_channel": {
-      "module": "io/input/a0",
-      "name": "a0_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A0",
-      "help": "Canal ADC utilisé pour A0.",
-      "var": "a0ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a0/a0_max": {
-      "module": "io/input/a0",
-      "name": "a0_max",
-      "type": "Float",
-      "label": "Seuil maxi A0",
-      "help": "Valeur maximale valide pour A0 (avant invalidation).",
-      "var": "a0MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a0/a0_min": {
-      "module": "io/input/a0",
-      "name": "a0_min",
-      "type": "Float",
-      "label": "Seuil mini A0",
-      "help": "Valeur minimale valide pour A0 (avant invalidation).",
-      "var": "a0MinVar_",
-      "source": "auto-hint"
-    },
     "io/input/a0/a0_name": {
       "module": "io/input/a0",
       "name": "a0_name",
@@ -462,14 +435,14 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a0/a0_source": {
+    "io/input/a0/binding_port": {
       "module": "io/input/a0",
-      "name": "a0_source",
-      "type": "UInt8",
-      "label": "Source entrée A0",
-      "help": "Source ADC de A0 (0=ADS interne, 1=ADS externe).",
-      "var": "a0SourceVar_",
-      "source": "auto-hint"
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a0' (type UInt16).",
+      "var": "a0BindingVar_",
+      "source": "auto"
     },
     "io/input/a1/a1_c0": {
       "module": "io/input/a1",
@@ -487,33 +460,6 @@
       "label": "Coefficient C1 A1",
       "help": "Coefficient C1 pour la calibration de A1.",
       "var": "a1C1Var_",
-      "source": "auto-hint"
-    },
-    "io/input/a1/a1_channel": {
-      "module": "io/input/a1",
-      "name": "a1_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A1",
-      "help": "Canal ADC utilisé pour A1.",
-      "var": "a1ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a1/a1_max": {
-      "module": "io/input/a1",
-      "name": "a1_max",
-      "type": "Float",
-      "label": "Seuil maxi A1",
-      "help": "Valeur maximale valide pour A1 (avant invalidation).",
-      "var": "a1MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a1/a1_min": {
-      "module": "io/input/a1",
-      "name": "a1_min",
-      "type": "Float",
-      "label": "Seuil mini A1",
-      "help": "Valeur minimale valide pour A1 (avant invalidation).",
-      "var": "a1MinVar_",
       "source": "auto-hint"
     },
     "io/input/a1/a1_name": {
@@ -535,14 +481,14 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a1/a1_source": {
+    "io/input/a1/binding_port": {
       "module": "io/input/a1",
-      "name": "a1_source",
-      "type": "UInt8",
-      "label": "Source entrée A1",
-      "help": "Source ADC de A1 (0=ADS interne, 1=ADS externe).",
-      "var": "a1SourceVar_",
-      "source": "auto-hint"
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a1' (type UInt16).",
+      "var": "a1BindingVar_",
+      "source": "auto"
     },
     "io/input/a2/a2_c0": {
       "module": "io/input/a2",
@@ -560,33 +506,6 @@
       "label": "Coefficient C1 A2",
       "help": "Coefficient C1 pour la calibration de A2.",
       "var": "a2C1Var_",
-      "source": "auto-hint"
-    },
-    "io/input/a2/a2_channel": {
-      "module": "io/input/a2",
-      "name": "a2_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A2",
-      "help": "Canal ADC utilisé pour A2.",
-      "var": "a2ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a2/a2_max": {
-      "module": "io/input/a2",
-      "name": "a2_max",
-      "type": "Float",
-      "label": "Seuil maxi A2",
-      "help": "Valeur maximale valide pour A2 (avant invalidation).",
-      "var": "a2MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a2/a2_min": {
-      "module": "io/input/a2",
-      "name": "a2_min",
-      "type": "Float",
-      "label": "Seuil mini A2",
-      "help": "Valeur minimale valide pour A2 (avant invalidation).",
-      "var": "a2MinVar_",
       "source": "auto-hint"
     },
     "io/input/a2/a2_name": {
@@ -608,14 +527,14 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a2/a2_source": {
+    "io/input/a2/binding_port": {
       "module": "io/input/a2",
-      "name": "a2_source",
-      "type": "UInt8",
-      "label": "Source entrée A2",
-      "help": "Source ADC de A2 (0=ADS interne, 1=ADS externe).",
-      "var": "a2SourceVar_",
-      "source": "auto-hint"
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a2' (type UInt16).",
+      "var": "a2BindingVar_",
+      "source": "auto"
     },
     "io/input/a3/a3_c0": {
       "module": "io/input/a3",
@@ -633,33 +552,6 @@
       "label": "Coefficient C1 A3",
       "help": "Coefficient C1 pour la calibration de A3.",
       "var": "a3C1Var_",
-      "source": "auto-hint"
-    },
-    "io/input/a3/a3_channel": {
-      "module": "io/input/a3",
-      "name": "a3_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A3",
-      "help": "Canal ADC utilisé pour A3.",
-      "var": "a3ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a3/a3_max": {
-      "module": "io/input/a3",
-      "name": "a3_max",
-      "type": "Float",
-      "label": "Seuil maxi A3",
-      "help": "Valeur maximale valide pour A3 (avant invalidation).",
-      "var": "a3MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a3/a3_min": {
-      "module": "io/input/a3",
-      "name": "a3_min",
-      "type": "Float",
-      "label": "Seuil mini A3",
-      "help": "Valeur minimale valide pour A3 (avant invalidation).",
-      "var": "a3MinVar_",
       "source": "auto-hint"
     },
     "io/input/a3/a3_name": {
@@ -681,14 +573,14 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a3/a3_source": {
+    "io/input/a3/binding_port": {
       "module": "io/input/a3",
-      "name": "a3_source",
-      "type": "UInt8",
-      "label": "Source entrée A3",
-      "help": "Source ADC de A3 (0=ADS interne, 1=ADS externe).",
-      "var": "a3SourceVar_",
-      "source": "auto-hint"
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a3' (type UInt16).",
+      "var": "a3BindingVar_",
+      "source": "auto"
     },
     "io/input/a4/a4_c0": {
       "module": "io/input/a4",
@@ -706,33 +598,6 @@
       "label": "Coefficient C1 A4",
       "help": "Coefficient C1 pour la calibration de A4.",
       "var": "a4C1Var_",
-      "source": "auto-hint"
-    },
-    "io/input/a4/a4_channel": {
-      "module": "io/input/a4",
-      "name": "a4_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A4",
-      "help": "Canal ADC utilisé pour A4.",
-      "var": "a4ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a4/a4_max": {
-      "module": "io/input/a4",
-      "name": "a4_max",
-      "type": "Float",
-      "label": "Seuil maxi A4",
-      "help": "Valeur maximale valide pour A4 (avant invalidation).",
-      "var": "a4MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a4/a4_min": {
-      "module": "io/input/a4",
-      "name": "a4_min",
-      "type": "Float",
-      "label": "Seuil mini A4",
-      "help": "Valeur minimale valide pour A4 (avant invalidation).",
-      "var": "a4MinVar_",
       "source": "auto-hint"
     },
     "io/input/a4/a4_name": {
@@ -754,14 +619,14 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a4/a4_source": {
+    "io/input/a4/binding_port": {
       "module": "io/input/a4",
-      "name": "a4_source",
-      "type": "UInt8",
-      "label": "Source entrée A4",
-      "help": "Source ADC de A4 (0=ADS interne, 1=ADS externe).",
-      "var": "a4SourceVar_",
-      "source": "auto-hint"
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a4' (type UInt16).",
+      "var": "a4BindingVar_",
+      "source": "auto"
     },
     "io/input/a5/a5_c0": {
       "module": "io/input/a5",
@@ -779,33 +644,6 @@
       "label": "Coefficient C1 A5",
       "help": "Coefficient C1 pour la calibration de A5.",
       "var": "a5C1Var_",
-      "source": "auto-hint"
-    },
-    "io/input/a5/a5_channel": {
-      "module": "io/input/a5",
-      "name": "a5_channel",
-      "type": "UInt8",
-      "label": "Canal entrée A5",
-      "help": "Canal ADC utilisé pour A5.",
-      "var": "a5ChannelVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a5/a5_max": {
-      "module": "io/input/a5",
-      "name": "a5_max",
-      "type": "Float",
-      "label": "Seuil maxi A5",
-      "help": "Valeur maximale valide pour A5 (avant invalidation).",
-      "var": "a5MaxVar_",
-      "source": "auto-hint"
-    },
-    "io/input/a5/a5_min": {
-      "module": "io/input/a5",
-      "name": "a5_min",
-      "type": "Float",
-      "label": "Seuil mini A5",
-      "help": "Valeur minimale valide pour A5 (avant invalidation).",
-      "var": "a5MinVar_",
       "source": "auto-hint"
     },
     "io/input/a5/a5_name": {
@@ -827,194 +665,248 @@
       "source": "auto-hint",
       "unit": "digits"
     },
-    "io/input/a5/a5_source": {
+    "io/input/a5/binding_port": {
       "module": "io/input/a5",
-      "name": "a5_source",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/a5' (type UInt16).",
+      "var": "a5BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i0/binding_port": {
+      "module": "io/input/i0",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/i0' (type UInt16).",
+      "var": "i0BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i0/edge_mode": {
+      "module": "io/input/i0",
+      "name": "edge_mode",
       "type": "UInt8",
-      "label": "Source entrée A5",
-      "help": "Source ADC de A5 (0=ADS interne, 1=ADS externe).",
-      "var": "a5SourceVar_",
-      "source": "auto-hint"
+      "label": "Edge mode",
+      "help": "Parametre 'edge_mode' pour la branche 'io/input/i0' (type UInt8).",
+      "var": "i0EdgeModeVar_",
+      "source": "auto"
     },
     "io/input/i0/i0_active_high": {
       "module": "io/input/i0",
       "name": "i0_active_high",
       "type": "Bool",
-      "label": "Actif à 1 I0",
-      "help": "Si activé, l'entrée I0 est considérée active à l'état haut.",
+      "label": "I0 active high",
+      "help": "Parametre 'i0_active_high' pour la branche 'io/input/i0' (type Bool).",
       "var": "i0ActiveHighVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i0/i0_name": {
       "module": "io/input/i0",
       "name": "i0_name",
       "type": "CharArray",
-      "label": "Nom entrée I0",
-      "help": "Nom lisible de l'entrée digitale I0.",
+      "label": "I0 name",
+      "help": "Parametre 'i0_name' pour la branche 'io/input/i0' (type CharArray).",
       "var": "i0NameVar_",
-      "source": "cfgdoc"
-    },
-    "io/input/i0/i0_pin": {
-      "module": "io/input/i0",
-      "name": "i0_pin",
-      "type": "UInt8",
-      "label": "GPIO entrée I0",
-      "help": "GPIO utilisée par l'entrée digitale I0.",
-      "var": "i0PinVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i0/i0_pull_mode": {
       "module": "io/input/i0",
       "name": "i0_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I0",
-      "help": "Mode de résistance interne appliqué à l'entrée I0.",
+      "label": "I0 pull mode",
+      "help": "Parametre 'i0_pull_mode' pour la branche 'io/input/i0' (type UInt8).",
       "var": "i0PullModeVar_",
-      "source": "cfgdoc"
+      "source": "auto"
+    },
+    "io/input/i1/binding_port": {
+      "module": "io/input/i1",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/i1' (type UInt16).",
+      "var": "i1BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i1/edge_mode": {
+      "module": "io/input/i1",
+      "name": "edge_mode",
+      "type": "UInt8",
+      "label": "Edge mode",
+      "help": "Parametre 'edge_mode' pour la branche 'io/input/i1' (type UInt8).",
+      "var": "i1EdgeModeVar_",
+      "source": "auto"
     },
     "io/input/i1/i1_active_high": {
       "module": "io/input/i1",
       "name": "i1_active_high",
       "type": "Bool",
-      "label": "Actif à 1 I1",
-      "help": "Si activé, l'entrée I1 est considérée active à l'état haut.",
+      "label": "I1 active high",
+      "help": "Parametre 'i1_active_high' pour la branche 'io/input/i1' (type Bool).",
       "var": "i1ActiveHighVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i1/i1_name": {
       "module": "io/input/i1",
       "name": "i1_name",
       "type": "CharArray",
-      "label": "Nom entrée I1",
-      "help": "Nom lisible de l'entrée digitale I1.",
+      "label": "I1 name",
+      "help": "Parametre 'i1_name' pour la branche 'io/input/i1' (type CharArray).",
       "var": "i1NameVar_",
-      "source": "cfgdoc"
-    },
-    "io/input/i1/i1_pin": {
-      "module": "io/input/i1",
-      "name": "i1_pin",
-      "type": "UInt8",
-      "label": "GPIO entrée I1",
-      "help": "GPIO utilisée par l'entrée digitale I1.",
-      "var": "i1PinVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i1/i1_pull_mode": {
       "module": "io/input/i1",
       "name": "i1_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I1",
-      "help": "Mode de résistance interne appliqué à l'entrée I1.",
+      "label": "I1 pull mode",
+      "help": "Parametre 'i1_pull_mode' pour la branche 'io/input/i1' (type UInt8).",
       "var": "i1PullModeVar_",
-      "source": "cfgdoc"
+      "source": "auto"
+    },
+    "io/input/i2/binding_port": {
+      "module": "io/input/i2",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/i2' (type UInt16).",
+      "var": "i2BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i2/edge_mode": {
+      "module": "io/input/i2",
+      "name": "edge_mode",
+      "type": "UInt8",
+      "label": "Edge mode",
+      "help": "Parametre 'edge_mode' pour la branche 'io/input/i2' (type UInt8).",
+      "var": "i2EdgeModeVar_",
+      "source": "auto"
     },
     "io/input/i2/i2_active_high": {
       "module": "io/input/i2",
       "name": "i2_active_high",
       "type": "Bool",
-      "label": "Actif à 1 I2",
-      "help": "Si activé, l'entrée I2 est considérée active à l'état haut.",
+      "label": "I2 active high",
+      "help": "Parametre 'i2_active_high' pour la branche 'io/input/i2' (type Bool).",
       "var": "i2ActiveHighVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i2/i2_name": {
       "module": "io/input/i2",
       "name": "i2_name",
       "type": "CharArray",
-      "label": "Nom entrée I2",
-      "help": "Nom lisible de l'entrée digitale I2.",
+      "label": "I2 name",
+      "help": "Parametre 'i2_name' pour la branche 'io/input/i2' (type CharArray).",
       "var": "i2NameVar_",
-      "source": "cfgdoc"
-    },
-    "io/input/i2/i2_pin": {
-      "module": "io/input/i2",
-      "name": "i2_pin",
-      "type": "UInt8",
-      "label": "GPIO entrée I2",
-      "help": "GPIO utilisée par l'entrée digitale I2.",
-      "var": "i2PinVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i2/i2_pull_mode": {
       "module": "io/input/i2",
       "name": "i2_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I2",
-      "help": "Mode de résistance interne appliqué à l'entrée I2.",
+      "label": "I2 pull mode",
+      "help": "Parametre 'i2_pull_mode' pour la branche 'io/input/i2' (type UInt8).",
       "var": "i2PullModeVar_",
-      "source": "cfgdoc"
+      "source": "auto"
+    },
+    "io/input/i3/binding_port": {
+      "module": "io/input/i3",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/i3' (type UInt16).",
+      "var": "i3BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i3/edge_mode": {
+      "module": "io/input/i3",
+      "name": "edge_mode",
+      "type": "UInt8",
+      "label": "Edge mode",
+      "help": "Parametre 'edge_mode' pour la branche 'io/input/i3' (type UInt8).",
+      "var": "i3EdgeModeVar_",
+      "source": "auto"
     },
     "io/input/i3/i3_active_high": {
       "module": "io/input/i3",
       "name": "i3_active_high",
       "type": "Bool",
-      "label": "Actif à 1 I3",
-      "help": "Si activé, l'entrée I3 est considérée active à l'état haut.",
+      "label": "I3 active high",
+      "help": "Parametre 'i3_active_high' pour la branche 'io/input/i3' (type Bool).",
       "var": "i3ActiveHighVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i3/i3_name": {
       "module": "io/input/i3",
       "name": "i3_name",
       "type": "CharArray",
-      "label": "Nom entrée I3",
-      "help": "Nom lisible de l'entrée digitale I3.",
+      "label": "I3 name",
+      "help": "Parametre 'i3_name' pour la branche 'io/input/i3' (type CharArray).",
       "var": "i3NameVar_",
-      "source": "cfgdoc"
-    },
-    "io/input/i3/i3_pin": {
-      "module": "io/input/i3",
-      "name": "i3_pin",
-      "type": "UInt8",
-      "label": "GPIO entrée I3",
-      "help": "GPIO utilisée par l'entrée digitale I3.",
-      "var": "i3PinVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i3/i3_pull_mode": {
       "module": "io/input/i3",
       "name": "i3_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I3",
-      "help": "Mode de résistance interne appliqué à l'entrée I3.",
+      "label": "I3 pull mode",
+      "help": "Parametre 'i3_pull_mode' pour la branche 'io/input/i3' (type UInt8).",
       "var": "i3PullModeVar_",
-      "source": "cfgdoc"
+      "source": "auto"
+    },
+    "io/input/i4/binding_port": {
+      "module": "io/input/i4",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/input/i4' (type UInt16).",
+      "var": "i4BindingVar_",
+      "source": "auto"
+    },
+    "io/input/i4/edge_mode": {
+      "module": "io/input/i4",
+      "name": "edge_mode",
+      "type": "UInt8",
+      "label": "Edge mode",
+      "help": "Parametre 'edge_mode' pour la branche 'io/input/i4' (type UInt8).",
+      "var": "i4EdgeModeVar_",
+      "source": "auto"
     },
     "io/input/i4/i4_active_high": {
       "module": "io/input/i4",
       "name": "i4_active_high",
       "type": "Bool",
-      "label": "Actif à 1 I4",
-      "help": "Si activé, l'entrée I4 est considérée active à l'état haut.",
+      "label": "I4 active high",
+      "help": "Parametre 'i4_active_high' pour la branche 'io/input/i4' (type Bool).",
       "var": "i4ActiveHighVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i4/i4_name": {
       "module": "io/input/i4",
       "name": "i4_name",
       "type": "CharArray",
-      "label": "Nom entrée I4",
-      "help": "Nom lisible de l'entrée digitale I4.",
+      "label": "I4 name",
+      "help": "Parametre 'i4_name' pour la branche 'io/input/i4' (type CharArray).",
       "var": "i4NameVar_",
-      "source": "cfgdoc"
-    },
-    "io/input/i4/i4_pin": {
-      "module": "io/input/i4",
-      "name": "i4_pin",
-      "type": "UInt8",
-      "label": "GPIO entrée I4",
-      "help": "GPIO utilisée par l'entrée digitale I4.",
-      "var": "i4PinVar_",
-      "source": "cfgdoc"
+      "source": "auto"
     },
     "io/input/i4/i4_pull_mode": {
       "module": "io/input/i4",
       "name": "i4_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I4",
-      "help": "Mode de résistance interne appliqué à l'entrée I4.",
+      "label": "I4 pull mode",
+      "help": "Parametre 'i4_pull_mode' pour la branche 'io/input/i4' (type UInt8).",
       "var": "i4PullModeVar_",
-      "source": "cfgdoc"
+      "source": "auto"
+    },
+    "io/output/d0/binding_port": {
+      "module": "io/output/d0",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d0' (type UInt16).",
+      "var": "d0BindingVar_",
+      "source": "auto"
     },
     "io/output/d0/d0_active_high": {
       "module": "io/output/d0",
@@ -1052,15 +944,6 @@
       "var": "d0NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/d0_pin": {
-      "module": "io/output/d0",
-      "name": "d0_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D0",
-      "help": "GPIO pilotée par la sortie D0.",
-      "var": "d0PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d0/d0_pulse_ms": {
       "module": "io/output/d0",
       "name": "d0_pulse_ms",
@@ -1070,6 +953,15 @@
       "var": "d0PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d1/binding_port": {
+      "module": "io/output/d1",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d1' (type UInt16).",
+      "var": "d1BindingVar_",
+      "source": "auto"
     },
     "io/output/d1/d1_active_high": {
       "module": "io/output/d1",
@@ -1107,15 +999,6 @@
       "var": "d1NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d1/d1_pin": {
-      "module": "io/output/d1",
-      "name": "d1_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D1",
-      "help": "GPIO pilotée par la sortie D1.",
-      "var": "d1PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d1/d1_pulse_ms": {
       "module": "io/output/d1",
       "name": "d1_pulse_ms",
@@ -1125,6 +1008,15 @@
       "var": "d1PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d2/binding_port": {
+      "module": "io/output/d2",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d2' (type UInt16).",
+      "var": "d2BindingVar_",
+      "source": "auto"
     },
     "io/output/d2/d2_active_high": {
       "module": "io/output/d2",
@@ -1162,15 +1054,6 @@
       "var": "d2NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d2/d2_pin": {
-      "module": "io/output/d2",
-      "name": "d2_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D2",
-      "help": "GPIO pilotée par la sortie D2.",
-      "var": "d2PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d2/d2_pulse_ms": {
       "module": "io/output/d2",
       "name": "d2_pulse_ms",
@@ -1180,6 +1063,15 @@
       "var": "d2PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d3/binding_port": {
+      "module": "io/output/d3",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d3' (type UInt16).",
+      "var": "d3BindingVar_",
+      "source": "auto"
     },
     "io/output/d3/d3_active_high": {
       "module": "io/output/d3",
@@ -1217,15 +1109,6 @@
       "var": "d3NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d3/d3_pin": {
-      "module": "io/output/d3",
-      "name": "d3_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D3",
-      "help": "GPIO pilotée par la sortie D3.",
-      "var": "d3PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d3/d3_pulse_ms": {
       "module": "io/output/d3",
       "name": "d3_pulse_ms",
@@ -1235,6 +1118,15 @@
       "var": "d3PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d4/binding_port": {
+      "module": "io/output/d4",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d4' (type UInt16).",
+      "var": "d4BindingVar_",
+      "source": "auto"
     },
     "io/output/d4/d4_active_high": {
       "module": "io/output/d4",
@@ -1272,15 +1164,6 @@
       "var": "d4NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d4/d4_pin": {
-      "module": "io/output/d4",
-      "name": "d4_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D4",
-      "help": "GPIO pilotée par la sortie D4.",
-      "var": "d4PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d4/d4_pulse_ms": {
       "module": "io/output/d4",
       "name": "d4_pulse_ms",
@@ -1290,6 +1173,15 @@
       "var": "d4PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d5/binding_port": {
+      "module": "io/output/d5",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d5' (type UInt16).",
+      "var": "d5BindingVar_",
+      "source": "auto"
     },
     "io/output/d5/d5_active_high": {
       "module": "io/output/d5",
@@ -1327,15 +1219,6 @@
       "var": "d5NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d5/d5_pin": {
-      "module": "io/output/d5",
-      "name": "d5_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D5",
-      "help": "GPIO pilotée par la sortie D5.",
-      "var": "d5PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d5/d5_pulse_ms": {
       "module": "io/output/d5",
       "name": "d5_pulse_ms",
@@ -1345,6 +1228,15 @@
       "var": "d5PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d6/binding_port": {
+      "module": "io/output/d6",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d6' (type UInt16).",
+      "var": "d6BindingVar_",
+      "source": "auto"
     },
     "io/output/d6/d6_active_high": {
       "module": "io/output/d6",
@@ -1382,15 +1274,6 @@
       "var": "d6NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d6/d6_pin": {
-      "module": "io/output/d6",
-      "name": "d6_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D6",
-      "help": "GPIO pilotée par la sortie D6.",
-      "var": "d6PinVar_",
-      "source": "auto-hint"
-    },
     "io/output/d6/d6_pulse_ms": {
       "module": "io/output/d6",
       "name": "d6_pulse_ms",
@@ -1400,6 +1283,15 @@
       "var": "d6PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
+    },
+    "io/output/d7/binding_port": {
+      "module": "io/output/d7",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Binding port",
+      "help": "Parametre 'binding_port' pour la branche 'io/output/d7' (type UInt16).",
+      "var": "d7BindingVar_",
+      "source": "auto"
     },
     "io/output/d7/d7_active_high": {
       "module": "io/output/d7",
@@ -1435,15 +1327,6 @@
       "label": "Nom sortie D7",
       "help": "Nom lisible de la sortie digitale D7.",
       "var": "d7NameVar_",
-      "source": "auto-hint"
-    },
-    "io/output/d7/d7_pin": {
-      "module": "io/output/d7",
-      "name": "d7_pin",
-      "type": "UInt8",
-      "label": "GPIO sortie D7",
-      "help": "GPIO pilotée par la sortie D7.",
-      "var": "d7PinVar_",
       "source": "auto-hint"
     },
     "io/output/d7/d7_pulse_ms": {
@@ -2166,7 +2049,7 @@
     "poollogic/air_temp_io_id": {
       "module": "poollogic",
       "name": "air_temp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO température air",
       "help": "Identifiant IO de la sonde température air.",
       "var": "airTempIdVar_",
@@ -2184,7 +2067,7 @@
     "poollogic/chl_lvl_io_id": {
       "module": "poollogic",
       "name": "chl_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau cuve chlore",
       "help": "Identifiant IO de l'entrée digitale niveau bas cuve chlore.",
       "var": "chlorineLevelIdVar_",
@@ -2565,7 +2448,7 @@
     "poollogic/orp_io_id": {
       "module": "poollogic",
       "name": "orp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO capteur ORP",
       "help": "Identifiant IO de la mesure ORP.",
       "var": "orpIdVar_",
@@ -2647,7 +2530,7 @@
     "poollogic/ph_io_id": {
       "module": "poollogic",
       "name": "ph_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO capteur pH",
       "help": "Identifiant IO de la mesure pH.",
       "var": "phIdVar_",
@@ -2683,7 +2566,7 @@
     "poollogic/ph_lvl_io_id": {
       "module": "poollogic",
       "name": "ph_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau cuve pH",
       "help": "Identifiant IO de l'entrée digitale niveau bas cuve pH.",
       "var": "phLevelIdVar_",
@@ -2902,7 +2785,7 @@
     "poollogic/pool_lvl_io_id": {
       "module": "poollogic",
       "name": "pool_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau bassin",
       "help": "Identifiant IO de la mesure de niveau bassin.",
       "var": "levelIdVar_",
@@ -2921,7 +2804,7 @@
     "poollogic/psi_io_id": {
       "module": "poollogic",
       "name": "psi_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO pression",
       "help": "Identifiant IO du capteur de pression.",
       "var": "psiIdVar_",
@@ -2989,7 +2872,7 @@
     "poollogic/sensors/air_temp_io_id": {
       "module": "poollogic/sensors",
       "name": "air_temp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO température air",
       "help": "Identifiant IO de la sonde température air.",
       "var": "airTempIdVar_",
@@ -2998,7 +2881,7 @@
     "poollogic/sensors/chl_lvl_io_id": {
       "module": "poollogic/sensors",
       "name": "chl_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau cuve chlore",
       "help": "Identifiant IO de l'entrée digitale niveau bas cuve chlore.",
       "var": "chlorineLevelIdVar_",
@@ -3007,7 +2890,7 @@
     "poollogic/sensors/orp_io_id": {
       "module": "poollogic/sensors",
       "name": "orp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO capteur ORP",
       "help": "Identifiant IO de la mesure ORP.",
       "var": "orpIdVar_",
@@ -3016,7 +2899,7 @@
     "poollogic/sensors/ph_io_id": {
       "module": "poollogic/sensors",
       "name": "ph_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO capteur pH",
       "help": "Identifiant IO de la mesure pH.",
       "var": "phIdVar_",
@@ -3025,7 +2908,7 @@
     "poollogic/sensors/ph_lvl_io_id": {
       "module": "poollogic/sensors",
       "name": "ph_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau cuve pH",
       "help": "Identifiant IO de l'entrée digitale niveau bas cuve pH.",
       "var": "phLevelIdVar_",
@@ -3034,7 +2917,7 @@
     "poollogic/sensors/pool_lvl_io_id": {
       "module": "poollogic/sensors",
       "name": "pool_lvl_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO niveau bassin",
       "help": "Identifiant IO de la mesure de niveau bassin.",
       "var": "levelIdVar_",
@@ -3043,7 +2926,7 @@
     "poollogic/sensors/psi_io_id": {
       "module": "poollogic/sensors",
       "name": "psi_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO pression",
       "help": "Identifiant IO du capteur de pression.",
       "var": "psiIdVar_",
@@ -3052,7 +2935,7 @@
     "poollogic/sensors/wat_temp_io_id": {
       "module": "poollogic/sensors",
       "name": "wat_temp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO température eau",
       "help": "Identifiant IO de la sonde température eau.",
       "var": "waterTempIdVar_",
@@ -3070,7 +2953,7 @@
     "poollogic/wat_temp_io_id": {
       "module": "poollogic",
       "name": "wat_temp_io_id",
-      "type": "UInt8",
+      "type": "UInt16",
       "label": "IO température eau",
       "help": "Identifiant IO de la sonde température eau.",
       "var": "waterTempIdVar_",

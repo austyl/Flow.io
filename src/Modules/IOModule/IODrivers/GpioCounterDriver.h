@@ -15,6 +15,7 @@ public:
                       uint8_t pin,
                       bool activeHigh,
                       uint8_t inputPullMode,
+                      uint8_t edgeMode,
                       uint32_t counterDebounceUs);
 
     const char* id() const override { return driverId_; }
@@ -33,9 +34,9 @@ private:
     uint8_t pin_ = 0;
     bool activeHigh_ = true;
     uint8_t inputPullMode_ = 0;
+    uint8_t edgeMode_ = 1;
     uint32_t counterDebounceUs_ = 0;
     volatile int32_t pulseCount_ = 0;
     volatile bool lastLogicalState_ = false;
     volatile uint32_t lastPulseUs_ = 0;
-    volatile uint32_t lastInactiveUs_ = 0;
 };

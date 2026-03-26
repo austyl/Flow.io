@@ -124,17 +124,17 @@ uint32_t PoolLogicModule::stateUptimeSec_(const DeviceFsm& fsm, uint32_t nowMs) 
     return (uint32_t)((nowMs - fsm.stateSinceMs) / 1000UL);
 }
 
-bool PoolLogicModule::loadAnalogSensor_(uint8_t ioId, float& out) const
+bool PoolLogicModule::loadAnalogSensor_(IoId ioId, float& out) const
 {
     if (!ioSvc_ || !ioSvc_->readAnalog) return false;
-    return ioSvc_->readAnalog(ioSvc_->ctx, (IoId)ioId, &out, nullptr, nullptr) == IO_OK;
+    return ioSvc_->readAnalog(ioSvc_->ctx, ioId, &out, nullptr, nullptr) == IO_OK;
 }
 
-bool PoolLogicModule::loadDigitalSensor_(uint8_t ioId, bool& out) const
+bool PoolLogicModule::loadDigitalSensor_(IoId ioId, bool& out) const
 {
     if (!ioSvc_ || !ioSvc_->readDigital) return false;
     uint8_t on = 0;
-    if (ioSvc_->readDigital(ioSvc_->ctx, (IoId)ioId, &on, nullptr, nullptr) != IO_OK) return false;
+    if (ioSvc_->readDigital(ioSvc_->ctx, ioId, &on, nullptr, nullptr) != IO_OK) return false;
     out = (on != 0U);
     return true;
 }
