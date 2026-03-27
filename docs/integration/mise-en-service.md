@@ -2,14 +2,19 @@
 
 Cette page s'adresse à l'intégrateur qui veut câbler la carte, compiler le bon firmware et vérifier le démarrage sans modifier l'architecture du projet.
 
+L'architecture cible du projet repose sur deux ESP32:
+
+- un ESP32 `FlowIO` pour la logique métier et la gestion des entrées/sorties
+- un ESP32 `Supervisor` pour la configuration, le provisioning Wi-Fi, l'écran TFT, l'accès aux logs et les mises à jour du système
+
 ## 1. Choisir le firmware
 
 Le dépôt produit deux binaires distincts:
 
 | Firmware | Environnement PlatformIO | Usage |
 |---|---|---|
-| `FlowIO` | `FlowIO` | carte principale avec E/S, logique métier, MQTT, Home Assistant, Nextion |
-| `Supervisor` | `Supervisor` | carte d'interface locale avec TFT, provisioning, mise à jour et bus I2C vers `FlowIO` |
+| `FlowIO` | `FlowIO` | ESP32 principal avec logique métier, E/S, MQTT, Home Assistant et interface Nextion |
+| `Supervisor` | `Supervisor` | ESP32 de supervision avec configuration, provisioning, TFT, logs, mise à jour et bus I2C vers `FlowIO` |
 
 La sélection se fait dans `platformio.ini`:
 

@@ -5,12 +5,17 @@ Cette documentation est organisée pour deux usages distincts:
 - mise en service et adaptation légère par un intégrateur technique
 - référence technique descriptive de l'implémentation actuelle
 
+Le projet est prévu pour fonctionner avec deux ESP32 distincts, chacun avec son propre firmware:
+
+- `FlowIO`: ESP32 principal qui exécute la logique métier et pilote les entrées/sorties
+- `Supervisor`: ESP32 de supervision qui configure le système, assure le provisioning Wi-Fi, gère l'écran TFT, permet la consultation des logs et pilote les mises à jour
+
 Le projet compile aujourd'hui deux firmwares ESP32:
 
 | Firmware | Environnement PlatformIO | Rôle |
 |---|---|---|
-| `FlowIO` | `FlowIO` | automate principal, E/S, logique métier, MQTT, Home Assistant, écran Nextion |
-| `Supervisor` | `Supervisor` | interface locale TFT, provisioning Wi-Fi, mise à jour, passerelle I2C vers `FlowIO` |
+| `FlowIO` | `FlowIO` | ESP32 principal: logique métier, entrées/sorties, MQTT, Home Assistant, écran Nextion |
+| `Supervisor` | `Supervisor` | ESP32 de supervision: configuration, provisioning Wi-Fi, écran TFT, consultation des logs, mises à jour, passerelle I2C vers `FlowIO` |
 
 ## Parcours de lecture
 

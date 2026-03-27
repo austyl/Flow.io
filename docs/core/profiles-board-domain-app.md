@@ -2,6 +2,11 @@
 
 Cette page décrit la structure actuellement utilisée pour composer un firmware à partir d'un profil, d'une carte et d'un domaine.
 
+Le projet est composé de deux firmwares destinés à deux ESP32 distincts:
+
+- `FlowIO`: nœud principal pour la logique métier et les entrées/sorties
+- `Supervisor`: nœud de supervision pour la configuration, le provisioning Wi-Fi, l'écran TFT, les logs et les mises à jour
+
 ## Couche `App`
 
 Références principales:
