@@ -1,119 +1,38 @@
-# Documentation développeur Flow.IO
+# Documentation Flow.IO
 
-Cette documentation couvre l'architecture complète du firmware Flow.IO (ESP32), les contrats Core, les flux de données/événements, la topologie MQTT, et le détail de chaque module.
+Cette documentation est organisée pour deux usages distincts:
 
-## Sommaire
+- mise en service et adaptation légère par un intégrateur technique
+- référence technique descriptive de l'implémentation actuelle
 
-- [Architecture Core](core/architecture.md)
-- [Empreinte memoire Flow.IO](core/memory-footprint-flowio.md)
-- [Profils, App, Board et Domain](core/profiles-board-domain-app.md)
-- [Services Core et invocation](core/services.md)
-- [Modèle DataStore + EventBus + Config](core/data-event-model.md)
-- [Topologie MQTT détaillée](core/mqtt-topics.md)
-- [Protocole Flow.IO <-> Supervisor (I2C cfg/status)](core/flow-supervisor-i2c-protocol.md)
+Le projet compile aujourd'hui deux firmwares ESP32:
+
+| Firmware | Environnement PlatformIO | Rôle |
+|---|---|---|
+| `FlowIO` | `FlowIO` | automate principal, E/S, logique métier, MQTT, Home Assistant, écran Nextion |
+| `Supervisor` | `Supervisor` | interface locale TFT, provisioning Wi-Fi, mise à jour, passerelle I2C vers `FlowIO` |
+
+## Parcours de lecture
+
+### Mise en service et adaptation
+
+- [Mise en service matérielle et flash](integration/mise-en-service.md)
+- [Adapter le projet à un autre domaine](integration/adaptation-domaine.md)
+
+### Référence technique
+
+- [Architecture générale](core/architecture.md)
+- [Structure des profils, cartes, domaines et bootstrap](core/profiles-board-domain-app.md)
+- [Services Core](core/services.md)
+- [Modèle `ConfigStore` / `DataStore` / `EventBus` / MQTT](core/data-event-model.md)
+- [Topologie MQTT](core/mqtt-topics.md)
+- [Protocole I2C `FlowIO` <-> `Supervisor`](core/flow-supervisor-i2c-protocol.md)
 - [Exposition Runtime UI](core/runtime-ui-exposure.md)
-- [Quality Gates Modules (10 points)](core/module-quality-gates.md)
+- [Empreinte mémoire `FlowIO`](core/memory-footprint-flowio.md)
+- [Matrice des modules](core/module-quality-gates.md)
+- [Schéma d'ensemble du programme](program_structure.md)
 
-## Vue d'ensemble runtime
-
-Flow.IO est basé sur:
-- des modules actifs (`Module`) exécutés dans des tasks FreeRTOS dédiées
-- des modules passifs (`ModulePassive`) qui exposent des services sans task
-- un `ServiceRegistry` typé indexé par `ServiceId` pour les dépendances inter-modules
-- un `EventBus` queue-based pour la signalisation interne
-- un `DataStore` pour l'état runtime partagé
-- un `ConfigStore` pour la configuration persistante NVS + JSON
-
-Les noms texte de services utilisés dans la documentation (`mqtt`, `io`, `time.scheduler`, etc.) correspondent aux labels de debug, tandis que le lookup réel du registre se fait par `ServiceId`.
-
-## Ordre de boot (main)
-
-Ordre d'enregistrement dans `main.cpp`:
-1. `loghub`
-2. `log.dispatcher`
-3. `log.sink.serial`
-4. `eventbus`
-5. `config`
-6. `datastore`
-7. `cmd`
-8. `hmi`
-9. `alarms`
-10. `log.sink.alarm`
-11. `wifi`
-12. `time`
-13. `mqtt`
-14. `ha`
-15. `system`
-16. `io`
-17. `poollogic`
-18. `pooldev`
-19. `sysmon`
-
-Puis:
-1. init de tous les modules (ordre topologique)
-2. `ConfigStore::loadPersistent()`
-3. `onConfigLoaded()`
-4. démarrage des tasks des modules actifs
-
-## Répartition CPU (ESP32)
-
-- Core 0: `wifi`, `mqtt`, `ha`, `sysmon`
-- Core 1: `eventbus`, `io`, `poollogic`, `pooldev`, `alarms`, `time`
-- Modules passifs: pas de task (`hasTask=false`)
-
-## Brochage ESP32 par firmware
-
-Les tableaux ci-dessous résument les GPIO effectivement utilisés dans les profils compilés `FlowIO` et `Supervisor` (valeurs par défaut actuelles des sources/build flags).
-
-### Flow.IO
-
-| GPIO | Utilité | Module(s) | Remarques |
-|---|---|---|---|
-| 32 | Sortie digitale `filtration` | `io` / `pooldev` | `Board::DO::Filtration` |
-| 25 | Sortie digitale `ph_pump` | `io` / `pooldev` | `Board::DO::PhPump` |
-| 26 | Sortie digitale `chlorine_pump` | `io` / `pooldev` | `Board::DO::ChlorinePump` |
-| 13 | Sortie digitale `chlorine_generator` (impulsion) | `io` / `pooldev` | `Board::DO::ChlorineGenerator` |
-| 33 | Sortie digitale `robot` | `io` / `pooldev` | `Board::DO::Robot` |
-| 27 | Sortie digitale `lights` | `io` / `pooldev` | `Board::DO::Lights` |
-| 23 | Sortie digitale `fill_pump` | `io` / `pooldev` | `Board::DO::FillPump` |
-| 4 | Sortie digitale `water_heater` | `io` / `pooldev` | `Board::DO::WaterHeater` |
-| 34 | Entrée digitale `Pool Level` | `io` | `Board::DI::FlowSwitch` |
-| 36 | Entrée digitale `pH Level` | `io` | `Board::DI::PhLevel` |
-| 39 | Entrée digitale `Chlorine Level` | `io` | `Board::DI::ChlorineLevel` |
-| 19 | Bus 1-Wire A (sonde température eau) | `io` | `Board::OneWire::BusA` |
-| 18 | Bus 1-Wire B (sonde température air) | `io` | `Board::OneWire::BusB` |
-| 21 | I2C principal SDA (ADS1115/PCF8574, bus 0) | `io` | `Board::I2C::Sda` |
-| 22 | I2C principal SCL (ADS1115/PCF8574, bus 0) | `io` | `Board::I2C::Scl` |
-| 12 | I2C interlink SDA (Flow.IO <-> Supervisor, bus 1) | `i2ccfg.server` | Pin configurable (`i2c/cfg/server/sda`), bus fixé à 1 |
-| 14 | I2C interlink SCL (Flow.IO <-> Supervisor, bus 1) | `i2ccfg.server` | Pin configurable (`i2c/cfg/server/scl`), bus fixé à 1 |
-| 16 | UART2 RX (HMI Nextion) | `hmi` | Peut devenir port logs si `FLOW_SWAP_LOG_HMI_SERIAL=1` |
-| 17 | UART2 TX (HMI Nextion) | `hmi` | Peut devenir port logs si `FLOW_SWAP_LOG_HMI_SERIAL=1` |
-| 1 / 3 | UART0 TX/RX (console logs par défaut) | `log.sink.serial` | USB/serial monitor |
-
-### Supervisor
-
-| GPIO | Utilité | Module(s) | Remarques |
-|---|---|---|---|
-| 21 | I2C interlink SDA (Supervisor -> Flow.IO, bus 1) | `i2ccfg.client` | Pin configurable (`i2c/cfg/client/sda`), bus fixé à 1 |
-| 22 | I2C interlink SCL (Supervisor -> Flow.IO, bus 1) | `i2ccfg.client` | Pin configurable (`i2c/cfg/client/scl`), bus fixé à 1 |
-| 16 | UART2 RX (bridge WebSerial vers Flow.IO) | `webinterface` | `src/Board/SupervisorBoardRev1.h` (`bridge` UART) |
-| 17 | UART2 TX (bridge WebSerial vers Flow.IO) | `webinterface` | `src/Board/SupervisorBoardRev1.h` (`bridge` UART) |
-| 25 | Contrôle `EN` du Flow.IO cible (reset/enable) | `fwupdate` | `src/Board/SupervisorBoardRev1.h` (`update.flowIoEnablePin`) |
-| 26 | Contrôle `BOOT` du Flow.IO cible (mode bootloader) | `fwupdate` | `src/Board/SupervisorBoardRev1.h` (`update.flowIoBootPin`) |
-| 33 | UART Nextion RX (upload TFT) | `fwupdate` | `src/Board/SupervisorBoardRev1.h` (`panel` UART) |
-| 32 | UART Nextion TX (upload TFT) | `fwupdate` | `src/Board/SupervisorBoardRev1.h` (`panel` UART) |
-| 13 | Reboot matériel Nextion | `fwupdate` | `src/Board/SupervisorBoardRev1.h` (`update.nextionRebootPin`) |
-| 14 | TFT ST7789 backlight | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.backlightPin`) |
-| 15 | TFT ST7789 CS | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.csPin`) |
-| 4 | TFT ST7789 DC | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.dcPin`) |
-| 5 | TFT ST7789 RST | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.rstPin`) |
-| 19 | TFT ST7789 MOSI (soft SPI) | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.mosiPin`) |
-| 18 | TFT ST7789 SCLK (soft SPI) | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`display.sclkPin`) |
-| 36 | PIR présence écran | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`inputs.pirPin`) |
-| 23 | Bouton reset WiFi (appui long) | `hmi.supervisor` | `src/Board/SupervisorBoardRev1.h` (`inputs.wifiResetPin`) |
-| 1 / 3 | UART0 TX/RX (console logs par défaut) | `log.sink.serial` | USB/serial monitor |
-
-## Dossier modules (1 fichier par module)
+### Référence par module
 
 - [LogHubModule](modules/LogHubModule.md)
 - [LogDispatcherModule](modules/LogDispatcherModule.md)
@@ -136,41 +55,136 @@ Les tableaux ci-dessous résument les GPIO effectivement utilisés dans les prof
 - [PoolLogicModule](modules/PoolLogicModule.md)
 - [PoolDeviceModule](modules/PoolDeviceModule.md)
 
-Évaluation qualité transversale:
+## Brochage actuel
 
-- [Quality Gates Modules (notes + description des 10 points)](core/module-quality-gates.md)
+Les tableaux ci-dessous décrivent le câblage actuellement reflété par les sources du dépôt.
 
-## Capacités de slots (profil Flow.IO)
+### Flow.IO
 
-Les valeurs ci-dessous correspondent au profil `Flow.IO` actuel (wiring et modules enregistrés dans le bootstrap de profil `FlowIO`).
+Références principales:
 
-| Domaine | Slots pré-définis (max) | Slots utilisés actuellement | Variable/constante de capacité (fichier) |
-|---|---:|---:|---|
-| IOModule - entrées analogiques | 12 | 6 | `IOModule::MAX_ANALOG_ENDPOINTS` ([src/Modules/IOModule/IOModule.h](../src/Modules/IOModule/IOModule.h)) |
-| IOModule - entrées digitales | 8 | 1 | `IOModule::MAX_DIGITAL_INPUTS` ([src/Modules/IOModule/IOModule.h](../src/Modules/IOModule/IOModule.h)) |
-| IOModule - sorties digitales | 12 | 8 | `IOModule::MAX_DIGITAL_OUTPUTS` ([src/Modules/IOModule/IOModule.h](../src/Modules/IOModule/IOModule.h)) |
-| IOModule - slots digitaux totaux | 20 | 9 | `IOModule::MAX_DIGITAL_SLOTS` ([src/Modules/IOModule/IOModule.h](../src/Modules/IOModule/IOModule.h)) |
-| PoolDeviceModule - devices | 8 | 8 | `POOL_DEVICE_MAX` ([src/Modules/PoolDeviceModule/PoolDeviceModuleDataModel.h](../src/Modules/PoolDeviceModule/PoolDeviceModuleDataModel.h)) |
-| HAModule - sensors | 24 | 20 | `HAModule::MAX_HA_SENSORS` ([src/Modules/Network/HAModule/HAModule.h](../src/Modules/Network/HAModule/HAModule.h)) |
-| HAModule - binary sensors | 8 | 0 | `HAModule::MAX_HA_BINARY_SENSORS` ([src/Modules/Network/HAModule/HAModule.h](../src/Modules/Network/HAModule/HAModule.h)) |
-| HAModule - switches | 16 | 12 | `HAModule::MAX_HA_SWITCHES` ([src/Modules/Network/HAModule/HAModule.h](../src/Modules/Network/HAModule/HAModule.h)) |
-| HAModule - numbers | 16 | 13 | `HAModule::MAX_HA_NUMBERS` ([src/Modules/Network/HAModule/HAModule.h](../src/Modules/Network/HAModule/HAModule.h)) |
-| HAModule - buttons | 8 | 3 | `HAModule::MAX_HA_BUTTONS` ([src/Modules/Network/HAModule/HAModule.h](../src/Modules/Network/HAModule/HAModule.h)) |
-| MQTTModule - runtime publishers | 8 | dépend du wiring du bootstrap `FlowIO` | `Limits::Mqtt::Capacity::MaxPublishers` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h)) |
-| Runtime routes MQTT (`RuntimeProducer`) | 36 | dépend des providers enregistrés | `Limits::MaxRuntimeRoutes` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h)) |
-| MQTT jobs (slots globaux) | 80 | max observé via log `queue occ max/boot` | `MQTTModule::MaxJobs` ([src/Modules/Network/MQTTModule/MQTTModule.h](../src/Modules/Network/MQTTModule/MQTTModule.h)) |
-| MQTT queue High / Normal / Low | 80 / 80 / 60 | max observé via log `queue occ max/boot` | `MQTTModule::HighQueueCap/NormalQueueCap/LowQueueCap` ([src/Modules/Network/MQTTModule/MQTTModule.h](../src/Modules/Network/MQTTModule/MQTTModule.h)) |
-| MQTT RX queue | 8 | occupation visible côté drops RX | `Limits::Mqtt::Capacity::RxQueueLen` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h)) |
-| EventBus queue length | 32 | occupation instantanée via `sub stats 5s` | `Limits::EventQueueLen` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h)) |
-| EventBus subscribers max | 50 | consommation via `sub stats 5s` | `Limits::EventSubscribersMax` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h)) |
-| ConfigStore - variables de config | 290 | dépend build/profil | `Limits::MaxConfigVars` / `ConfigStore::MAX_CONFIG_VARS` ([include/Core/SystemLimits.h](../include/Core/SystemLimits.h), [src/Core/ConfigStore.h](../src/Core/ConfigStore.h)) |
+- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/BoardSerialMap.h`
+- `src/Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h`
 
-Notes:
-- Le compteur "utilisés actuellement" reflète l'état de la configuration/module wiring actuel de Flow.IO.
-- Certaines allocations bas niveau (ex: drivers DS18B20) dépendent de la détection matérielle au boot et peuvent varier selon la carte branchée.
+| GPIO | Usage | Remarque |
+|---|---|---|
+| 32 | relais `relay1` | sortie digitale, rôle par défaut `FiltrationPump` |
+| 25 | relais `relay2` | sortie digitale, rôle par défaut `PhPump` |
+| 26 | relais `relay3` | sortie digitale, rôle par défaut `ChlorinePump` |
+| 13 | relais `relay4` | sortie digitale impulsionnelle, rôle par défaut `ChlorineGenerator` |
+| 33 | relais `relay5` | sortie digitale, rôle par défaut `Robot` |
+| 27 | relais `relay6` | sortie digitale, rôle par défaut `Lights` |
+| 23 | relais `relay7` | sortie digitale, rôle par défaut `FillPump` |
+| 4 | relais `relay8` | sortie digitale, rôle par défaut `WaterHeater` |
+| 34 | `digital_in1` | entrée digitale, rôle par défaut `PoolLevelSensor` |
+| 36 | `digital_in2` | entrée digitale, rôle par défaut `PhLevelSensor` |
+| 39 | `digital_in3` | entrée digitale, rôle par défaut `ChlorineLevelSensor` |
+| 35 | `digital_in4` | entrée digitale, rôle par défaut `WaterCounterSensor` |
+| 19 | `temp_probe_1` | bus 1-Wire, rôle par défaut `WaterTemp` |
+| 18 | `temp_probe_2` | bus 1-Wire, rôle par défaut `AirTemp` |
+| 21 | I2C `io` SDA | bus principal des ADS1115 et du PCF8574 |
+| 22 | I2C `io` SCL | bus principal des ADS1115 et du PCF8574 |
+| 12 | I2C interlink SDA | valeur par défaut du serveur `i2c/cfg/server` |
+| 14 | I2C interlink SCL | valeur par défaut du serveur `i2c/cfg/server` |
+| 16 | UART2 RX | interface Nextion par défaut |
+| 17 | UART2 TX | interface Nextion par défaut |
+| 1 / 3 | UART0 | console série par défaut |
 
-## Notes importantes
+### Supervisor
 
-- Il n'existe pas de "EventStore" persistant dédié: les événements internes transitent dans `EventBus` (volatile en RAM).
-- La persistance durable est assurée par `ConfigStore` (NVS).
-- Les métriques runtime sont partagées via `DataStore` et exportées via MQTT.
+Références principales:
+
+- `src/Board/SupervisorBoardRev1.h`
+- `src/Profiles/Supervisor/SupervisorProfile.cpp`
+- `src/Modules/Network/I2CCfgClientModule/I2CCfgClientModule.h`
+
+| GPIO | Usage | Remarque |
+|---|---|---|
+| 21 | I2C interlink SDA | client `i2c/cfg/client` vers `FlowIO` |
+| 22 | I2C interlink SCL | client `i2c/cfg/client` vers `FlowIO` |
+| 16 | UART `bridge` RX | pont série vers `FlowIO` |
+| 17 | UART `bridge` TX | pont série vers `FlowIO` |
+| 33 | UART `panel` RX | liaison série Nextion côté Supervisor |
+| 32 | UART `panel` TX | liaison série Nextion côté Supervisor |
+| 25 | `flowIoEnablePin` | activation/reset matériel du `FlowIO` cible |
+| 26 | `flowIoBootPin` | entrée mode bootloader du `FlowIO` cible |
+| 13 | `nextionRebootPin` | redémarrage matériel Nextion |
+| 14 | TFT ST7789 backlight | écran local Supervisor |
+| 15 | TFT ST7789 CS | écran local Supervisor |
+| 2 | TFT ST7789 DC | écran local Supervisor |
+| 4 | TFT ST7789 RST | écran local Supervisor |
+| 23 | TFT ST7789 MOSI | écran local Supervisor |
+| 18 | TFT ST7789 SCLK | écran local Supervisor |
+| 36 | entrée PIR | extinction automatique du backlight |
+| 1 / 3 | UART0 | console série par défaut |
+
+## Composition actuelle des firmwares
+
+### Profil `FlowIO`
+
+Ordre d'enregistrement dans `src/Profiles/FlowIO/FlowIOBootstrap.cpp`:
+
+1. `loghub`
+2. `log.dispatcher`
+3. `log.sink.serial`
+4. `eventbus`
+5. `config`
+6. `datastore`
+7. `cmd`
+8. `i2ccfg.server`
+9. `hmi`
+10. `alarms`
+11. `log.sink.alarm`
+12. `wifi`
+13. `time`
+14. `mqtt`
+15. `ha`
+16. `system`
+17. `io`
+18. `poollogic`
+19. `pooldev`
+20. `sysmon`
+
+### Profil `Supervisor`
+
+Ordre d'enregistrement dans `src/Profiles/Supervisor/SupervisorBootstrap.cpp`:
+
+1. `loghub`
+2. `log.dispatcher`
+3. `log.sink.serial`
+4. `eventbus`
+5. `config`
+6. `datastore`
+7. `cmd`
+8. `alarms`
+9. `log.sink.alarm`
+10. `wifi`
+11. `wifiprov`
+12. `time`
+13. `i2ccfg.client`
+14. `webinterface`
+15. `fwupdate`
+16. `hmi.supervisor`
+17. `system`
+18. `sysmon`
+
+## Capacités statiques utiles à l'intégration
+
+Les valeurs ci-dessous correspondent à l'implémentation actuelle du profil `FlowIO`.
+
+| Domaine | Capacité compile-time | Implémentation |
+|---|---:|---|
+| Entrées analogiques IO | 12 | `IOModule::MAX_ANALOG_ENDPOINTS` |
+| Entrées digitales IO | 5 | `IOModule::MAX_DIGITAL_INPUTS` |
+| Sorties digitales IO | 10 | `IOModule::MAX_DIGITAL_OUTPUTS` |
+| Slots digitaux IO | 15 | `IOModule::MAX_DIGITAL_SLOTS` |
+| Équipements `PoolDevice` | 8 | `POOL_DEVICE_MAX` |
+| Capteurs Home Assistant | 24 | `HAModule::MAX_HA_SENSORS` |
+| Binary sensors Home Assistant | 8 | `HAModule::MAX_HA_BINARY_SENSORS` |
+| Switches Home Assistant | 16 | `HAModule::MAX_HA_SWITCHES` |
+| Numbers Home Assistant | 16 | `HAModule::MAX_HA_NUMBERS` |
+| Buttons Home Assistant | 8 | `HAModule::MAX_HA_BUTTONS` |
+| Routes runtime MQTT | 36 | `Limits::MaxRuntimeRoutes` |
+| EventBus queue | 32 | `Limits::EventQueueLen` |
+| Variables de configuration | 315 | `Limits::MaxConfigVars` |

@@ -74,7 +74,7 @@ Mapping officiel `ID -> tag` utilisé par le registre de logs (`src/Core/LogModu
 - aucune écriture DataStore
 - aucune publication MQTT directe
 
-## Points d'extension
+## Interfaces complémentaires
 
 - ajouter un nouveau sink via `logsinks.add(...)`
 - ajuster la profondeur de queue via `Limits::LogQueueLen`

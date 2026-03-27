@@ -71,7 +71,7 @@ Les tailles ci-dessous representent l'empreinte statique de l'instance module em
 Notes:
 
 - `MQTTModule` et `IOModule` sont les deux plus gros postes statiques au niveau module.
-- Depuis la migration recente vers heap, `MQTTModule` a perdu environ `2 632 o` de `.bss` statique.
+- Le buffer `MQTTModule::scratch_` est aujourd'hui alloue en heap persistante et ne figure plus dans ce poste `.bss`.
 - La heap "profil FlowIO" liee a la discovery Home Assistant n'est pas dans `HAModule`, mais dans l'assemblage du profil.
 
 ### Heap runtime recurrente: stacks de tasks
@@ -155,24 +155,18 @@ Sous-total heap persistante identifiable hors stacks: environ `12,4 Ko`.
 
 Remarques:
 
-- la migration recente `.bss -> heap` a ajoute `5 446 o` persistants:
+- des buffers auparavant portes par la DRAM statique sont aujourd'hui comptes dans la heap persistante identifiee ci-dessus:
   - `FlowIoDiscoveryHeap`: `2 816 o`
   - `MQTTModule::scratch_`: `2 630 o`
 - `IOModule` utilise beaucoup de pools internes, mais ils restent statiques dans `ModuleInstances` et ne consomment donc pas de heap.
 
-## Priorites d'optimisation
+## Postes dominants pour le dimensionnement
 
-Si l'objectif est de reduire la DRAM statique sans trop charger la heap:
+Les sections precedentes montrent surtout:
 
-1. Reduire les capacites compile-time de `IOModule`, `MQTTModule`, `PoolDeviceModule` et `TimeModule`.
-2. Traiter les `StaticJsonDocument<>` persistants les plus gros (`ConfigStore`, `MQTT`, `Time`).
-3. Eviter de deplacer des agrégats entiers (`ModuleInstances`, `gContext`) tant que la heap libre minimale reste serree.
-
-Si l'objectif est de reduire la heap runtime:
-
-1. Auditer les stacks de tasks declarees
-2. Revoir `MQTTModule::rxQueueStorage_`
-3. Revoir les objets `MqttConfigRouteProducer`
+1. que `IOModule`, `MQTTModule`, `PoolDeviceModule` et `TimeModule` dominent l'empreinte du profil `FlowIO`
+2. que `ModuleInstances` et `gContext` concentrent une part importante de la DRAM statique
+3. que les stacks de tâches et quelques buffers réseau représentent la majeure partie de la heap persistante identifiable
 
 ## Commandes utiles pour regenerer la note
 

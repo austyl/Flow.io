@@ -10,7 +10,7 @@ Le protocole repose sur:
 
 Deux familles de lecture runtime coexistent:
 - snapshots JSON par domaine (`OpGetRuntimeStatus*`) pour compatibilité
-- lectures batch binaires d'IDs runtime (`OpGetRuntimeUiValues`) pour le nouveau chemin recommandé
+- lectures batch binaires d'IDs runtime (`OpGetRuntimeUiValues`) pour le transport Runtime UI
 
 ## Vue d'ensemble
 
@@ -586,7 +586,7 @@ Champs:
 2. réception d'un accusé "queued"
 3. exécution différée côté Flow.IO
 
-## Gestion mémoire et motivation du découpage par domaine
+## Gestion mémoire et découpage par domaine
 
 Le protocole a été ajusté pour limiter l'empreinte RAM sur les ESP32:
 - un buffer JSON module dédié côté serveur

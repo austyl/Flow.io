@@ -35,7 +35,7 @@ Indirectement via `ConfigStore`:
 - un `applyJson` qui modifie une variable persistante publie `EventId::ConfigChanged`
 - utilisé par `MQTTModule` pour `cfg/set`
 
-## Usage développeur
+## Utilisation dans le firmware
 
 Exemple d'application d'un patch:
 

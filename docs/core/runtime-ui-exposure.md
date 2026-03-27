@@ -1,61 +1,49 @@
 # Exposition Runtime UI
 
-Cette note décrit le mécanisme d'exposition runtime `Flow.IO -> Supervisor/UI` utilisé pour lire des valeurs vivantes sans exporter le `DataStore` brut et sans construire de JSON riche côté `Flow.IO`.
+Cette page décrit le mécanisme d'exposition runtime utilisé entre `FlowIO` et `Supervisor` pour lire des valeurs vivantes sans exporter le `DataStore` brut.
 
 ## Vue d'ensemble
 
-Le système repose sur 3 briques séparées:
-- des annotations manuelles par module (`*RuntimeUi.json`)
-- un manifeste JSON global généré pour le `Supervisor` et l'UI web
-- un routage runtime binaire compact côté `Flow.IO`
+Le système repose sur trois éléments:
 
-Le manifeste est statique et textuel.
-Le routage runtime est dynamique, mais strictement numérique.
+- des annotations JSON par module (`*RuntimeUi.json`)
+- un manifeste global généré pour le `Supervisor` et l'interface web
+- un routage binaire compact côté `FlowIO`
 
-## Identité canonique
+Le manifeste est textuel et statique. Les lectures runtime sont numériques et résolues à la demande.
 
-Chaque valeur runtime exposée est identifiée par:
+## Identité des valeurs
+
+Chaque valeur exposée possède:
+
 - `moduleId`
 - `valueId`
 - `runtimeId = moduleId * 100 + valueId`
 
-Helpers:
+Helpers utilisés:
+
 - `makeRuntimeUiId(moduleId, valueId)`
 - `runtimeUiModuleId(runtimeId)`
 - `runtimeUiValueId(runtimeId)`
 
-Important:
-- la `key` textuelle (`pool.water_temp`, `wifi.ip`, etc.) est un alias lisible pour le `Supervisor` / l'UI
-- l'identité technique canonique est numérique
-- le routage `Flow.IO` se fait par `moduleId`, pas par clé textuelle
-
-## Contraintes mémoire
-
-Le design runtime côté `Flow.IO` vise un impact DRAM/heap minimal:
-- pas de manifeste JSON en RAM
-- pas de cache des valeurs exposées
-- pas de duplication du `DataStore`
-- pas de `String`, `std::vector`, `std::map`, `DynamicJsonDocument` dans le chemin critique
-- pas de `new/delete` pour répondre à une lecture runtime
-
-Le coût mémoire permanent est limité à:
-- un registre statique `moduleId -> provider`
-- quelques constantes `constexpr` / `const`
-- la sérialisation directe dans le buffer de réponse I2C existant
+La clé textuelle (`wifi.ip`, `pool.water_temp`, etc.) est un alias de présentation. L'identité technique utilisée pour le transport est numérique.
 
 ## Composants C++
 
-Le cœur runtime UI est porté par:
-- [`RuntimeUi.h`](../../src/Core/RuntimeUi.h)
-- [`RuntimeUi.cpp`](../../src/Core/RuntimeUi.cpp)
+Références principales:
 
-Composants:
-- `IRuntimeUiValueProvider`: interface implémentée par les modules exposants
-- `IRuntimeUiWriter`: interface de sérialisation typée
-- `RuntimeUiRegistry`: table fixe indexée par `moduleId`
-- `RuntimeUiService`: lecture batch d'une liste de `runtimeId`
+- `src/Core/RuntimeUi.h`
+- `src/Core/RuntimeUi.cpp`
 
-Le transport binaire supporte:
+Composants exposés:
+
+- `IRuntimeUiValueProvider`
+- `IRuntimeUiWriter`
+- `RuntimeUiRegistry`
+- `RuntimeUiService`
+
+Types transportés actuellement:
+
 - `bool`
 - `int32`
 - `uint32`
@@ -65,15 +53,24 @@ Le transport binaire supporte:
 - `not_found`
 - `unavailable`
 
-## Pattern pour un module
+## Contraintes mémoire
 
-Chaque module garde ses `valueId` localement dans le code C++.
+Le chemin runtime côté `FlowIO` ne conserve pas de manifeste JSON en RAM et ne duplique pas le `DataStore`.
 
-Pattern attendu:
-1. définir les `valueId` locaux dans le module
-2. implémenter `writeRuntimeUiValue(valueId, writer)`
-3. enregistrer le provider dans `I2CCfgServerModule`
-4. documenter les valeurs dans le fichier `*RuntimeUi.json`
+Le coût mémoire permanent provient principalement de:
+
+- la table `moduleId -> provider`
+- les constantes `constexpr`
+- la sérialisation directe dans le buffer de réponse I2C
+
+## Implémentation dans un module
+
+Chaque module qui expose des valeurs Runtime UI:
+
+1. définit ses `valueId`
+2. implémente `writeRuntimeUiValue(valueId, writer)`
+3. s'enregistre dans `RuntimeUiRegistry`
+4. documente ses valeurs dans un fichier `*RuntimeUi.json`
 
 Exemple simplifié:
 
@@ -100,12 +97,13 @@ public:
 };
 ```
 
-## Annotations
+## Annotations JSON
 
-Les annotations manuelles vivent dans les modules:
+Les annotations manuelles vivent dans:
+
 - `src/Modules/**/**RuntimeUi.json`
 
-Format:
+Format attendu:
 
 ```json
 {
@@ -125,67 +123,55 @@ Format:
 }
 ```
 
-Champs principaux:
+Champs utilisés actuellement:
+
 - `moduleId`
 - `valueId`
 - `key`
 - `label`
 - `type`
 - `domain`
-- `group` optionnel
-- `unit` optionnel
-- `decimals` optionnel
-- `order` optionnel
-- `enum` optionnel
-- `flags` optionnel
-- `display` optionnel: `circ-gauge`, `horiz-gauge`, `badge`, `boolean`, `time`, `value`
-- `displayConfig` optionnel: configuration UI complémentaire, par exemple bornes et bandes d'une jauge, ou libellés d'un booléen
+- `group`
+- `unit`
+- `decimals`
+- `order`
+- `enum`
+- `flags`
+- `display`
+- `displayConfig`
 
-Le champ `display` permet au frontend de choisir un widget générique adapté sans coder les mesures en dur:
-- `circ-gauge`: jauge circulaire
-- `horiz-gauge`: jauge horizontale
-- `badge`: puce texte sans ligne clé/valeur, affichée en tête de card
-- `boolean`: tuile d'état booléenne
-- `time`: durée stockée en millisecondes, rendue automatiquement en format lisible
-- `value`: ligne clé/valeur simple
+## Génération du manifeste
 
-Pour les jauges circulaires, si `displayConfig.bands` est utilisé avec une configuration 5 zones, les bornes `min/max` de la jauge sont dérivées de `displayConfig.bands.min/max`. Il n'est pas nécessaire de les dupliquer ailleurs.
+Le script `scripts/generate_runtimeui_manifest.py`:
 
-## Consolidation
-
-Le script [`generate_runtimeui_manifest.py`](../../scripts/generate_runtimeui_manifest.py):
 - scanne les fichiers `*RuntimeUi.json`
-- valide les modules référencés
-- valide l'unicité des `runtimeId`
-- vérifie `runtimeId == moduleId * 100 + valueId`
-- génère le manifeste JSON global
-- génère un petit index C++ pour le `Supervisor`
+- vérifie l'unicité des `runtimeId`
+- génère le manifeste global
+- génère un index C++ utilisé par le `Supervisor`
 
 Sorties:
-- [`data/webinterface/runtimeui.json`](../../data/webinterface/runtimeui.json)
-- [`src/Core/Generated/RuntimeUiManifest_Generated.h`](../../src/Core/Generated/RuntimeUiManifest_Generated.h)
 
-## Batch runtime
+- `data/webinterface/runtimeui.json`
+- `src/Core/Generated/RuntimeUiManifest_Generated.h`
 
-Le `Supervisor` appelle `POST /api/runtime/values` avec une liste d'IDs.
+## Lecture batch
 
-Le client:
-- découpe la requête en petits batches adaptés à `I2cCfgProtocol::MaxPayload`
-- appelle `OpGetRuntimeUiValues`
-- convertit la réponse binaire en JSON homogène
+Le `Supervisor` utilise le service distant pour lire des listes d'IDs runtime.
 
-Le serveur `Flow.IO`:
-- extrait `moduleId` et `valueId`
-- résout le provider dans `RuntimeUiRegistry`
-- sérialise directement dans le buffer I2C de réponse
+Chemin actuel:
 
-## Valeurs migrées
+1. le client web appelle `POST /api/runtime/values`
+2. le `Supervisor` traduit la demande en batches adaptés à `I2cCfgProtocol::MaxPayload`
+3. le `FlowIO` résout chaque `runtimeId` dans `RuntimeUiRegistry`
+4. la réponse binaire est convertie en JSON homogène côté `Supervisor`
 
-Les valeurs aujourd'hui exposées par le nouveau système couvrent déjà les usages statut/UI principaux:
-- `system`: firmware, uptime, heap libre, heap min
-- `wifi`: ready, ip, rssi
-- `mqtt`: ready, serveur, compteurs d'erreurs
-- `pool`: températures, pH, ORP, modes, états actionneurs
+## Coexistence avec les anciens snapshots
 
-L'ancien chemin `/api/flow/status*` reste disponible pour compatibilité.
-Le chemin recommandé pour les lectures runtime nouvelles est `/api/runtime/*`.
+Les snapshots JSON de type `/api/flow/status*` sont toujours présents pour compatibilité.
+
+Le transport batch Runtime UI existe en parallèle et expose notamment des valeurs pour:
+
+- `system`
+- `wifi`
+- `mqtt`
+- `pool`

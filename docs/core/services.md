@@ -1,30 +1,26 @@
-# Services Core et architecture ID-based
+# Services Core et architecture `ServiceId`
 
 Toutes les interfaces de service vivent sous `src/Core/Services/` et sont agrégées par `src/Core/Services/Services.h`.
 
-L'architecture actuelle n'utilise plus un registre basé sur des clés chaîne comme API primaire. Le point d'entrée officiel est maintenant :
-
-- `ServiceId` dans `src/Core/ServiceId.h`
-- `ServiceRegistry` dans `src/Core/ServiceRegistry.h`
-- `ServiceBinding` dans `src/Core/ServiceBinding.h`
-
 ## Principe général
 
-Un service est un contrat C simple :
+Le registre de services actuellement utilisé est indexé par `ServiceId`.
+
+Références principales:
+
+- `src/Core/ServiceId.h`
+- `src/Core/ServiceRegistry.h`
+- `src/Core/ServiceBinding.h`
+
+Un service est généralement composé de:
 
 - un `struct` de pointeurs de fonctions
-- un champ `void* ctx` pour l'instance porteuse
-- parfois, pour les wrappers noyau, un simple pointeur direct (`DataStore*`, `EventBus*`)
-
-Le registre est **ID-based** :
-
-- chaque service est enregistré sous un `ServiceId`
-- les IDs sont stables, compacts, et centralisés dans `src/Core/ServiceId.h`
-- `ServiceRegistry` stocke un slot par ID, sans lookup par chaîne à l'exécution
+- un champ `void* ctx`
+- ou, pour certains services cœur, un pointeur direct vers l'objet porté
 
 ## Consommer un service
 
-Exemple d'accès dans `init()` :
+Exemple d'accès dans `init()`:
 
 ```cpp
 #include "Core/ServiceId.h"
@@ -38,22 +34,17 @@ void MyModule::init(ConfigStore&, ServiceRegistry& services)
 }
 ```
 
-Notes :
-
-- `services.get<T>(id)` est un cast typé sur un slot `void*`
-- le couple `ServiceId` + type attendu doit être cohérent
-- `get()` retourne `nullptr` si le service n'est pas enregistré
+`services.get<T>(id)` retourne `nullptr` si le service n'est pas enregistré.
 
 ## Exposer un service
 
-Pattern recommandé :
+Le pattern utilisé dans les modules actuels consiste à:
 
-- déclarer le service comme membre `svc_` du module
-- binder directement les méthodes d'instance via `ServiceBinding::bind<&MyModule::method_>`
-- utiliser `ServiceBinding::bind_or<&MyModule::method_, fallback>` seulement pour les retours non-`void` qui ont un défaut métier explicite
-- si la signature métier ne colle pas exactement au contrat, ajouter une petite méthode d'adaptation `xxxSvc_()`
+- conserver le service comme membre du module
+- binder les méthodes d'instance avec `ServiceBinding::bind`
+- enregistrer le service dans `init()`
 
-Exemple :
+Exemple:
 
 ```cpp
 #include "Core/ServiceBinding.h"
@@ -75,30 +66,24 @@ void MyModule::init(ConfigStore&, ServiceRegistry& services)
 }
 ```
 
-`kMyServiceId` représente ici l'ID réellement réservé à ce contrat.
+Contraintes de `ServiceBinding`:
 
-Contraintes `ServiceBinding` :
-
-- supporte les méthodes `const` et non-`const`
+- supporte les méthodes `const` et non `const`
 - ne supporte pas les retours par référence
-- `bind_or` ne supporte pas les méthodes `void`
-- si `ctx == nullptr`, `bind` retourne une valeur par défaut C++ (`R{}`) ou no-op pour `void`
+- `bind_or` ne s'applique qu'aux retours non `void`
 
-## Règles du `ServiceRegistry`
+## Comportement du `ServiceRegistry`
 
-Le registre actuel est strict :
+Le registre actuel:
 
-- `add()` refuse un `ServiceId` invalide
-- `add()` refuse un pointeur nul
-- `add()` refuse les doublons
-- `has()` teste simplement la présence d'un slot
-- `getRaw()` et `get<T>()` retournent `nullptr` si l'ID n'est pas valide ou absent
+- refuse les `ServiceId` invalides
+- refuse les pointeurs nuls
+- refuse les doublons
+- retourne `nullptr` si un service est absent
 
-Autrement dit, un service n'est pas censé être réenregistré ou remplacé dynamiquement pendant le cycle de vie normal des modules.
+Le remplacement dynamique d'un service pendant l'exécution n'est pas utilisé dans l'implémentation actuelle.
 
-## Inventaire des `ServiceId`
-
-`src/Core/ServiceId.h` est la source de vérité. Les noms texte ci-dessous servent surtout au debug et à la compatibilité documentaire via `toString(ServiceId)`.
+## Inventaire actuel des `ServiceId`
 
 | `ServiceId` | Nom texte | Contrat |
 | --- | --- | --- |
@@ -123,178 +108,129 @@ Autrement dit, un service n'est pas censé être réenregistré ou remplacé dyn
 | `NetworkAccess` | `network_access` | `NetworkAccessService` |
 | `FlowCfg` | `flowcfg` | `FlowCfgRemoteService` |
 
-La présence effective d'un service dépend du profil compilé et des modules activés.
+La présence effective d'un service dépend du profil compilé et des modules enregistrés par ce profil.
 
 ## Contrats principaux
 
 ### `LogHubService`
 
 - enqueue non bloquant d'un `LogEntry`
-- enregistrement des noms de modules de log
-- filtrage par niveau (`shouldLog`, `setModuleMinLevel`, `getModuleMinLevel`)
-- métriques de hub (`getStats`, `noteFormatTruncation`)
+- enregistrement des tags de modules de log
+- filtrage par niveau
+- lecture des statistiques du hub
 
 ### `LogSinkRegistryService`
 
-- enregistrement des sinks (`add`)
-- itération (`count`, `get`)
+- enregistrement des sinks
+- itération sur les sinks déclarés
 
 ### `CommandService`
 
-- enregistrement de handlers (`registerHandler`)
-- exécution (`execute(cmd, json, args, reply, replyLen)`)
-- les handlers reçoivent un `CommandRequest`
+- enregistrement de handlers
+- exécution d'une commande via `execute`
 
 ### `ConfigStoreService`
 
-- import JSON (`applyJson`)
-- export global (`toJson`)
-- export module (`toJsonModule`)
-- liste modules (`listModules`)
-- effacement complet (`erase`)
+- import JSON
+- export global
+- export par module
+- liste des modules
+- effacement complet
 
 ### `DataStoreService`
 
 - expose directement `DataStore* store`
-- utilisé par les helpers runtime et les modules métiers
 
 ### `EventBusService`
 
 - expose directement `EventBus* bus`
-- abonnement/publication via l'API native `EventBus`
 
 ### `AlarmService`
 
-- enregistrement d'alarmes (`registerAlarm`)
-- acquittement (`ack`, `ackAll`)
-- lecture d'état (`isActive`, `isAcked`, `activeCount`, `highestSeverity`)
-- snapshots (`buildSnapshot`, `listIds`, `buildAlarmState`, `buildPacked`)
+- enregistrement d'alarmes
+- acquittement
+- lecture d'état
+- génération de snapshots
 
 ### `HmiService`
 
-- refresh d'affichage (`requestRefresh`)
-- navigation config (`openConfigHome`, `openConfigModule`)
-- snapshot menu (`buildConfigMenuJson`)
-- gestion page LEDs (`setLedPage`, `getLedPage`)
+- demande de refresh
+- ouverture de vues de configuration
+- génération d'un snapshot menu
 
 ### `WifiService`
 
-- état (`state`, `isConnected`)
-- IP (`getIP`)
-- actions runtime (`requestReconnect`, `requestScan`)
-- télémétrie scan (`scanStatusJson`)
-- contrôle retry STA (`setStaRetryEnabled`)
+- état du lien
+- IP courante
+- demande de reconnexion
+- demande de scan
 
 ### `TimeService`
 
-- état de synchro (`state`, `isSynced`)
-- epoch (`epoch`)
-- formatage local (`formatLocalTime`)
+- état de synchronisation NTP
+- lecture de l'epoch
+- formatage de la date locale
 
 ### `TimeSchedulerService`
 
-- gestion des slots (`setSlot`, `getSlot`, `clearSlot`, `clearAll`)
-- observation (`usedCount`, `activeMask`, `isActive`)
-- supporte les modes `RecurringClock` et `OneShotEpoch`
+- lecture et écriture des slots de planification
+- effacement
+- lecture des slots actifs
 
 ### `MqttService`
 
-- enqueue job (`enqueue(producerId, messageId, prio, flags)`)
-- enregistrement de producteur (`registerProducer`)
-- format de topic (`formatTopic`)
-- état transport (`isConnected`)
-
-Le service MQTT est **job-based** :
-
-- le contrat public ne prend pas directement `topic/payload`
-- chaque producteur possède son mapping local `messageId -> build`
-- le payload final est construit au plus tard via `MqttBuildContext`
-- `enqueue()` peut refuser si le transport n'est pas prêt ou si la queue ne peut pas accepter le job
+- enregistrement de producteurs
+- enqueue des jobs MQTT
+- formatage de topics
+- état de la connexion MQTT
 
 ### `HAService`
 
-- enregistrement statique d'entités discovery via :
-- `addSensor`
-- `addBinarySensor`
-- `addSwitch`
-- `addNumber`
-- `addButton`
-- demande de refresh (`requestRefresh`)
+- déclaration d'entités discovery
+- demande de refresh discovery
 
 ### `IOServiceV2`
 
-- inventaire endpoints (`count`, `idAt`, `meta`)
-- lecture typée générique (`readValue`)
-- digital (`readDigital`, `writeDigital`)
-- analog (`readAnalog`)
-- cycle IO (`tick`, `lastCycle`)
-
-L'accès cross-module aux IO doit passer par `IoId`, jamais par des noms libres.
+- inventaire des endpoints
+- lecture des métadonnées
+- lecture des valeurs
+- écriture des sorties digitales
+- lecture du dernier cycle IO
 
 ### `StatusLedsService`
 
-- écriture masque logique (`setMask`)
-- lecture masque courant (`getMask`)
+- lecture et écriture du masque de LEDs logiques
 
 ### `PoolDeviceService`
 
-- inventaire slots (`count`, `meta`)
-- lecture état réel (`readActualOn`)
-- commande état désiré (`writeDesired`)
-- refill tank (`refillTank`)
+- inventaire des slots
+- lecture de l'état réel
+- écriture de l'état désiré
+- remise à niveau d'une cuve
 
 ### `NetworkAccessService`
 
-- reachability web (`isWebReachable`)
-- mode réseau (`mode`)
-- IP active (`getIP`)
-- notification de changement Wi-Fi (`notifyWifiConfigChanged`)
+- état de joignabilité du web local
+- mode réseau
+- IP active
+- notification de changement Wi-Fi
 
 ### `WebInterfaceService`
 
-- pause/reprise interface web (`setPaused`)
-- état (`isPaused`)
+- pause et reprise de l'interface web
+- lecture de l'état
 
 ### `FirmwareUpdateService`
 
-- démarrage mise à jour (`start`)
-- état JSON (`statusJson`)
-- config JSON (`configJson`)
-- mise à jour de config source (`setConfig`)
+- démarrage d'une mise à jour
+- lecture de l'état JSON
+- lecture de la configuration JSON
+- mise à jour de la configuration source
 
 ### `FlowCfgRemoteService`
 
-- readiness (`isReady`)
-- navigation config distante (`listModulesJson`, `listChildrenJson`, `getModuleJson`)
-- snapshots runtime (`runtimeStatusDomainJson`, `runtimeStatusJson`, `runtimeAlarmSnapshotJson`)
-- lecture binaire Runtime UI (`runtimeUiValues`)
-- application patch JSON (`applyPatchJson`)
-
-Ce service est le contrat supervisor/I2C pour piloter un nœud Flow.IO distant.
-
-## Migration depuis l'ancien modèle
-
-Ancienne forme :
-
-```cpp
-services.get<IOServiceV2>("io");
-services.add("mqtt", &svc_);
-```
-
-Forme actuelle :
-
-```cpp
-services.get<IOServiceV2>(ServiceId::Io);
-services.add(ServiceId::Mqtt, &svc_);
-```
-
-Les chaînes ne sont plus l'API de lookup du `ServiceRegistry`. Si un nom texte est encore nécessaire pour du debug, utiliser `toString(ServiceId)`.
-
-## Bonnes pratiques
-
-- récupérer les dépendances en `init()` ou `onConfigLoaded()` et stocker le pointeur typé
-- toujours vérifier `nullptr` avant usage
-- préférer des contrats étroits et stables à des services “génériques”
-- éviter allocations dynamiques et parsing coûteux dans les callbacks de service critiques
-- garder les `ServiceId` comme source unique de wiring inter-modules
-- documenter tout nouveau service dans `src/Core/ServiceId.h`, `src/Core/Services/` et cette page
+- readiness du lien vers `FlowIO`
+- navigation de configuration distante
+- lecture des snapshots runtime
+- lecture Runtime UI binaire
+- application de patch JSON distant

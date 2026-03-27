@@ -1,77 +1,119 @@
 # Architecture Core
 
-## Principes
+Cette page décrit l'architecture actuellement utilisée par les firmwares `FlowIO` et `Supervisor`.
 
-Flow.IO suit une architecture modulaire orientée contrats:
-- chaque module déclare ses dépendances (`dependencyCount`, `dependency`)
-- les interactions passent par des services typés (`ServiceRegistry`)
-- les changements runtime passent par `DataStore` + `EventBus`
-- la config persistante passe par `ConfigStore` (NVS) + `ConfigChanged`
-- le transport MQTT TX est centralisé dans `MQTTModule` (cœur unifié job-based)
+## Blocs runtime
 
-Le registre de services est désormais **ID-based**:
+Le runtime est organisé autour des briques suivantes:
 
-- l'API de câblage s'appuie sur `ServiceId`
-- `ServiceRegistry` stocke un slot par ID
-- les noms texte (`"mqtt"`, `"io"`, `"time.scheduler"`, etc.) restent utiles pour le debug et la documentation, mais ne sont plus l'API de lookup
+- `Module` et `ModulePassive`: cycle de vie des modules
+- `ModuleManager`: enregistrement, tri topologique, `init`, `onConfigLoaded`, démarrage des tâches
+- `ServiceRegistry`: registre de services indexé par `ServiceId`
+- `ConfigStore`: configuration persistante en NVS avec import/export JSON
+- `DataStore`: état runtime partagé en RAM
+- `EventBus`: signalisation interne via queue
+- `MQTTModule`: transport MQTT unifié
 
-## Composants clés
+Les noms texte visibles dans les logs, comme `mqtt`, `io` ou `time.scheduler`, correspondent à `toString(ServiceId)`. Le wiring réel passe par `ServiceId`.
 
-- `ModuleManager`: tri topologique, `init`, `onConfigLoaded`, démarrage tasks
-- `ServiceRegistry`: registre de services par `ServiceId` (`add/get<T>()`)
-- `EventBus`: queue thread-safe, dispatch callback
-- `DataStore`: état runtime centralisé + événements `DataChanged`
-- `ConfigStore`: variables config déclarées par modules, NVS, JSON import/export
-- `MQTTModule`: coeur TX MQTT unifié (queues/jobs/retry/publish)
-- `MqttConfigRouteProducer`: helper technique pour producteurs cfg autoportés
+## Organisation des échanges
 
-## Chaîne de logs
+### Services
 
-- `LogHubModule`: buffer central
-- `LogDispatcherModule`: dispatch vers sinks
-- `LogSerialSinkModule`: sortie série
-- `LogAlarmSinkModule`: conversion warn/error en alarmes
+Les dépendances inter-modules passent par des services C simples:
+
+- contrat structuré de pointeurs de fonctions
+- champ `ctx`
+- enregistrement dans `ServiceRegistry`
+
+### Configuration
+
+La configuration persistante suit ce chemin:
+
+1. déclaration des variables par les modules
+2. chargement NVS dans `ConfigStore`
+3. exposition JSON par module
+4. publication `EventId::ConfigChanged` lors d'une modification
+
+### Runtime
+
+L'état runtime suit ce chemin:
+
+1. écriture dans `DataStore`
+2. publication `EventId::DataChanged`
+3. consommation éventuelle par d'autres modules
+4. publication MQTT si une route runtime est concernée
 
 ## Flux principal
 
 ```mermaid
 flowchart LR
-  A["Modules actifs/passifs"] --> B["ServiceRegistry"]
+  A["Modules actifs et passifs"] --> B["ServiceRegistry"]
   A --> C["ConfigStore (NVS)"]
-  A --> D["DataStore (runtime)"]
-  D --> E["EventBus"]
-  C --> E
+  A --> D["DataStore (RAM)"]
+  C --> E["EventBus"]
+  D --> E
   E --> A
-  A --> F["MQTTModule (TX core)"]
+  A --> F["MQTTModule"]
   F --> G["Broker MQTT / Home Assistant"]
 ```
 
-## Séquence de boot
+## Démarrage
 
-1. `Preferences.begin("flowio")`
-2. injection `Preferences` dans `ConfigStore`
-3. migrations éventuelles (`runMigrations`)
-4. enregistrement modules dans `ModuleManager`
-5. `initAll()`
-- `init()` modules (ordre topologique)
-- `loadPersistent()`
-- `onConfigLoaded()`
-- start tasks modules actifs
-6. câblage providers runtime MQTT (`registerRuntimeProvider(...)`)
-7. orchestrateur de boot progressif (release MQTT/HA/PoolLogic)
+Séquence de démarrage commune:
 
-## Chemin MQTT unifié (résumé)
+1. `Bootstrap::run()` résout le profil compilé
+2. le profil installe `board`, `domain`, `identity` et options runtime dans `AppContext`
+3. le profil enregistre ses modules dans `ModuleManager`
+4. `ModuleManager::initAll()` exécute:
+   - `init()`
+   - `ConfigStore::loadPersistent()`
+   - `onConfigLoaded()`
+   - démarrage des tâches des modules actifs
 
-- les modules s'enregistrent comme producteurs (`MqttPublishProducer`)
-- les modules enqueuent des jobs compacts `(producerId,messageId,prio)`
-- le cœur MQTT choisit, build, publie, puis notifie (`published/deferred/dropped`)
-- retry/backoff et déduplication sont centralisés
-- aucun pipeline MQTT alternatif en parallèle
+Dans `FlowIO`, le bootstrap enregistre ensuite les providers runtime MQTT et Runtime UI du profil.
 
-## Règles d'intégration recommandées
+## Répartition actuelle des responsabilités
 
-- dépendre de services, pas d'implémentations concrètes
-- utiliser les helpers runtime `*Runtime.h` pour notifier `DataStore`
-- utiliser `ConfigStore::set()` pour persistance + `ConfigChanged`
-- garder les callbacks EventBus courts et non bloquants
-- côté MQTT, enqueuer par IDs, ne pas publier directement topic/payload
+### `FlowIO`
+
+Le profil `FlowIO` porte notamment:
+
+- `wifi`
+- `time`
+- `mqtt`
+- `ha`
+- `io`
+- `poollogic`
+- `pooldev`
+- `hmi`
+- `i2ccfg.server`
+
+### `Supervisor`
+
+Le profil `Supervisor` porte notamment:
+
+- `wifi`
+- `wifiprov`
+- `i2ccfg.client`
+- `webinterface`
+- `fwupdate`
+- `hmi.supervisor`
+
+## Chaîne de logs
+
+La chaîne de logs actuelle est:
+
+1. `LogHubModule`: buffer et registre de modules de log
+2. `LogDispatcherModule`: distribution vers les sinks
+3. `LogSerialSinkModule`: sortie série
+4. `LogAlarmSinkModule`: conversion de certains logs en alarmes
+
+## Transport MQTT
+
+Le chemin MQTT utilisé aujourd'hui est job-based:
+
+- les modules enregistrent des producteurs
+- les modules enqueuent des jobs `(producerId, messageId, priorité)`
+- `MQTTModule` construit le topic et le payload au moment de la publication
+- les retries et le backoff sont centralisés dans le module MQTT

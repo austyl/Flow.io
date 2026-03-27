@@ -108,7 +108,7 @@ Données runtime:
 - state: `enabled`, `desiredOn`, `actualOn`, `type`, `blockReason`, `tsMs`
 - metrics: `runningSecDay/Week/Month/Total`, `injectedMl*`, `tankRemainingMl`, `tsMs`
 
-## Persistance runtime (important)
+## Persistance runtime
 
 Objectif:
 - conserver les runtimes à travers reboot
@@ -202,9 +202,9 @@ Entités créées:
   - `refill_ph_tank` (libellé HA: `Fill pH Tank`) -> `{"cmd":"pool.refill","args":{"slot":1}}`
   - `refill_chlorine_tank` (libellé HA: `Fill Chlorine Tank`) -> `{"cmd":"pool.refill","args":{"slot":2}}`
 
-## Initialisation des slots (main)
+## Initialisation des slots dans le profil
 
-Les slots `pd0..pd7` sont définis via `defineDevice()` depuis `main.cpp` à partir de `FLOW_POOL_IO_BINDINGS`:
+Les slots `pd0..pd7` sont définis via `defineDevice()` dans `src/Profiles/FlowIO/FlowIOBootstrap.cpp`, à partir du domaine actif et des bindings `PoolBinding`:
 - `pd0` filtration
 - `pd1` pH (peristaltique, cuve, dépend filtration, max uptime défaut `30 min`)
 - `pd2` chlore (peristaltique, cuve, dépend filtration, max uptime défaut `30 min`)

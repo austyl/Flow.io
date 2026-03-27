@@ -77,7 +77,7 @@ Slots système réservés (0..2):
 - validation stricte des slots (mode, bornes horaires/epoch)
 - slots système toujours ré-appliqués et protégés
 
-## Notes d'intégration
+## Intégration actuelle
 
 - Les modules métier (ex: `PoolLogicModule`) doivent utiliser `time.scheduler` pour programmer leurs fenêtres.
 - Les modules consommateurs doivent écouter `EventId::SchedulerEventTriggered`.

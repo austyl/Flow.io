@@ -1,54 +1,62 @@
-# Quality Gates Modules
+# Matrice des modules
 
-Cette page donne une note de qualité par module selon 10 critères homogènes.
+Cette page récapitule les modules documentés dans `docs/modules/`, leur rôle général et leur présence dans les profils actuellement compilés.
 
-## Méthode de notation
+## Modules communs aux deux profils
 
-- Échelle: `0..10` par critère
-- Note finale module: somme des 10 critères, donc `/100`
-- Seuils:
-  - `>= 85`: Conforme
-  - `70..84`: À renforcer
-  - `< 70`: Action prioritaire
+| Module | `moduleId` | Type | Profil `FlowIO` | Profil `Supervisor` | Documentation |
+|---|---|---|---|---|---|
+| LogHubModule | `loghub` | passif | oui | oui | `docs/modules/LogHubModule.md` |
+| LogDispatcherModule | `log.dispatcher` | passif avec tâche dédiée | oui | oui | `docs/modules/LogDispatcherModule.md` |
+| LogSerialSinkModule | `log.sink.serial` | passif | oui | oui | `docs/modules/LogSerialSinkModule.md` |
+| EventBusModule | `eventbus` | actif | oui | oui | `docs/modules/EventBusModule.md` |
+| ConfigStoreModule | `config` | passif | oui | oui | `docs/modules/ConfigStoreModule.md` |
+| DataStoreModule | `datastore` | passif | oui | oui | `docs/modules/DataStoreModule.md` |
+| CommandModule | `cmd` | passif | oui | oui | `docs/modules/CommandModule.md` |
+| AlarmModule | `alarms` | actif | oui | oui | `docs/modules/AlarmModule.md` |
+| LogAlarmSinkModule | `log.sink.alarm` | passif | oui | oui | `docs/modules/LogAlarmSinkModule.md` |
+| WifiModule | `wifi` | actif | oui | oui | `docs/modules/WifiModule.md` |
+| TimeModule | `time` | actif | oui | oui | `docs/modules/TimeModule.md` |
+| SystemModule | `system` | passif | oui | oui | `docs/modules/SystemModule.md` |
+| SystemMonitorModule | `sysmon` | actif | oui | oui | `docs/modules/SystemMonitorModule.md` |
 
-## Les 10 points de Quality Gate
+## Modules spécifiques à `FlowIO`
 
-1. **Contrat d'interface**: API/service clair, stable, erreurs explicites.
-2. **Validation des entrées**: contrôle des bornes/types, refus des payloads invalides.
-3. **Persistance & migration**: cohérence NVS/ConfigStore, valeurs défaut sûres.
-4. **Cohérence runtime**: DataStore/dirty flags/états sans ambiguïté.
-5. **Robustesse temps réel**: comportement déterministe en boucle, non-blocage.
-6. **Sécurité fonctionnelle**: fail-safe, interlocks, cut-off sur conditions dangereuses.
-7. **Observabilité**: logs utiles, métriques exploitables, topics runtime lisibles.
-8. **Gestion d'erreurs**: retour d'erreur exploitable, dégradation maîtrisée.
-9. **Maintenabilité**: lisibilité, découplage, documentation module à jour.
-10. **Empreinte ressources**: discipline RAM/stack/CPU adaptée ESP32.
+| Module | `moduleId` | Type | Rôle | Documentation |
+|---|---|---|---|---|
+| HMIModule | `hmi` | actif | interface locale Nextion | `docs/modules/HMIModule.md` |
+| MQTTModule | `mqtt` | actif | transport MQTT et producteurs | `docs/modules/MQTTModule.md` |
+| HAModule | `ha` | actif | discovery Home Assistant | `docs/modules/HAModule.md` |
+| IOModule | `io` | actif | entrées/sorties, drivers, snapshots runtime | `docs/modules/IOModule.md` |
+| PoolLogicModule | `poollogic` | actif | logique métier piscine | `docs/modules/PoolLogicModule.md` |
+| PoolDeviceModule | `pooldev` | actif | pilotage des équipements | `docs/modules/PoolDeviceModule.md` |
 
-## Notes par module
+## Modules spécifiques à `Supervisor`
 
-| Module | Note (/100) | Statut |
-|---|---:|---|
-| [LogHubModule](../modules/LogHubModule.md) | 88 | Conforme |
-| [LogDispatcherModule](../modules/LogDispatcherModule.md) | 85 | Conforme |
-| [LogSerialSinkModule](../modules/LogSerialSinkModule.md) | 83 | À renforcer |
-| [LogAlarmSinkModule](../modules/LogAlarmSinkModule.md) | 86 | Conforme |
-| [EventBusModule](../modules/EventBusModule.md) | 84 | À renforcer |
-| [ConfigStoreModule](../modules/ConfigStoreModule.md) | 91 | Conforme |
-| [DataStoreModule](../modules/DataStoreModule.md) | 89 | Conforme |
-| [CommandModule](../modules/CommandModule.md) | 86 | Conforme |
-| [SystemModule](../modules/SystemModule.md) | 83 | À renforcer |
-| [SystemMonitorModule](../modules/SystemMonitorModule.md) | 84 | À renforcer |
-| [AlarmModule](../modules/AlarmModule.md) | 88 | Conforme |
-| [WifiModule](../modules/WifiModule.md) | 81 | À renforcer |
-| [TimeModule](../modules/TimeModule.md) | 89 | Conforme |
-| [MQTTModule](../modules/MQTTModule.md) | 87 | Conforme |
-| [HAModule](../modules/HAModule.md) | 85 | Conforme |
-| [IOModule](../modules/IOModule.md) | 86 | Conforme |
-| [PoolLogicModule](../modules/PoolLogicModule.md) | 89 | Conforme |
-| [PoolDeviceModule](../modules/PoolDeviceModule.md) | 90 | Conforme |
+| Module | `moduleId` | Type | Rôle |
+|---|---|---|---|
+| `i2ccfg.client` | `i2ccfg.client` | passif avec tâche | accès distant à la configuration et au runtime du `FlowIO` |
+| `wifiprov` | `wifiprov` | actif | provisioning réseau local |
+| `webinterface` | `webinterface` | actif | interface web Supervisor |
+| `fwupdate` | `fwupdate` | actif | mise à jour firmware et écran |
+| SupervisorHMIModule | `hmi.supervisor` | actif | interface TFT locale | 
 
-## Interprétation rapide
+## Modules complémentaires utilisés par les profils
 
-- Les priorités de renforcement se concentrent sur les modules de transport/infra (`wifi`, `eventbus`, `sysmon`) en charge des aléas runtime.
-- Les modules métier piscine (`poollogic`, `pooldev`) sont au niveau attendu, avec garde-fous runtime et persistance en place.
-- Cette grille doit être revue à chaque release majeure et après changements d'architecture.
+| Module | Profil | Rôle |
+|---|---|---|
+| `i2ccfg.server` | `FlowIO` | serveur I2C de configuration et Runtime UI |
+| `i2ccfg.client` | `Supervisor` | client I2C de configuration et Runtime UI |
+
+## Ordre d'enregistrement
+
+L'ordre d'enregistrement réel des modules est défini par les fichiers:
+
+- `src/Profiles/FlowIO/FlowIOBootstrap.cpp`
+- `src/Profiles/Supervisor/SupervisorBootstrap.cpp`
+
+Cet ordre pilote:
+
+- le tri topologique
+- l'initialisation
+- le démarrage des tâches
