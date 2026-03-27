@@ -84,8 +84,24 @@ TOKEN_MAP = {
     "max": "max",
 }
 
-ANALOG_KEY_RE = re.compile(r"^a(?P<idx>[0-9]+)_(?P<field>name|source|channel|c0|c1|prec|min|max)$")
-DIGITAL_KEY_RE = re.compile(r"^d(?P<idx>[0-9]+)_(?P<field>name|pin|active_high|initial_on|momentary|pulse_ms)$")
+ANALOG_KEY_RE = re.compile(r"^a(?P<idx>[0-9]+)_(?P<field>name|source|channel|binding_port|c0|c1|prec|min|max)$")
+DIGITAL_INPUT_KEY_RE = re.compile(r"^i(?P<idx>[0-9]+)_(?P<field>name|binding_port|active_high|pull_mode|edge_mode)$")
+DIGITAL_OUTPUT_KEY_RE = re.compile(r"^d(?P<idx>[0-9]+)_(?P<field>name|pin|binding_port|active_high|initial_on|momentary|pulse_ms)$")
+PORT_ENUM_RE = re.compile(r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,\s*$", re.M)
+BINDING_ENTRY_RE = re.compile(
+    r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
+    re.S,
+)
+BOARD_IO_POINT_RE = re.compile(
+    r'\{\s*"(?P<name>[^"]+)"\s*,\s*IoCapability::(?P<cap>[A-Za-z0-9_]+)\s*,\s*BoardSignal::(?P<signal>[A-Za-z0-9_]+)\s*,\s*(?P<pin>-?\d+)\s*,',
+    re.S,
+)
+BOARD_PIN_REF_RE = re.compile(r"BoardProfiles::kFlowIOBoardRev1IoPoints\[(?P<idx>\d+)\]\.pin")
+
+FLOWIO_BINDING_SET_ANALOG = "flowio_binding_port_analog"
+FLOWIO_BINDING_SET_DIGITAL_INPUT = "flowio_binding_port_digital_input"
+FLOWIO_BINDING_SET_DIGITAL_OUTPUT = "flowio_binding_port_digital_output"
+FLOWIO_EDGE_MODE_SET = "flowio_edge_mode"
 
 
 def _humanize_json_name(json_name: str) -> str:
@@ -113,6 +129,137 @@ def _default_help(module_name: str, json_name: str, type_name: str) -> str:
 
 def _default_series_help(var_name: str, json_name: str, type_name: str) -> str:
     return f"Parametre '{json_name}' issu de la serie '{var_name}' (type {type_name})."
+
+
+def _binding_enum_set_for_doc(module_name: str, json_name: str) -> Optional[str]:
+    if json_name == "binding_port":
+        if module_name.startswith("io/input/a"):
+            return FLOWIO_BINDING_SET_ANALOG
+        if module_name.startswith("io/input/i"):
+            return FLOWIO_BINDING_SET_DIGITAL_INPUT
+        if module_name.startswith("io/output/d"):
+            return FLOWIO_BINDING_SET_DIGITAL_OUTPUT
+    if json_name == "edge_mode" and module_name.startswith("io/input/i"):
+        return FLOWIO_EDGE_MODE_SET
+    return None
+
+
+def _apply_doc_extras(item: dict, module_name: str, json_name: str) -> None:
+    enum_set = _binding_enum_set_for_doc(module_name, json_name)
+    if enum_set:
+        item["enum_set"] = enum_set
+
+
+def _load_flowio_board_points(src_root: Path) -> List[dict]:
+    path = src_root / "Board" / "FlowIOBoardRev1.h"
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    points: List[dict] = []
+    for m in BOARD_IO_POINT_RE.finditer(text):
+        points.append({
+            "name": m.group("name").strip(),
+            "cap": m.group("cap").strip(),
+            "signal": m.group("signal").strip(),
+            "pin": int(m.group("pin")),
+        })
+    return points
+
+
+def _binding_kind_group(kind: str) -> Optional[str]:
+    if kind in (
+        "IO_PORT_KIND_ADS_INTERNAL_SINGLE",
+        "IO_PORT_KIND_ADS_EXTERNAL_DIFF",
+        "IO_PORT_KIND_DS18_WATER",
+        "IO_PORT_KIND_DS18_AIR",
+        "IO_PORT_KIND_INA226",
+        "IO_PORT_KIND_SHT40",
+        "IO_PORT_KIND_BMP280",
+        "IO_PORT_KIND_BME680",
+    ):
+        return FLOWIO_BINDING_SET_ANALOG
+    if kind == "IO_PORT_KIND_GPIO_INPUT":
+        return FLOWIO_BINDING_SET_DIGITAL_INPUT
+    if kind in ("IO_PORT_KIND_GPIO_OUTPUT", "IO_PORT_KIND_PCF8574_OUTPUT"):
+        return FLOWIO_BINDING_SET_DIGITAL_OUTPUT
+    return None
+
+
+def _binding_label(kind: str, port_name: str, param0: str, board_points: List[dict]) -> str:
+    port_display = f"{port_name}"
+
+    board_ref = BOARD_PIN_REF_RE.search(param0)
+    if board_ref:
+        idx = int(board_ref.group("idx"))
+        if 0 <= idx < len(board_points):
+            point = board_points[idx]
+            return f"{port_display} | {point['name']} | GPIO{point['pin']}"
+
+    raw = param0.strip()
+    if kind == "IO_PORT_KIND_ADS_INTERNAL_SINGLE":
+        return f"{port_display} | ADS1115 interne | canal {raw}"
+    if kind == "IO_PORT_KIND_ADS_EXTERNAL_DIFF":
+        return f"{port_display} | ADS1115 externe | paire diff {raw}"
+    if kind == "IO_PORT_KIND_DS18_WATER":
+        return f"{port_display} | DS18B20 | bus eau"
+    if kind == "IO_PORT_KIND_DS18_AIR":
+        return f"{port_display} | DS18B20 | bus air"
+    if kind == "IO_PORT_KIND_GPIO_INPUT":
+        return f"{port_display} | entree GPIO | GPIO{raw}"
+    if kind == "IO_PORT_KIND_GPIO_OUTPUT":
+        return f"{port_display} | sortie GPIO | GPIO{raw}"
+    if kind == "IO_PORT_KIND_PCF8574_OUTPUT":
+        return f"{port_display} | sortie PCF8574 | bit {raw}"
+    if kind == "IO_PORT_KIND_INA226":
+        return f"{port_display} | INA226 | canal {raw}"
+    if kind == "IO_PORT_KIND_SHT40":
+        return f"{port_display} | SHT40 | canal {raw}"
+    if kind == "IO_PORT_KIND_BMP280":
+        return f"{port_display} | BMP280 | canal {raw}"
+    if kind == "IO_PORT_KIND_BME680":
+        return f"{port_display} | BME680 | canal {raw}"
+    return f"{port_display} | {kind} | {raw}"
+
+
+def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
+    path = src_root / "Profiles" / "FlowIO" / "FlowIOIoLayout.h"
+    if not path.exists():
+        return {}
+
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    board_points = _load_flowio_board_points(src_root)
+
+    port_ids: Dict[str, int] = {}
+    for m in PORT_ENUM_RE.finditer(text):
+        port_ids[m.group("name").strip()] = int(m.group("value"))
+
+    enum_sets: Dict[str, List[dict]] = {
+        FLOWIO_BINDING_SET_ANALOG: [],
+        FLOWIO_BINDING_SET_DIGITAL_INPUT: [],
+        FLOWIO_BINDING_SET_DIGITAL_OUTPUT: [],
+        FLOWIO_EDGE_MODE_SET: [
+            {"value": 0, "label": "0 | Front descendant"},
+            {"value": 1, "label": "1 | Front montant"},
+            {"value": 2, "label": "2 | Deux fronts"},
+        ],
+    }
+
+    for m in BINDING_ENTRY_RE.finditer(text):
+        port_name = m.group("port").strip()
+        kind = m.group("kind").strip()
+        param0 = m.group("param0").strip()
+        group = _binding_kind_group(kind)
+        port_id = port_ids.get(port_name)
+        if group is None or port_id is None:
+            continue
+        enum_sets[group].append({
+            "value": port_id,
+            "label": f"{port_id} | {_binding_label(kind, port_name, param0, board_points)}",
+        })
+
+    for key in list(enum_sets.keys()):
+        enum_sets[key] = sorted(enum_sets[key], key=lambda item: int(item["value"]))
+    return enum_sets
 
 
 def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
@@ -158,6 +305,7 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
                 "name": f"Nom entrée A{idx}",
                 "source": f"Source entrée A{idx}",
                 "channel": f"Canal entrée A{idx}",
+                "binding_port": f"Port physique A{idx}",
                 "c0": f"Coefficient C0 A{idx}",
                 "c1": f"Coefficient C1 A{idx}",
                 "prec": f"Precision A{idx}",
@@ -168,6 +316,7 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
                 "name": f"Nom lisible de l'entrée analogique A{idx}.",
                 "source": f"Source ADC de A{idx} (0=ADS interne, 1=ADS externe).",
                 "channel": f"Canal ADC utilisé pour A{idx}.",
+                "binding_port": f"Identifiant du port physique utilise par A{idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
                 "c0": f"Coefficient C0 pour la calibration de A{idx}.",
                 "c1": f"Coefficient C1 pour la calibration de A{idx}.",
                 "prec": f"Nombre de décimales conservées pour A{idx}.",
@@ -177,14 +326,36 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
             unit = "digits" if field == "prec" else None
             return {"label": labels[field], "help": helps[field], "unit": unit}
 
+    if module_name.startswith("io/input/i"):
+        m = DIGITAL_INPUT_KEY_RE.match(json_name)
+        if m:
+            idx = m.group("idx")
+            field = m.group("field")
+            labels = {
+                "name": f"Nom entrée I{idx}",
+                "binding_port": f"Port physique I{idx}",
+                "active_high": f"Actif a 1 I{idx}",
+                "pull_mode": f"Pull entrée I{idx}",
+                "edge_mode": f"Mode de front I{idx}",
+            }
+            helps = {
+                "name": f"Nom lisible de l'entrée digitale I{idx}.",
+                "binding_port": f"Identifiant du port physique utilise par I{idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+                "active_high": f"Si active, l'entrée I{idx} est consideree active a l'etat haut.",
+                "pull_mode": f"Mode de resistance interne applique a l'entrée I{idx}.",
+                "edge_mode": f"Front a compter pour I{idx} en mode compteur (0=descendant, 1=montant, 2=les deux).",
+            }
+            return {"label": labels[field], "help": helps[field], "unit": None}
+
     if module_name.startswith("io/output/d"):
-        m = DIGITAL_KEY_RE.match(json_name)
+        m = DIGITAL_OUTPUT_KEY_RE.match(json_name)
         if m:
             idx = m.group("idx")
             field = m.group("field")
             labels = {
                 "name": f"Nom sortie D{idx}",
                 "pin": f"GPIO sortie D{idx}",
+                "binding_port": f"Port physique D{idx}",
                 "active_high": f"Actif a 1 D{idx}",
                 "initial_on": f"État initial ON D{idx}",
                 "momentary": f"Mode impulsion D{idx}",
@@ -193,6 +364,7 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
             helps = {
                 "name": f"Nom lisible de la sortie digitale D{idx}.",
                 "pin": f"GPIO pilotée par la sortie D{idx}.",
+                "binding_port": f"Identifiant du port physique pilote par D{idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
                 "active_high": f"Si vrai, D{idx} est active à l'état haut; sinon active-bas.",
                 "initial_on": f"État appliqué au démarrage pour la sortie D{idx}.",
                 "momentary": f"Active un fonctionnement impulsionnel pour D{idx}.",
@@ -478,6 +650,7 @@ def _build_entries(src_root: Path) -> Tuple[Dict[str, dict], dict]:
             item["unit"] = cfgdoc["unit"]
         elif auto_doc and auto_doc.get("unit"):
             item["unit"] = auto_doc["unit"]
+        _apply_doc_extras(item, module_name, json_name)
         prio = 30 if cfgdoc else 20
         _upsert_entry(entries, f"{module_name}/{json_name}", item, prio)
 
@@ -492,6 +665,7 @@ def _build_entries(src_root: Path) -> Tuple[Dict[str, dict], dict]:
                 alias_item["source"] = "auto-hint-alias"
             else:
                 alias_item["source"] = "auto-alias"
+            _apply_doc_extras(alias_item, reassigned_module, json_name)
             _upsert_entry(entries, f"{reassigned_module}/{json_name}", alias_item, prio + 1)
 
     # Pass 2: dynamic series declarations with CFGDOC.
@@ -535,12 +709,14 @@ def _build_entries(src_root: Path) -> Tuple[Dict[str, dict], dict]:
             }
             if cfgdoc.get("unit"):
                 base_item["unit"] = cfgdoc["unit"]
+            _apply_doc_extras(base_item, "*", field)
 
             # If module literal was assigned, prefer full key docs.
             if modules:
                 for mod in modules:
                     full_item = dict(base_item)
                     full_item["module"] = mod
+                    _apply_doc_extras(full_item, mod, field)
                     _upsert_entry(entries, f"{mod}/{field}", full_item, 25)
             # Always add wildcard fallback for UI lookup by key only.
             _upsert_entry(entries, f"*/{field}", dict(base_item), 15)
@@ -587,7 +763,14 @@ def _strip_internal(entries: Dict[str, dict]) -> Dict[str, dict]:
     return out
 
 
-def _write_output(path: Path, entries: Dict[str, dict], stats: dict, overrides_total: int, overrides_applied: int) -> None:
+def _write_output(
+    path: Path,
+    entries: Dict[str, dict],
+    stats: dict,
+    overrides_total: int,
+    overrides_applied: int,
+    enum_sets: Dict[str, List[dict]],
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     docs = dict(sorted(_strip_internal(entries).items(), key=lambda kv: kv[0]))
     payload = {
@@ -599,6 +782,9 @@ def _write_output(path: Path, entries: Dict[str, dict], stats: dict, overrides_t
             "missing_cfgdoc_count": stats["missing_cfgdoc_count"],
             "manual_overrides_total": overrides_total,
             "manual_overrides_applied": overrides_applied,
+        },
+        "meta": {
+            "enum_sets": enum_sets,
         },
         "docs": docs,
     }
@@ -615,9 +801,10 @@ def main() -> None:
     strict = os.getenv("FLOW_CFGDOC_STRICT", "0").strip().lower() in ("1", "true", "yes", "on")
 
     entries, stats = _build_entries(src_root)
+    enum_sets = _build_flowio_binding_enum_sets(src_root)
     overrides = _load_overrides(overrides_path)
     applied = _merge_overrides(entries, overrides)
-    _write_output(out_path, entries, stats, len(overrides), applied)
+    _write_output(out_path, entries, stats, len(overrides), applied, enum_sets)
     if legacy_path.exists():
         legacy_path.unlink()
         print(f"[generate_config_docs] removed legacy file {legacy_path}")

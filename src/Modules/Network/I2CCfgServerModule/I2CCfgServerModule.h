@@ -135,7 +135,11 @@ private:
     void startLink_();
     void resetPatchState_();
     static bool isValidStatusDomain_(FlowStatusDomain domain);
-    bool collectPoolModeFlags_(bool& hasModeOut, bool& autoModeOut, bool& winterModeOut);
+    bool collectPoolModeFlags_(bool& hasModeOut,
+                               bool& autoModeOut,
+                               bool& winterModeOut,
+                               bool& phAutoModeOut,
+                               bool& orpAutoModeOut);
     void collectActiveAlarmCodes_(uint8_t& activeAlarmCountOut, uint8_t& activeAlarmCodeCountOut);
     bool buildRuntimeStatusDomainJson_(FlowStatusDomain domain, bool& truncatedOut);
     bool buildRuntimeStatusSystemJson_(bool& truncatedOut);

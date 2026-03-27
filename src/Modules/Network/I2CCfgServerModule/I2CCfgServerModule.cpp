@@ -372,11 +372,17 @@ void I2CCfgServerModule::resetPatchState_()
     patchBuf_[0] = '\0';
 }
 
-bool I2CCfgServerModule::collectPoolModeFlags_(bool& hasModeOut, bool& autoModeOut, bool& winterModeOut)
+bool I2CCfgServerModule::collectPoolModeFlags_(bool& hasModeOut,
+                                               bool& autoModeOut,
+                                               bool& winterModeOut,
+                                               bool& phAutoModeOut,
+                                               bool& orpAutoModeOut)
 {
     hasModeOut = false;
     autoModeOut = false;
     winterModeOut = false;
+    phAutoModeOut = false;
+    orpAutoModeOut = false;
     memset(poolModeJsonScratch_, 0, sizeof(poolModeJsonScratch_));
 
     bool truncated = false;
@@ -400,6 +406,8 @@ bool I2CCfgServerModule::collectPoolModeFlags_(bool& hasModeOut, bool& autoModeO
     hasModeOut = true;
     (void)parseJsonBoolField_(poolModeJsonScratch_, "auto_mode", autoModeOut);
     (void)parseJsonBoolField_(poolModeJsonScratch_, "winter_mode", winterModeOut);
+    (void)parseJsonBoolField_(poolModeJsonScratch_, "ph_auto_mode", phAutoModeOut);
+    (void)parseJsonBoolField_(poolModeJsonScratch_, "orp_auto_mode", orpAutoModeOut);
     return true;
 }
 
@@ -642,6 +650,8 @@ bool I2CCfgServerModule::buildRuntimeStatusPoolJson_(bool& truncatedOut)
     bool poolHasMode = false;
     bool poolAutoMode = false;
     bool poolWinterMode = false;
+    bool poolPhAutoMode = false;
+    bool poolOrpAutoMode = false;
     float waterTemp = 0.0f;
     float airTemp = 0.0f;
     float phValue = 0.0f;
@@ -650,7 +660,7 @@ bool I2CCfgServerModule::buildRuntimeStatusPoolJson_(bool& truncatedOut)
     bool chlorinePumpOn = false;
     bool phPumpOn = false;
     bool robotOn = false;
-    (void)collectPoolModeFlags_(poolHasMode, poolAutoMode, poolWinterMode);
+    (void)collectPoolModeFlags_(poolHasMode, poolAutoMode, poolWinterMode, poolPhAutoMode, poolOrpAutoMode);
 
     const bool haveWaterTemp =
         dataStore_ && ioEndpointFloat(*dataStore_, PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].runtimeIndex, waterTemp);
@@ -680,10 +690,12 @@ bool I2CCfgServerModule::buildRuntimeStatusPoolJson_(bool& truncatedOut)
     if (!appendFormat_(statusJson_,
                        sizeof(statusJson_),
                        pos,
-                       "{\"ok\":true,\"pool\":{\"has\":%s,\"auto\":%s,\"wint\":%s,\"wat\":",
+                       "{\"ok\":true,\"pool\":{\"has\":%s,\"auto\":%s,\"wint\":%s,\"pha\":%s,\"ora\":%s,\"wat\":",
                        poolHasMode ? "true" : "false",
                        poolAutoMode ? "true" : "false",
-                       poolWinterMode ? "true" : "false")) return false;
+                       poolWinterMode ? "true" : "false",
+                       poolPhAutoMode ? "true" : "false",
+                       poolOrpAutoMode ? "true" : "false")) return false;
     if (!appendJsonFloatOrNull_(statusJson_, sizeof(statusJson_), pos, haveWaterTemp, waterTemp, 1)) return false;
     if (!appendText_(statusJson_, sizeof(statusJson_), pos, ",\"air\":")) return false;
     if (!appendJsonFloatOrNull_(statusJson_, sizeof(statusJson_), pos, haveAirTemp, airTemp, 1)) return false;
@@ -1197,50 +1209,18 @@ void I2CCfgServerModule::handleRequest_(uint8_t op, uint8_t seq, const uint8_t* 
     }
 
     if (op == I2cCfgProtocol::OpGetRuntimeAlarmBegin) {
-        if (payloadLen != 0U) {
-            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
-            return;
-        }
-        bool truncated = false;
-        if (!buildRuntimeAlarmSnapshotJson_(truncated)) {
-            alarmSnapshotLen_ = 0;
-            alarmSnapshotValid_ = false;
-            alarmSnapshotTruncated_ = false;
-            buildResponse_(op, seq, I2cCfgProtocol::StatusFailed, nullptr, 0);
-            return;
-        }
-        alarmSnapshotLen_ = strnlen(alarmJsonScratch_, sizeof(alarmJsonScratch_));
-        alarmSnapshotValid_ = true;
-        alarmSnapshotTruncated_ = truncated;
-
-        uint8_t out[3] = {0};
-        out[0] = (uint8_t)(alarmSnapshotLen_ & 0xFFu);
-        out[1] = (uint8_t)((alarmSnapshotLen_ >> 8) & 0xFFu);
-        out[2] = alarmSnapshotTruncated_ ? 0x02u : 0x00u;
-        buildResponse_(op, seq, I2cCfgProtocol::StatusOk, out, sizeof(out));
+        alarmSnapshotLen_ = 0;
+        alarmSnapshotValid_ = false;
+        alarmSnapshotTruncated_ = false;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusNotReady, nullptr, 0);
         return;
     }
 
     if (op == I2cCfgProtocol::OpGetRuntimeAlarmChunk) {
-        if (!alarmSnapshotValid_ || payloadLen < 3) {
-            buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
-            return;
-        }
-        const size_t offset = (size_t)payload[0] | ((size_t)payload[1] << 8);
-        size_t want = (size_t)payload[2];
-        if (offset > alarmSnapshotLen_) {
-            buildResponse_(op, seq, I2cCfgProtocol::StatusRange, nullptr, 0);
-            return;
-        }
-        if (want == 0 || want > I2cCfgProtocol::MaxPayload) want = I2cCfgProtocol::MaxPayload;
-        const size_t avail = alarmSnapshotLen_ - offset;
-        const size_t n = (avail < want) ? avail : want;
-        buildResponse_(op, seq, I2cCfgProtocol::StatusOk, (const uint8_t*)(alarmJsonScratch_ + offset), n);
-        if ((offset + n) >= alarmSnapshotLen_) {
-            alarmSnapshotLen_ = 0;
-            alarmSnapshotValid_ = false;
-            alarmSnapshotTruncated_ = false;
-        }
+        alarmSnapshotLen_ = 0;
+        alarmSnapshotValid_ = false;
+        alarmSnapshotTruncated_ = false;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusNotReady, nullptr, 0);
         return;
     }
 

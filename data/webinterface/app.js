@@ -6,8 +6,7 @@
     const pages = Array.from(document.querySelectorAll('.page'));
     const appMeta = document.querySelector('.app-meta');
     const appRuntimeMeta = document.getElementById('appRuntimeMeta');
-    const appHeapFree = document.getElementById('appHeapFree');
-    const appHeapMin = document.getElementById('appHeapMin');
+    const appHeapSummary = document.getElementById('appHeapSummary');
     let webAssetVersion = '';
     let supervisorFirmwareVersion = '-';
     let supervisorUptimeMs = 0;
@@ -34,6 +33,9 @@
           if (version && version !== '-') {
             return version;
           }
+        }
+        if (raw && raw !== '-') {
+          return raw;
         }
       }
       return '-';
@@ -62,7 +64,7 @@
           if (trimmed) {
             supervisorFirmwareVersion = trimmed;
             if (appMeta) {
-              appMeta.textContent = 'Supervisor ' + trimmed;
+              appMeta.textContent = trimmed;
             }
           }
         }
@@ -170,7 +172,10 @@
     function resolveInitialPageId() {
       try {
         const params = new URLSearchParams(window.location.search || '');
-        const requestedPage = String(params.get('page') || '').trim();
+        let requestedPage = String(params.get('page') || '').trim();
+        if (requestedPage === 'page-status') {
+          requestedPage = 'page-pool-measures';
+        }
         if (requestedPage && pages.some((el) => el.id === requestedPage)) {
           return requestedPage;
         }
@@ -180,7 +185,7 @@
       if (activePage && activePage.id) {
         return activePage.id;
       }
-      return 'page-status';
+      return 'page-pool-measures';
     }
 
     menuItems.forEach((item) => item.addEventListener('click', () => showPage(item.dataset.page)));
@@ -728,8 +733,10 @@
     }
 
     function setDrawerRuntimeMetaValues(heapFreeText, heapMinText) {
-      if (appHeapFree) appHeapFree.textContent = 'Heap libre: ' + String(heapFreeText || '-');
-      if (appHeapMin) appHeapMin.textContent = 'Heap min: ' + String(heapMinText || '-');
+      if (!appHeapSummary) return;
+      const heapFreeValue = String(heapFreeText || '-');
+      const heapMinValue = String(heapMinText || '-');
+      appHeapSummary.textContent = 'Heap: ' + heapFreeValue + ' / ' + heapMinValue;
     }
 
     function isDrawerRuntimeMetaVisible() {
@@ -1590,48 +1597,24 @@
 
     async function refreshDrawerRuntimeMeta(forceRefresh) {
       if (!appRuntimeMeta || !isDrawerRuntimeMetaVisible()) return;
-
-      try {
-        const manifest = await loadRuntimeManifest(!!forceRefresh);
-        const heapFreeEntry = runtimeManifestEntryByKey(manifest, 'system.heap_free');
-        const heapMinEntry = runtimeManifestEntryByKey(manifest, 'system.heap_min_free');
-        const ids = [heapFreeEntry, heapMinEntry]
-          .map((entry) => Number(entry && entry.id))
-          .filter((id) => Number.isFinite(id));
-
-        if (ids.length !== 2) {
-          setDrawerRuntimeMetaValues('-', '-');
-          return;
-        }
-
-        const values = await fetchRuntimeValues(ids);
-        const valueById = new Map();
-        (values || []).forEach((item) => {
-          const id = Number(item && item.id);
-          if (Number.isFinite(id)) valueById.set(id, item);
-        });
-
-        const heapFreeValue = valueById.get(Number(heapFreeEntry.id));
-        const heapMinValue = valueById.get(Number(heapMinEntry.id));
-        const heapFreeText =
-          heapFreeValue && heapFreeValue.status !== 'not_found' && heapFreeValue.status !== 'unavailable'
-            ? fmtFlowBytes(heapFreeValue.value)
-            : '-';
-        const heapMinText =
-          heapMinValue && heapMinValue.status !== 'not_found' && heapMinValue.status !== 'unavailable'
-            ? fmtFlowBytes(heapMinValue.value)
-            : '-';
-        setDrawerRuntimeMetaValues(heapFreeText, heapMinText);
-      } catch (err) {
-        setDrawerRuntimeMetaValues('-', '-');
-      }
+      const heapFreeValue =
+        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'free')
+          ? supervisorHeap.free
+          : null;
+      const heapMinValue =
+        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'min_free')
+          ? supervisorHeap.min_free
+          : null;
+      const heapFreeText = heapFreeValue === null ? '-' : fmtFlowBytes(heapFreeValue);
+      const heapMinText = heapMinValue === null ? '-' : fmtFlowBytes(heapMinValue);
+      setDrawerRuntimeMetaValues(heapFreeText, heapMinText);
     }
 
     function startDrawerRuntimeTimer() {
       if (drawerRuntimeTimer) return;
       drawerRuntimeTimer = setInterval(() => {
         if (document.hidden || !isDrawerRuntimeMetaVisible()) return;
-        refreshDrawerRuntimeMeta(false).catch(() => {});
+        loadWebMeta().catch(() => {});
       }, 15000);
     }
 

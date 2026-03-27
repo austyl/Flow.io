@@ -22,15 +22,15 @@ inline constexpr St7789DisplaySpec kSupervisorBoardRev1Display{
     320,
     1,
     0,
-    33,
+    0,
     14,
     15,
+    2,
     4,
-    5,
-    19,
+    23,
     18,
-    true,
     false,
+    true,
     40000000U,
     80
 };
@@ -39,7 +39,7 @@ inline constexpr SupervisorInputSpec kSupervisorBoardRev1Inputs{
     36,
     120,
     true,
-    23,
+    -1,
     40
 };
 

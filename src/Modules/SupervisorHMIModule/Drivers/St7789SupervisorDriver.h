@@ -12,10 +12,18 @@
 #include "Core/Services/INetworkAccess.h"
 #include "Core/Services/IWifi.h"
 
+constexpr uint8_t kSupervisorAlarmSlotCount = 4;
+
 class SupervisorSt7789 : public Adafruit_ST7789 {
 public:
     using Adafruit_ST7789::Adafruit_ST7789;
     using Adafruit_ST77xx::setColRowStart;
+};
+
+enum class SupervisorAlarmState : uint8_t {
+    Clear = 0,
+    Active = 1,
+    Acked = 2,
 };
 
 struct SupervisorHmiViewModel {
@@ -43,9 +51,31 @@ struct SupervisorHmiViewModel {
     bool flowHasPoolModes = false;
     bool flowFiltrationAuto = false;
     bool flowWinterMode = false;
+    bool flowPhAutoMode = false;
+    bool flowOrpAutoMode = false;
+    bool flowFiltrationOn = false;
+    bool flowPhPumpOn = false;
+    bool flowChlorinePumpOn = false;
+    bool flowHasPh = false;
+    float flowPhValue = 0.0f;
+    bool flowHasOrp = false;
+    float flowOrpValue = 0.0f;
+    bool flowHasWaterTemp = false;
+    float flowWaterTemp = 0.0f;
+    bool flowHasAirTemp = false;
+    float flowAirTemp = 0.0f;
     uint8_t flowAlarmActiveCount = 0;
     uint8_t flowAlarmCodeCount = 0;
     char flowAlarmCodes[10][24]{};
+    uint8_t flowAlarmActCount = 0;
+    uint8_t flowAlarmAckCount = 0;
+    uint8_t flowAlarmClrCount = kSupervisorAlarmSlotCount;
+    SupervisorAlarmState flowAlarmStates[kSupervisorAlarmSlotCount]{
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+    };
 
     char fwState[16]{};
     char fwTarget[16]{};
@@ -66,9 +96,9 @@ struct St7789SupervisorDriverConfig {
     int8_t rowStart = 0;
     int8_t backlightPin = 14;
     int8_t csPin = 15;
-    int8_t dcPin = 4;
-    int8_t rstPin = 5;
-    int8_t mosiPin = 19;
+    int8_t dcPin = 2;
+    int8_t rstPin = 4;
+    int8_t mosiPin = 23;
     int8_t sclkPin = 18;
     bool swapColorBytes = true;
     bool invertColors = false;
@@ -95,4 +125,29 @@ private:
     bool layoutDrawn_ = false;
     bool backlightOn_ = false;
     uint32_t lastRenderMs_ = 0;
+    uint8_t lastPage_ = 0xFFU;
+    char lastTime_[16]{};
+    char lastDate_[20]{};
+    char lastIp_[20]{};
+    bool lastHasRssi_ = false;
+    int32_t lastRssiDbm_ = -127;
+    bool lastMqttReady_ = false;
+    bool lastRows_[7]{};
+    bool lastHasPh_ = false;
+    float lastPhValue_ = 0.0f;
+    bool lastHasOrp_ = false;
+    float lastOrpValue_ = 0.0f;
+    bool lastHasWaterTemp_ = false;
+    float lastWaterTemp_ = 0.0f;
+    bool lastHasAirTemp_ = false;
+    float lastAirTemp_ = 0.0f;
+    uint8_t lastAlarmActCount_ = 0xFFU;
+    uint8_t lastAlarmAckCount_ = 0xFFU;
+    uint8_t lastAlarmClrCount_ = 0xFFU;
+    SupervisorAlarmState lastAlarmStates_[kSupervisorAlarmSlotCount]{
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
+    };
 };

@@ -41,6 +41,7 @@ private:
     static void copyText_(char* out, size_t outLen, const char* in);
     uint32_t buildRenderKey_() const;
     uint32_t currentClockMinute_() const;
+    uint32_t currentPageCycle_() const;
 
     void pollWifiAndNetwork_();
     void pollFirmwareStatus_();
@@ -78,8 +79,10 @@ private:
     uint32_t lastFwPollMs_ = 0;
     uint32_t lastRenderMs_ = 0;
     uint32_t splashHoldUntilMs_ = 0;
+    uint32_t backlightForceOnUntilMs_ = 0;
     uint32_t lastRenderKey_ = 0;
     uint32_t lastRenderedMinute_ = 0;
+    uint32_t lastRenderedPageCycle_ = 0;
     bool hasLastRenderKey_ = false;
     bool lastBacklightOn_ = false;
     char flowStatusScratchBuf_[448] = {0};

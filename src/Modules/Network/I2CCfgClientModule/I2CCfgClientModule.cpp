@@ -16,7 +16,9 @@ constexpr uint8_t kInterlinkBus = 1;  // Interlink is fixed on I2C controller 1 
 constexpr uint8_t kI2cClientCfgProducerId = 51;
 constexpr uint8_t kI2cClientCfgBranch = 2;
 constexpr size_t kRuntimeStatusDomainBufSize = 640;
+constexpr uint32_t kRuntimeCacheTtlMs = 5000U;
 constexpr uint32_t kRemoteRetryCooldownMs = 3000U;
+constexpr uint32_t kPriorityI2cHoldMs = 1500U;
 static constexpr MqttConfigRouteProducer::Route kI2cClientCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::I2cCfg, kI2cClientCfgBranch}, "i2c/cfg/client", "i2c/cfg/client", (uint8_t)MqttPublishPriority::Normal, nullptr},
 };
@@ -183,6 +185,9 @@ void I2CCfgClientModule::init(ConfigStore& cfg, ServiceRegistry& services)
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
     cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
     cmdSvc_ = services.get<CommandService>(ServiceId::Command);
+    if (!runtimeCacheMutex_) runtimeCacheMutex_ = xSemaphoreCreateMutex();
+    if (!requestMutex_) requestMutex_ = xSemaphoreCreateMutex();
+    if (!transportMutex_) transportMutex_ = xSemaphoreCreateMutex();
     if (!services.add(ServiceId::FlowCfg, &svc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::FlowCfg));
     }
@@ -212,6 +217,18 @@ void I2CCfgClientModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
     startLink_();
 }
 
+void I2CCfgClientModule::loop()
+{
+    if (!cfgData_.enabled) return;
+    if (priorityI2cWindowActive_()) return;
+
+    const uint32_t now = millis();
+    if ((int32_t)(now - nextRuntimeCacheRefreshAtMs_) < 0) return;
+    nextRuntimeCacheRefreshAtMs_ = now + kRuntimeCacheTtlMs;
+
+    (void)refreshRuntimeCacheIfNeeded_(true);
+}
+
 void I2CCfgClientModule::startLink_()
 {
     LOGI("startLink requested enabled=%s ready=%s",
@@ -220,6 +237,8 @@ void I2CCfgClientModule::startLink_()
     ready_ = false;
     reachable_ = false;
     retryAfterMs_ = 0;
+    nextRuntimeCacheRefreshAtMs_ = 0;
+    invalidateRuntimeCache_();
     if (!cfgData_.enabled) {
         LOGI("I2C cfg client disabled");
         return;
@@ -266,6 +285,7 @@ void I2CCfgClientModule::startLink_()
     } else {
         markRemoteAvailable_();
         LOGI("I2C cfg ping ok target=0x%02X", (unsigned)cfgData_.targetAddr);
+        (void)refreshRuntimeCacheIfNeeded_(true);
     }
 }
 
@@ -299,7 +319,7 @@ bool I2CCfgClientModule::ensureReady_()
 
 bool I2CCfgClientModule::isReady_() const
 {
-    return ready_ && reachable_;
+    return ready_ && (reachable_ || runtimeCacheValid_);
 }
 
 void I2CCfgClientModule::recoverLinkAfterApplyFailure_(const char* step, bool transportOk, uint8_t status)
@@ -325,6 +345,138 @@ void I2CCfgClientModule::markRemoteAvailable_()
     retryAfterMs_ = 0;
 }
 
+bool I2CCfgClientModule::beginRequestSession_(TickType_t timeoutTicks, bool interactive)
+{
+    if (interactive) notePriorityI2cRequest_(kPriorityI2cHoldMs);
+    if (!requestMutex_) return false;
+    if (xSemaphoreTake(requestMutex_, timeoutTicks) != pdTRUE) {
+        return false;
+    }
+    if (interactive) notePriorityI2cRequest_(kPriorityI2cHoldMs);
+    return true;
+}
+
+void I2CCfgClientModule::endRequestSession_()
+{
+    if (requestMutex_) xSemaphoreGive(requestMutex_);
+}
+
+void I2CCfgClientModule::notePriorityI2cRequest_(uint32_t holdMs)
+{
+    const uint32_t now = millis();
+    const uint32_t guard = (holdMs == 0U) ? kPriorityI2cHoldMs : holdMs;
+    priorityI2cBusyUntilMs_ = now + guard;
+}
+
+bool I2CCfgClientModule::priorityI2cWindowActive_() const
+{
+    return (int32_t)(millis() - priorityI2cBusyUntilMs_) < 0;
+}
+
+uint8_t I2CCfgClientModule::runtimeStatusDomainCacheIndex_(FlowStatusDomain domain)
+{
+    const uint8_t raw = (uint8_t)domain;
+    return (raw > 0U) ? (uint8_t)(raw - 1U) : 0U;
+}
+
+void I2CCfgClientModule::invalidateRuntimeCache_()
+{
+    if (!runtimeCacheMutex_) {
+        runtimeCacheValid_ = false;
+        runtimeCacheFetchedAtMs_ = 0U;
+        memset(runtimeStatusDomainCache_, 0, sizeof(runtimeStatusDomainCache_));
+        memset(runtimeStatusDomainCacheValid_, 0, sizeof(runtimeStatusDomainCacheValid_));
+        return;
+    }
+
+    if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    runtimeCacheValid_ = false;
+    runtimeCacheFetchedAtMs_ = 0U;
+    memset(runtimeStatusDomainCache_, 0, sizeof(runtimeStatusDomainCache_));
+    memset(runtimeStatusDomainCacheValid_, 0, sizeof(runtimeStatusDomainCacheValid_));
+    xSemaphoreGive(runtimeCacheMutex_);
+}
+
+bool I2CCfgClientModule::refreshRuntimeCacheIfNeeded_(bool force)
+{
+    if (!runtimeCacheMutex_) return false;
+
+    const uint32_t now = millis();
+    if (!force) {
+        if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+            const bool fresh = runtimeCacheValid_ && ((uint32_t)(now - runtimeCacheFetchedAtMs_) < kRuntimeCacheTtlMs);
+            xSemaphoreGive(runtimeCacheMutex_);
+            if (fresh) return true;
+        }
+    }
+
+    if (!ensureReady_()) {
+        if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+            const bool hasCache = runtimeCacheValid_;
+            xSemaphoreGive(runtimeCacheMutex_);
+            return hasCache;
+        }
+        return false;
+    }
+
+    if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(500)) != pdTRUE) return false;
+
+    const uint32_t lockedNow = millis();
+    if (!force) {
+        const bool fresh = runtimeCacheValid_ && ((uint32_t)(lockedNow - runtimeCacheFetchedAtMs_) < kRuntimeCacheTtlMs);
+        if (fresh) {
+            xSemaphoreGive(runtimeCacheMutex_);
+            return true;
+        }
+    }
+
+    const bool hadCache = runtimeCacheValid_;
+    bool ok = true;
+    memset(runtimeStatusDomainFetchScratch_, 0, sizeof(runtimeStatusDomainFetchScratch_));
+    memset(runtimeStatusDomainCacheNext_, 0, sizeof(runtimeStatusDomainCacheNext_));
+    memset(runtimeStatusDomainCacheValidNext_, 0, sizeof(runtimeStatusDomainCacheValidNext_));
+    static constexpr FlowStatusDomain kDomains[] = {
+        FlowStatusDomain::System,
+        FlowStatusDomain::Wifi,
+        FlowStatusDomain::Mqtt,
+        FlowStatusDomain::I2c,
+        FlowStatusDomain::Pool,
+    };
+
+    for (size_t i = 0; i < (sizeof(kDomains) / sizeof(kDomains[0])); ++i) {
+        if (priorityI2cWindowActive_()) {
+            xSemaphoreGive(runtimeCacheMutex_);
+            return hadCache;
+        }
+        memset(runtimeStatusDomainFetchScratch_, 0, sizeof(runtimeStatusDomainFetchScratch_));
+        if (!fetchRuntimeStatusDomainUncached_(kDomains[i],
+                                               runtimeStatusDomainFetchScratch_,
+                                               sizeof(runtimeStatusDomainFetchScratch_))) {
+            ok = false;
+            break;
+        }
+        const uint8_t idx = runtimeStatusDomainCacheIndex_(kDomains[i]);
+        snprintf(runtimeStatusDomainCacheNext_[idx],
+                 sizeof(runtimeStatusDomainCacheNext_[idx]),
+                 "%s",
+                 runtimeStatusDomainFetchScratch_);
+        runtimeStatusDomainCacheValidNext_[idx] = true;
+    }
+
+    if (ok) {
+        memcpy(runtimeStatusDomainCache_, runtimeStatusDomainCacheNext_, sizeof(runtimeStatusDomainCache_));
+        memcpy(runtimeStatusDomainCacheValid_, runtimeStatusDomainCacheValidNext_, sizeof(runtimeStatusDomainCacheValid_));
+    }
+
+    if (ok) {
+        runtimeCacheValid_ = true;
+        runtimeCacheFetchedAtMs_ = millis();
+    }
+
+    xSemaphoreGive(runtimeCacheMutex_);
+    return ok || hadCache;
+}
+
 bool I2CCfgClientModule::pingFlow_(uint8_t& statusOut)
 {
     uint8_t resp[8] = {0};
@@ -345,6 +497,24 @@ bool I2CCfgClientModule::transact_(uint8_t op,
                                    uint8_t* respPayload,
                                    size_t respPayloadMax,
                                    size_t& respLenOut)
+{
+    if (!transportMutex_) return false;
+    if (xSemaphoreTake(transportMutex_, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        LOGW("I2C transact timeout waiting bus lock op=%s", opName(op));
+        return false;
+    }
+    const bool ok = transactUnlocked_(op, reqPayload, reqLen, statusOut, respPayload, respPayloadMax, respLenOut);
+    xSemaphoreGive(transportMutex_);
+    return ok;
+}
+
+bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
+                                           const uint8_t* reqPayload,
+                                           size_t reqLen,
+                                           uint8_t& statusOut,
+                                           uint8_t* respPayload,
+                                           size_t respPayloadMax,
+                                           size_t& respLenOut)
 {
     statusOut = I2cCfgProtocol::StatusFailed;
     respLenOut = 0;
@@ -478,9 +648,14 @@ bool I2CCfgClientModule::transact_(uint8_t op,
 bool I2CCfgClientModule::listModulesJson_(char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.modules.busy");
+        return false;
+    }
     if (!ensureReady_()) {
         LOGW("listModules aborted: link not ready");
         (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.modules");
+        endRequestSession_();
         return false;
     }
 
@@ -497,6 +672,7 @@ bool I2CCfgClientModule::listModulesJson_(char* out, size_t outLen)
              statusName(status),
              (unsigned)respLen);
         (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.modules.count");
+        endRequestSession_();
         return false;
     }
     const uint8_t count = resp[0];
@@ -504,7 +680,10 @@ bool I2CCfgClientModule::listModulesJson_(char* out, size_t outLen)
 
     size_t pos = 0;
     int wrote = snprintf(out + pos, outLen - pos, "{\"ok\":true,\"modules\":[");
-    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) return false;
+    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
+        endRequestSession_();
+        return false;
+    }
     pos += (size_t)wrote;
 
     for (uint8_t i = 0; i < count; ++i) {
@@ -522,6 +701,7 @@ bool I2CCfgClientModule::listModulesJson_(char* out, size_t outLen)
                  statusName(status),
                  (unsigned)respLen);
             (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.modules.item");
+            endRequestSession_();
             return false;
         }
 
@@ -533,22 +713,32 @@ bool I2CCfgClientModule::listModulesJson_(char* out, size_t outLen)
         wrote = snprintf(out + pos, outLen - pos, "%s\"%s\"", (i == 0) ? "" : ",", moduleName);
         if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
             (void)writeErrorJson(out, outLen, ErrorCode::InternalAckOverflow, "flowcfg.modules.json");
+            endRequestSession_();
             return false;
         }
         pos += (size_t)wrote;
     }
 
     wrote = snprintf(out + pos, outLen - pos, "]}");
-    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) return false;
+    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
+        endRequestSession_();
+        return false;
+    }
     LOGI("flowcfg.list done count=%u", (unsigned)count);
+    endRequestSession_();
     return true;
 }
 
 bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.children.busy");
+        return false;
+    }
     if (!ensureReady_()) {
         (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.children");
+        endRequestSession_();
         return false;
     }
 
@@ -567,6 +757,7 @@ bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t
     }
     if (prefixLen >= (I2cCfgProtocol::MaxPayload - 1)) {
         (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.children.prefix");
+        endRequestSession_();
         return false;
     }
 
@@ -590,6 +781,7 @@ bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t
              statusName(status),
              (unsigned)respLen);
         (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.children.count");
+        endRequestSession_();
         return false;
     }
 
@@ -606,7 +798,10 @@ bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t
                          "{\"ok\":true,\"prefix\":\"%s\",\"has_exact\":%s,\"children\":[",
                          prefixNorm,
                          hasExact ? "true" : "false");
-    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) return false;
+    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
+        endRequestSession_();
+        return false;
+    }
     pos += (size_t)wrote;
 
     for (uint8_t i = 0; i < count; ++i) {
@@ -630,10 +825,11 @@ bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t
                  (unsigned)i,
                  prefixLen > 0 ? prefixNorm : "<root>",
                  okItem ? "ok" : "failed",
-                 (unsigned)status,
+                (unsigned)status,
                  statusName(status),
                  (unsigned)respLen);
             (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.children.item");
+            endRequestSession_();
             return false;
         }
 
@@ -646,16 +842,21 @@ bool I2CCfgClientModule::listChildrenJson_(const char* prefix, char* out, size_t
         wrote = snprintf(out + pos, outLen - pos, "%s\"%s\"", (i == 0) ? "" : ",", childName);
         if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
             (void)writeErrorJson(out, outLen, ErrorCode::InternalAckOverflow, "flowcfg.children.json");
+            endRequestSession_();
             return false;
         }
         pos += (size_t)wrote;
     }
 
     wrote = snprintf(out + pos, outLen - pos, "]}");
-    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) return false;
+    if (!(wrote > 0 && (size_t)wrote < (outLen - pos))) {
+        endRequestSession_();
+        return false;
+    }
     LOGI("flowcfg.children done prefix=%s count=%u",
          prefixLen > 0 ? prefixNorm : "<root>",
          (unsigned)count);
+    endRequestSession_();
     return true;
 }
 
@@ -663,10 +864,20 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
 {
     if (truncated) *truncated = false;
     if (!out || outLen == 0 || !module || module[0] == '\0') return false;
-    if (!ensureReady_()) return false;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.get.busy");
+        return false;
+    }
+    if (!ensureReady_()) {
+        endRequestSession_();
+        return false;
+    }
 
     const size_t moduleLen = strnlen(module, I2cCfgProtocol::MaxPayload);
-    if (moduleLen == 0 || moduleLen >= I2cCfgProtocol::MaxPayload) return false;
+    if (moduleLen == 0 || moduleLen >= I2cCfgProtocol::MaxPayload) {
+        endRequestSession_();
+        return false;
+    }
     LOGI("flowcfg.get begin module=%s", module);
 
     uint8_t status = 0;
@@ -688,6 +899,7 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
              (unsigned)status,
              statusName(status),
              (unsigned)respLen);
+        endRequestSession_();
         return false;
     }
 
@@ -699,7 +911,10 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
          (unsigned)totalLen,
          isTruncated ? "true" : "false");
 
-    if (totalLen + 1 > outLen) return false;
+    if (totalLen + 1 > outLen) {
+        endRequestSession_();
+        return false;
+    }
 
     size_t written = 0;
     uint16_t chunkCount = 0;
@@ -724,6 +939,7 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
                  (unsigned)status,
                  statusName(status),
                  (unsigned)respLen);
+            endRequestSession_();
             return false;
         }
         if (respLen == 0 || (written + respLen) > totalLen) {
@@ -732,6 +948,7 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
                  (unsigned)written,
                  (unsigned)respLen,
                  (unsigned)totalLen);
+            endRequestSession_();
             return false;
         }
         LOGD("flowcfg.get chunk module=%s off=%u got=%u remain=%u",
@@ -748,20 +965,27 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
          module,
          (unsigned)written,
          (unsigned)chunkCount);
+    endRequestSession_();
     return true;
 }
 
 bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t outLen)
 {
     if (!out || outLen == 0 || !patch) return false;
+    if (!beginRequestSession_(pdMS_TO_TICKS(2000), true)) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.apply.busy");
+        return false;
+    }
     if (!ensureReady_()) {
         (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.apply");
+        endRequestSession_();
         return false;
     }
 
     const size_t len = strnlen(patch, Limits::JsonConfigApplyBuf + 1);
     if (len == 0 || len > Limits::JsonConfigApplyBuf) {
         (void)writeErrorJson(out, outLen, ErrorCode::ArgsTooLarge, "flowcfg.apply.size");
+        endRequestSession_();
         return false;
     }
 
@@ -785,6 +1009,7 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
             (void)writeApplyStatusError_(out, outLen, "begin", status);
         }
         recoverLinkAfterApplyFailure_("begin", okPatchBegin, status);
+        endRequestSession_();
         return false;
     }
 
@@ -813,6 +1038,7 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
                 (void)writeApplyStatusError_(out, outLen, "write", status);
             }
             recoverLinkAfterApplyFailure_("write", okPatchWrite, status);
+            endRequestSession_();
             return false;
         }
         offset += chunk;
@@ -834,17 +1060,22 @@ bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t ou
             (void)writeApplyStatusError_(out, outLen, "commit", status);
         }
         recoverLinkAfterApplyFailure_("commit", okPatchCommit, status);
+        endRequestSession_();
         return false;
     }
 
     if (respLen == 0) {
         (void)writeOkJson(out, outLen, "flowcfg.apply");
+        invalidateRuntimeCache_();
+        endRequestSession_();
         return true;
     }
 
     const size_t n = (respLen < (outLen - 1)) ? respLen : (outLen - 1);
     memcpy(out, resp, n);
     out[n] = '\0';
+    invalidateRuntimeCache_();
+    endRequestSession_();
     return true;
 }
 
@@ -857,19 +1088,23 @@ bool I2CCfgClientModule::runtimeUiValues_(const RuntimeUiId* ids,
     if (writtenOut) *writtenOut = 0U;
     if (!out || outLen == 0U) return false;
     out[0] = 0U;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) return false;
 
     if (!ensureReady_()) {
         LOGW("runtimeUiValues failed: link not ready");
+        endRequestSession_();
         return false;
     }
     if (!ids || count == 0U) {
         if (writtenOut) *writtenOut = 0U;
+        endRequestSession_();
         return true;
     }
 
     const size_t reqLen = 1U + ((size_t)count * 2U);
     if (reqLen > I2cCfgProtocol::MaxPayload) {
         LOGW("runtimeUiValues request too large count=%u", (unsigned)count);
+        endRequestSession_();
         return false;
     }
 
@@ -898,96 +1133,22 @@ bool I2CCfgClientModule::runtimeUiValues_(const RuntimeUiId* ids,
              statusName(status),
              (unsigned)count,
              (unsigned)respLen);
+        endRequestSession_();
         return false;
     }
 
     markRemoteAvailable_();
     if (writtenOut) *writtenOut = respLen;
+    endRequestSession_();
     return true;
 }
 
 bool I2CCfgClientModule::runtimeAlarmSnapshotJson_(char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
-    if (!ensureReady_()) {
-        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.runtime_alarm");
-        return false;
-    }
-
-    uint8_t status = 0;
-    uint8_t resp[96] = {0};
-    size_t respLen = 0;
-    const bool okBegin = transact_(I2cCfgProtocol::OpGetRuntimeAlarmBegin,
-                                   nullptr,
-                                   0U,
-                                   status,
-                                   resp,
-                                   sizeof(resp),
-                                   respLen);
-    if (!okBegin ||
-        status != I2cCfgProtocol::StatusOk ||
-        respLen < 3) {
-        LOGW("runtimeAlarm failed step=begin transport=%s status=%u (%s) resp_len=%u",
-             okBegin ? "ok" : "failed",
-             (unsigned)status,
-             statusName(status),
-             (unsigned)respLen);
-        (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.begin");
-        return false;
-    }
-
-    const size_t totalLen = (size_t)resp[0] | ((size_t)resp[1] << 8);
-    const bool isTruncated = (resp[2] & 0x02u) != 0;
-    if (totalLen + 1 > outLen) {
-        (void)writeErrorJson(out, outLen, ErrorCode::InternalAckOverflow, "flowcfg.runtime_alarm.len");
-        return false;
-    }
-
-    size_t written = 0;
-    while (written < totalLen) {
-        const size_t remain = totalLen - written;
-        const uint8_t want = (uint8_t)((remain > I2cCfgProtocol::MaxPayload) ? I2cCfgProtocol::MaxPayload : remain);
-        const uint8_t req[3] = {
-            (uint8_t)(written & 0xFFu),
-            (uint8_t)((written >> 8) & 0xFFu),
-            want
-        };
-        memset(resp, 0, sizeof(resp));
-        respLen = 0;
-        const bool okChunk = transact_(I2cCfgProtocol::OpGetRuntimeAlarmChunk,
-                                       req,
-                                       sizeof(req),
-                                       status,
-                                       resp,
-                                       sizeof(resp),
-                                       respLen);
-        if (!okChunk || status != I2cCfgProtocol::StatusOk) {
-            LOGW("runtimeAlarm failed step=chunk off=%u want=%u transport=%s status=%u (%s) resp_len=%u",
-                 (unsigned)written,
-                 (unsigned)want,
-                 okChunk ? "ok" : "failed",
-                 (unsigned)status,
-                 statusName(status),
-                 (unsigned)respLen);
-            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.chunk");
-            return false;
-        }
-        if (respLen == 0 || (written + respLen) > totalLen) {
-            LOGW("runtimeAlarm invalid chunk off=%u resp_len=%u total=%u",
-                 (unsigned)written,
-                 (unsigned)respLen,
-                 (unsigned)totalLen);
-            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_alarm.chunk_len");
-            return false;
-        }
-        memcpy(out + written, resp, respLen);
-        written += respLen;
-    }
-    out[written] = '\0';
-    if (isTruncated) {
-        LOGW("runtimeAlarm truncated bytes=%u", (unsigned)written);
-    }
-    return true;
+    out[0] = '\0';
+    (void)writeErrorJson(out, outLen, ErrorCode::Disabled, "flowcfg.runtime_alarm.disabled");
+    return false;
 }
 
 bool I2CCfgClientModule::runtimeStatusJson_(char* out, size_t outLen)
@@ -1001,7 +1162,6 @@ bool I2CCfgClientModule::runtimeStatusJson_(char* out, size_t outLen)
         FlowStatusDomain::Mqtt,
         FlowStatusDomain::I2c,
         FlowStatusDomain::Pool,
-        FlowStatusDomain::Alarm,
     };
 
     char domainBuf[kRuntimeStatusDomainBufSize] = {0};
@@ -1037,8 +1197,34 @@ bool I2CCfgClientModule::runtimeStatusJson_(char* out, size_t outLen)
 bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
+    out[0] = '\0';
+    if (domain == FlowStatusDomain::Alarm) {
+        (void)writeErrorJson(out, outLen, ErrorCode::Disabled, "flowcfg.runtime_status.alarm.disabled");
+        return false;
+    }
+    if (!runtimeCacheMutex_) return false;
+    const uint8_t idx = runtimeStatusDomainCacheIndex_(domain);
+    if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    const bool ok = idx < (sizeof(runtimeStatusDomainCacheValid_) / sizeof(runtimeStatusDomainCacheValid_[0])) &&
+                    runtimeStatusDomainCacheValid_[idx] &&
+                    runtimeStatusDomainCache_[idx][0] != '\0';
+    if (ok) {
+        snprintf(out, outLen, "%s", runtimeStatusDomainCache_[idx]);
+    }
+    xSemaphoreGive(runtimeCacheMutex_);
+    if (!ok) {
+        (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_status.cache");
+    }
+    return ok;
+}
+
+bool I2CCfgClientModule::fetchRuntimeStatusDomainUncached_(FlowStatusDomain domain, char* out, size_t outLen)
+{
+    if (!out || outLen == 0) return false;
+    if (!beginRequestSession_(0, false)) return false;
     if (!ensureReady_()) {
         (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.runtime_status");
+        endRequestSession_();
         return false;
     }
 
@@ -1062,6 +1248,7 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
              statusName(status),
              (unsigned)respLen);
         (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_status.begin");
+        endRequestSession_();
         return false;
     }
 
@@ -1069,6 +1256,7 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
     const bool isTruncated = (resp[2] & 0x02u) != 0;
     if (totalLen + 1 > outLen) {
         (void)writeErrorJson(out, outLen, ErrorCode::InternalAckOverflow, "flowcfg.runtime_status.len");
+        endRequestSession_();
         return false;
     }
 
@@ -1100,6 +1288,7 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
                  statusName(status),
                  (unsigned)respLen);
             (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_status.chunk");
+            endRequestSession_();
             return false;
         }
         if (respLen == 0 || (written + respLen) > totalLen) {
@@ -1109,6 +1298,7 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
                  (unsigned)respLen,
                  (unsigned)totalLen);
             (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.runtime_status.chunk_len");
+            endRequestSession_();
             return false;
         }
         memcpy(out + written, resp, respLen);
@@ -1118,14 +1308,20 @@ bool I2CCfgClientModule::runtimeStatusDomainJson_(FlowStatusDomain domain, char*
     if (isTruncated) {
         LOGW("runtimeStatus domain=%s truncated bytes=%u", statusDomainName(domain), (unsigned)written);
     }
+    endRequestSession_();
     return true;
 }
 
 bool I2CCfgClientModule::executeSystemActionJson_(uint8_t action, char* out, size_t outLen)
 {
     if (!out || outLen == 0) return false;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) {
+        (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flow.system.busy");
+        return false;
+    }
     if (!ensureReady_()) {
         (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flow.system");
+        endRequestSession_();
         return false;
     }
 
@@ -1136,17 +1332,20 @@ bool I2CCfgClientModule::executeSystemActionJson_(uint8_t action, char* out, siz
     const bool ok = transact_(I2cCfgProtocol::OpSystemAction, req, sizeof(req), status, resp, sizeof(resp), respLen);
     if (!ok || status != I2cCfgProtocol::StatusOk) {
         (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flow.system");
+        endRequestSession_();
         return false;
     }
 
     if (respLen == 0) {
         (void)writeOkJson(out, outLen, "flow.system");
+        endRequestSession_();
         return true;
     }
 
     const size_t n = (respLen < (outLen - 1)) ? respLen : (outLen - 1);
     memcpy(out, resp, n);
     out[n] = '\0';
+    endRequestSession_();
     return true;
 }
 

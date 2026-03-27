@@ -167,7 +167,7 @@ namespace Alarm {
 /** @brief Maximum number of alarm slots managed by `AlarmModule`. */
 constexpr uint16_t MaxAlarms = 16;
 /** @brief Maximum JSON buffer used for alarm snapshot serialization. */
-constexpr size_t SnapshotJsonBuf = 768;
+constexpr size_t SnapshotJsonBuf = 1536;
 /** @brief Default alarm evaluation period in ms (`AlarmModule::loop`). */
 constexpr uint32_t DefaultEvalPeriodMs = 250;
 /** @brief JSON capacity for alarm command args parsing. */

@@ -39,6 +39,21 @@
       background: var(--md-bg);
       color: var(--md-on-surface);
     }
+    /* Temporary icon mask for UI review. */
+    .menu-item .ico,
+    .status-card-icon,
+    .status-bool,
+    .app-icon-shell,
+    .btn-icon-only,
+    .password-toggle svg,
+    .control-title-root-btn svg,
+    .control-field-apply svg,
+    .control-crumb-arrows {
+      display: none !important;
+    }
+    .menu-item {
+      gap: 0;
+    }
     @keyframes skeleton-shimmer {
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
@@ -100,23 +115,29 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      gap: 8px;
+      justify-content: flex-start;
+      padding: 16px 4px 2px 2px;
+    }
+    .app-icon-shell {
+      width: 122px;
+      flex: 0 0 122px;
+      display: inline-flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+    .app-icon {
+      width: 100%;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 8px 12px rgba(11, 31, 58, 0.12));
+    }
+    .app-footer-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 4px;
-      justify-content: center;
-      padding-top: 14px;
-    }
-    .app-wordmark {
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--menu-active-edge);
-      opacity: 0.96;
-      transition: font-size 0.2s ease, letter-spacing 0.2s ease, opacity 0.2s ease;
-    }
-    .drawer.collapsed .app-wordmark {
-      font-size: 11px;
-      letter-spacing: 0.1em;
-      opacity: 0.82;
     }
     .app-meta {
       font-size: 11px;
@@ -131,9 +152,7 @@
     }
     .app-runtime-meta {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 2px;
       text-align: center;
     }
     .app-runtime-line {
@@ -255,10 +274,18 @@
         justify-content: center;
       }
       .drawer.collapsed .menu-item .ico { width: auto; }
-      .drawer.collapsed .app-icon-shell { display: none; }
-    }
-    @media (max-width: 900px) {
-      .app-runtime-meta {
+      .drawer.collapsed .app-icon-shell {
+        display: inline-flex;
+        width: 44px;
+        flex: 0 0 44px;
+      }
+      .drawer.collapsed .drawer-footer {
+        justify-content: center;
+        align-items: center;
+        padding-left: 0;
+        padding-right: 0;
+      }
+      .drawer.collapsed .app-footer-copy {
         display: none;
       }
     }
@@ -1424,10 +1451,14 @@
         transform: translateX(-104%);
         transition: transform 0.2s ease;
         box-shadow: 0 10px 28px rgba(1, 12, 25, 0.55);
+        overflow-y: auto;
       }
       .drawer.mobile-open { transform: translateX(0); }
       .drawer.collapsed { width: 252px; }
       .drawer.collapsed .drawer-user, .drawer.collapsed .menu-item .label { display: inline; }
+      .drawer.collapsed .app-meta { display: inline; }
+      .drawer.collapsed .app-runtime-meta { display: flex; }
+      .drawer.collapsed .app-footer-copy { display: flex; }
       .overlay.visible { display: block; }
       .content { width: 100%; padding: 12px; }
       .mobile-topbar {

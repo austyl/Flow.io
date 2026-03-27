@@ -20,8 +20,10 @@
 namespace {
 static constexpr uint32_t kFwPollMs = 500U;
 static constexpr uint32_t kStartupSplashHoldMs = 5000U;
+static constexpr uint32_t kStartupBacklightForceOnMs = 3600000U;
 static constexpr uint32_t kButtonBootGuardMs = 8000U;
 static constexpr uint32_t kButtonArmHighStableMs = 500U;
+static constexpr uint32_t kPageRotateMs = 10000U;
 
 const SupervisorBoardSpec& supervisorBoardSpec_(const BoardSpec& board)
 {
@@ -122,14 +124,32 @@ uint32_t SupervisorHMIModule::buildRenderKey_() const
     mix(&view_.wifiState, sizeof(view_.wifiState));
     mix(view_.ip, strnlen(view_.ip, sizeof(view_.ip)) + 1U);
     mix(&view_.flowLinkOk, sizeof(view_.flowLinkOk));
+    mix(&view_.flowMqttReady, sizeof(view_.flowMqttReady));
     mix(&view_.flowHasPoolModes, sizeof(view_.flowHasPoolModes));
     mix(&view_.flowFiltrationAuto, sizeof(view_.flowFiltrationAuto));
     mix(&view_.flowWinterMode, sizeof(view_.flowWinterMode));
+    mix(&view_.flowPhAutoMode, sizeof(view_.flowPhAutoMode));
+    mix(&view_.flowOrpAutoMode, sizeof(view_.flowOrpAutoMode));
+    mix(&view_.flowFiltrationOn, sizeof(view_.flowFiltrationOn));
+    mix(&view_.flowPhPumpOn, sizeof(view_.flowPhPumpOn));
+    mix(&view_.flowChlorinePumpOn, sizeof(view_.flowChlorinePumpOn));
+    mix(&view_.flowHasPh, sizeof(view_.flowHasPh));
+    mix(&view_.flowPhValue, sizeof(view_.flowPhValue));
+    mix(&view_.flowHasOrp, sizeof(view_.flowHasOrp));
+    mix(&view_.flowOrpValue, sizeof(view_.flowOrpValue));
+    mix(&view_.flowHasWaterTemp, sizeof(view_.flowHasWaterTemp));
+    mix(&view_.flowWaterTemp, sizeof(view_.flowWaterTemp));
+    mix(&view_.flowHasAirTemp, sizeof(view_.flowHasAirTemp));
+    mix(&view_.flowAirTemp, sizeof(view_.flowAirTemp));
     mix(&view_.flowAlarmActiveCount, sizeof(view_.flowAlarmActiveCount));
     mix(&view_.flowAlarmCodeCount, sizeof(view_.flowAlarmCodeCount));
     for (size_t i = 0; i < (sizeof(view_.flowAlarmCodes) / sizeof(view_.flowAlarmCodes[0])); i++) {
         mix(view_.flowAlarmCodes[i], strnlen(view_.flowAlarmCodes[i], sizeof(view_.flowAlarmCodes[i])) + 1U);
     }
+    mix(&view_.flowAlarmActCount, sizeof(view_.flowAlarmActCount));
+    mix(&view_.flowAlarmAckCount, sizeof(view_.flowAlarmAckCount));
+    mix(&view_.flowAlarmClrCount, sizeof(view_.flowAlarmClrCount));
+    mix(view_.flowAlarmStates, sizeof(view_.flowAlarmStates));
     mix(&view_.wifiResetPending, sizeof(view_.wifiResetPending));
     mix(view_.banner, strnlen(view_.banner, sizeof(view_.banner)) + 1U);
 
@@ -141,6 +161,11 @@ uint32_t SupervisorHMIModule::currentClockMinute_() const
     const time_t now = time(nullptr);
     if (now <= 1600000000) return 0U;
     return (uint32_t)(now / 60);
+}
+
+uint32_t SupervisorHMIModule::currentPageCycle_() const
+{
+    return (uint32_t)(millis() / kPageRotateMs);
 }
 
 void SupervisorHMIModule::init(ConfigStore&, ServiceRegistry& services)
@@ -249,31 +274,10 @@ void SupervisorHMIModule::pollFirmwareStatus_()
 
 void SupervisorHMIModule::pollFlowStatus_()
 {
-    view_.flowCfgReady = false;
-    view_.flowLinkOk = false;
-    view_.flowFirmware[0] = '\0';
-    view_.flowHasRssi = false;
-    view_.flowRssiDbm = -127;
-    view_.flowHasHeapFrag = false;
-    view_.flowHeapFragPct = 0;
-    view_.flowMqttReady = false;
-    view_.flowMqttRxDrop = 0;
-    view_.flowMqttParseFail = 0;
-    view_.flowI2cReqCount = 0;
-    view_.flowI2cBadReqCount = 0;
-    view_.flowI2cLastReqAgoMs = 0;
-    view_.flowHasPoolModes = false;
-    view_.flowFiltrationAuto = false;
-    view_.flowWinterMode = false;
-    view_.flowAlarmActiveCount = 0;
-    view_.flowAlarmCodeCount = 0;
-    for (size_t i = 0; i < (sizeof(view_.flowAlarmCodes) / sizeof(view_.flowAlarmCodes[0])); i++) {
-        view_.flowAlarmCodes[i][0] = '\0';
-    }
-
     if (!flowCfgSvc_ || !flowCfgSvc_->runtimeStatusDomainJson) return;
     if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) return;
 
+    SupervisorHmiViewModel nextView = view_;
     bool anyDomainOk = false;
     StaticJsonDocument<640> doc;
 
@@ -299,11 +303,14 @@ void SupervisorHMIModule::pollFlowStatus_()
     {
         JsonObjectConst root = fetchDomain(FlowStatusDomain::System);
         if (!root.isNull()) {
-            copyText_(view_.flowFirmware, sizeof(view_.flowFirmware), root["fw"] | "");
+            nextView.flowFirmware[0] = '\0';
+            nextView.flowHasHeapFrag = false;
+            nextView.flowHeapFragPct = 0;
+            copyText_(nextView.flowFirmware, sizeof(nextView.flowFirmware), root["fw"] | "");
             JsonObjectConst flowHeap = root["heap"];
             if (!flowHeap.isNull()) {
-                view_.flowHasHeapFrag = true;
-                view_.flowHeapFragPct = (uint8_t)(flowHeap["frag"] | 0U);
+                nextView.flowHasHeapFrag = true;
+                nextView.flowHeapFragPct = (uint8_t)(flowHeap["frag"] | 0U);
             }
         }
     }
@@ -311,64 +318,156 @@ void SupervisorHMIModule::pollFlowStatus_()
     {
         JsonObjectConst root = fetchDomain(FlowStatusDomain::Wifi);
         if (!root.isNull()) {
+            nextView.flowHasRssi = false;
+            nextView.flowRssiDbm = -127;
             JsonObjectConst flowWifi = root["wifi"];
-            view_.flowHasRssi = flowWifi["hrss"] | false;
-            view_.flowRssiDbm = (int32_t)(flowWifi["rssi"] | -127);
+            nextView.flowHasRssi = flowWifi["hrss"] | false;
+            nextView.flowRssiDbm = (int32_t)(flowWifi["rssi"] | -127);
         }
     }
 
     {
         JsonObjectConst root = fetchDomain(FlowStatusDomain::Mqtt);
         if (!root.isNull()) {
+            nextView.flowMqttReady = false;
+            nextView.flowMqttRxDrop = 0;
+            nextView.flowMqttParseFail = 0;
             JsonObjectConst flowMqtt = root["mqtt"];
-            view_.flowMqttReady = flowMqtt["rdy"] | false;
-            view_.flowMqttRxDrop = (uint32_t)(flowMqtt["rxdrp"] | 0U);
-            view_.flowMqttParseFail = (uint32_t)(flowMqtt["prsf"] | 0U);
+            nextView.flowMqttReady = flowMqtt["rdy"] | false;
+            nextView.flowMqttRxDrop = (uint32_t)(flowMqtt["rxdrp"] | 0U);
+            nextView.flowMqttParseFail = (uint32_t)(flowMqtt["prsf"] | 0U);
         }
     }
 
     {
         JsonObjectConst root = fetchDomain(FlowStatusDomain::I2c);
         if (!root.isNull()) {
+            nextView.flowLinkOk = false;
+            nextView.flowI2cReqCount = 0;
+            nextView.flowI2cBadReqCount = 0;
+            nextView.flowI2cLastReqAgoMs = 0;
             JsonObjectConst i2c = root["i2c"];
-            view_.flowLinkOk = i2c["lnk"] | false;
-            view_.flowI2cReqCount = (uint32_t)(i2c["req"] | 0U);
-            view_.flowI2cBadReqCount = (uint32_t)(i2c["breq"] | 0U);
-            view_.flowI2cLastReqAgoMs = (uint32_t)(i2c["ago"] | 0U);
+            nextView.flowLinkOk = i2c["lnk"] | false;
+            nextView.flowI2cReqCount = (uint32_t)(i2c["req"] | 0U);
+            nextView.flowI2cBadReqCount = (uint32_t)(i2c["breq"] | 0U);
+            nextView.flowI2cLastReqAgoMs = (uint32_t)(i2c["ago"] | 0U);
         }
     }
 
     {
         JsonObjectConst root = fetchDomain(FlowStatusDomain::Pool);
         if (!root.isNull()) {
+            nextView.flowHasPoolModes = false;
+            nextView.flowFiltrationAuto = false;
+            nextView.flowWinterMode = false;
+            nextView.flowPhAutoMode = false;
+            nextView.flowOrpAutoMode = false;
+            nextView.flowFiltrationOn = false;
+            nextView.flowPhPumpOn = false;
+            nextView.flowChlorinePumpOn = false;
+            nextView.flowHasPh = false;
+            nextView.flowPhValue = 0.0f;
+            nextView.flowHasOrp = false;
+            nextView.flowOrpValue = 0.0f;
+            nextView.flowHasWaterTemp = false;
+            nextView.flowWaterTemp = 0.0f;
+            nextView.flowHasAirTemp = false;
+            nextView.flowAirTemp = 0.0f;
             JsonObjectConst poolMode = root["pool"];
             if (!poolMode.isNull()) {
-                view_.flowHasPoolModes = poolMode["has"] | false;
-                view_.flowFiltrationAuto = poolMode["auto"] | false;
-                view_.flowWinterMode = poolMode["wint"] | false;
-            }
-        }
-    }
-
-    {
-        JsonObjectConst root = fetchDomain(FlowStatusDomain::Alarm);
-        if (!root.isNull()) {
-            JsonObjectConst alarms = root["alm"];
-            if (!alarms.isNull()) {
-                view_.flowAlarmActiveCount = (uint8_t)(alarms["cnt"] | 0U);
-                JsonArrayConst activeCodes = alarms["codes"].as<JsonArrayConst>();
-                for (JsonVariantConst codeV : activeCodes) {
-                    const size_t idx = (size_t)view_.flowAlarmCodeCount;
-                    if (idx >= (sizeof(view_.flowAlarmCodes) / sizeof(view_.flowAlarmCodes[0]))) break;
-                    const char* code = codeV.as<const char*>();
-                    copyText_(view_.flowAlarmCodes[idx], sizeof(view_.flowAlarmCodes[idx]), code ? code : "");
-                    view_.flowAlarmCodeCount++;
+                nextView.flowHasPoolModes = poolMode["has"] | false;
+                nextView.flowFiltrationAuto = poolMode["auto"] | false;
+                nextView.flowWinterMode = poolMode["wint"] | false;
+                nextView.flowPhAutoMode = poolMode["pha"] | false;
+                nextView.flowOrpAutoMode = poolMode["ora"] | false;
+                nextView.flowFiltrationOn = poolMode["fil"] | false;
+                nextView.flowPhPumpOn = poolMode["php"] | false;
+                nextView.flowChlorinePumpOn = poolMode["clp"] | false;
+                JsonVariantConst phVar = poolMode["ph"];
+                if (!phVar.isNull()) {
+                    nextView.flowHasPh = true;
+                    nextView.flowPhValue = phVar.as<float>();
+                }
+                JsonVariantConst orpVar = poolMode["orp"];
+                if (!orpVar.isNull()) {
+                    nextView.flowHasOrp = true;
+                    nextView.flowOrpValue = orpVar.as<float>();
+                }
+                JsonVariantConst waterTempVar = poolMode["wat"];
+                if (!waterTempVar.isNull()) {
+                    nextView.flowHasWaterTemp = true;
+                    nextView.flowWaterTemp = waterTempVar.as<float>();
+                }
+                JsonVariantConst airTempVar = poolMode["air"];
+                if (!airTempVar.isNull()) {
+                    nextView.flowHasAirTemp = true;
+                    nextView.flowAirTemp = airTempVar.as<float>();
                 }
             }
         }
     }
 
-    view_.flowCfgReady = anyDomainOk;
+    nextView.flowAlarmActCount = 0;
+    nextView.flowAlarmAckCount = 0;
+    nextView.flowAlarmClrCount = 0;
+    for (size_t i = 0; i < kSupervisorAlarmSlotCount; ++i) {
+        switch (nextView.flowAlarmStates[i]) {
+            case SupervisorAlarmState::Active:
+                ++nextView.flowAlarmActCount;
+                break;
+            case SupervisorAlarmState::Acked:
+                ++nextView.flowAlarmAckCount;
+                break;
+            case SupervisorAlarmState::Clear:
+            default:
+                ++nextView.flowAlarmClrCount;
+                break;
+        }
+    }
+
+    if (!anyDomainOk) return;
+
+    nextView.flowCfgReady = true;
+    view_.flowCfgReady = nextView.flowCfgReady;
+    view_.flowLinkOk = nextView.flowLinkOk;
+    copyText_(view_.flowFirmware, sizeof(view_.flowFirmware), nextView.flowFirmware);
+    view_.flowHasRssi = nextView.flowHasRssi;
+    view_.flowRssiDbm = nextView.flowRssiDbm;
+    view_.flowHasHeapFrag = nextView.flowHasHeapFrag;
+    view_.flowHeapFragPct = nextView.flowHeapFragPct;
+    view_.flowMqttReady = nextView.flowMqttReady;
+    view_.flowMqttRxDrop = nextView.flowMqttRxDrop;
+    view_.flowMqttParseFail = nextView.flowMqttParseFail;
+    view_.flowI2cReqCount = nextView.flowI2cReqCount;
+    view_.flowI2cBadReqCount = nextView.flowI2cBadReqCount;
+    view_.flowI2cLastReqAgoMs = nextView.flowI2cLastReqAgoMs;
+    view_.flowHasPoolModes = nextView.flowHasPoolModes;
+    view_.flowFiltrationAuto = nextView.flowFiltrationAuto;
+    view_.flowWinterMode = nextView.flowWinterMode;
+    view_.flowPhAutoMode = nextView.flowPhAutoMode;
+    view_.flowOrpAutoMode = nextView.flowOrpAutoMode;
+    view_.flowFiltrationOn = nextView.flowFiltrationOn;
+    view_.flowPhPumpOn = nextView.flowPhPumpOn;
+    view_.flowChlorinePumpOn = nextView.flowChlorinePumpOn;
+    view_.flowHasPh = nextView.flowHasPh;
+    view_.flowPhValue = nextView.flowPhValue;
+    view_.flowHasOrp = nextView.flowHasOrp;
+    view_.flowOrpValue = nextView.flowOrpValue;
+    view_.flowHasWaterTemp = nextView.flowHasWaterTemp;
+    view_.flowWaterTemp = nextView.flowWaterTemp;
+    view_.flowHasAirTemp = nextView.flowHasAirTemp;
+    view_.flowAirTemp = nextView.flowAirTemp;
+    view_.flowAlarmActiveCount = nextView.flowAlarmActiveCount;
+    view_.flowAlarmCodeCount = nextView.flowAlarmCodeCount;
+    for (size_t i = 0; i < (sizeof(view_.flowAlarmCodes) / sizeof(view_.flowAlarmCodes[0])); ++i) {
+        copyText_(view_.flowAlarmCodes[i], sizeof(view_.flowAlarmCodes[i]), nextView.flowAlarmCodes[i]);
+    }
+    view_.flowAlarmActCount = nextView.flowAlarmActCount;
+    view_.flowAlarmAckCount = nextView.flowAlarmAckCount;
+    view_.flowAlarmClrCount = nextView.flowAlarmClrCount;
+    for (size_t i = 0; i < kSupervisorAlarmSlotCount; ++i) {
+        view_.flowAlarmStates[i] = nextView.flowAlarmStates[i];
+    }
 }
 
 void SupervisorHMIModule::triggerWifiReset_()
@@ -465,6 +564,7 @@ void SupervisorHMIModule::updateWifiResetButton_()
 void SupervisorHMIModule::updateBacklight_()
 {
     const uint32_t now = millis();
+    const bool forceBacklightOn = (int32_t)(now - backlightForceOnUntilMs_) < 0;
     bool motion = false;
     if (pirPin_ >= 0) {
         const bool pirLevelHigh = (digitalRead(pirPin_) == HIGH);
@@ -487,7 +587,7 @@ void SupervisorHMIModule::updateBacklight_()
         return;
     }
 
-    const bool keepOn = fwBusyOrPending_ || ((uint32_t)(now - lastMotionMs_) <= pirTimeoutMs_);
+    const bool keepOn = forceBacklightOn || fwBusyOrPending_ || ((uint32_t)(now - lastMotionMs_) <= pirTimeoutMs_);
     driver_.setBacklight(keepOn);
 }
 
@@ -503,6 +603,10 @@ void SupervisorHMIModule::rebuildBanner_()
 
 void SupervisorHMIModule::setDefaultBanner_()
 {
+    if (wifiResetPin_ < 0) {
+        copyText_(view_.banner, sizeof(view_.banner), "Local display ready");
+        return;
+    }
     const uint32_t holdSeconds = (wifiResetHoldMs_ + 999U) / 1000U;
     snprintf(view_.banner, sizeof(view_.banner), "Hold WiFi button %lus to reset credentials", (unsigned long)holdSeconds);
 }
@@ -517,8 +621,10 @@ void SupervisorHMIModule::loop()
         }
         lastRenderMs_ = 0;
         splashHoldUntilMs_ = millis() + kStartupSplashHoldMs;
+        backlightForceOnUntilMs_ = millis() + kStartupBacklightForceOnMs;
         hasLastRenderKey_ = false;
         lastRenderedMinute_ = 0;
+        lastRenderedPageCycle_ = 0;
         lastBacklightOn_ = driver_.isBacklightOn();
     }
 
@@ -528,6 +634,7 @@ void SupervisorHMIModule::loop()
     if ((uint32_t)(now - lastFwPollMs_) >= kFwPollMs) {
         lastFwPollMs_ = now;
         pollFirmwareStatus_();
+        pollFlowStatus_();
     }
 
     updateWifiResetButton_();
@@ -544,15 +651,18 @@ void SupervisorHMIModule::loop()
     const bool backlightOn = driver_.isBacklightOn();
     const uint32_t renderKey = buildRenderKey_();
     const uint32_t minuteKey = currentClockMinute_();
+    const uint32_t pageCycleKey = currentPageCycle_();
     const bool changed = (!hasLastRenderKey_) ||
                          (renderKey != lastRenderKey_) ||
                          (minuteKey != lastRenderedMinute_) ||
+                         (pageCycleKey != lastRenderedPageCycle_) ||
                          (backlightOn != lastBacklightOn_);
     if (changed && backlightOn) {
         (void)driver_.render(view_, !hasLastRenderKey_);
         lastRenderMs_ = now;
         lastRenderKey_ = renderKey;
         lastRenderedMinute_ = minuteKey;
+        lastRenderedPageCycle_ = pageCycleKey;
         hasLastRenderKey_ = true;
     }
     lastBacklightOn_ = backlightOn;

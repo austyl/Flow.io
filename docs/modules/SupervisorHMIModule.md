@@ -34,11 +34,11 @@ Valeurs actuelles:
 
 - TFT backlight: `14`
 - TFT CS: `15`
-- TFT DC: `4`
-- TFT RST: `5`
-- TFT MOSI: `19`
+- TFT DC: `2`
+- TFT RST: `4`
+- TFT MOSI: `23`
 - TFT SCLK: `18`
 - PIR: `36`
-- bouton reset WiFi: `23`
+- bouton reset WiFi: `disabled`
 - timeout extinction backlight: `10000 ms`
 - appui long reset WiFi: `3000 ms`

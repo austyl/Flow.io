@@ -3,10 +3,142 @@
     "generated": true,
     "total": 333,
     "decl_total": 219,
-    "decl_with_cfgdoc": 99,
-    "missing_cfgdoc_count": 120,
+    "decl_with_cfgdoc": 123,
+    "missing_cfgdoc_count": 96,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
+  },
+  "meta": {
+    "enum_sets": {
+      "flowio_binding_port_analog": [
+        {
+          "value": 100,
+          "label": "100 | PortAdsInternal0 | ADS1115 interne | canal 0"
+        },
+        {
+          "value": 101,
+          "label": "101 | PortAdsInternal1 | ADS1115 interne | canal 1"
+        },
+        {
+          "value": 102,
+          "label": "102 | PortAdsInternal2 | ADS1115 interne | canal 2"
+        },
+        {
+          "value": 103,
+          "label": "103 | PortAdsInternal3 | ADS1115 interne | canal 3"
+        },
+        {
+          "value": 110,
+          "label": "110 | PortAdsExternal0 | ADS1115 externe | paire diff 0"
+        },
+        {
+          "value": 111,
+          "label": "111 | PortAdsExternal1 | ADS1115 externe | paire diff 1"
+        },
+        {
+          "value": 120,
+          "label": "120 | PortDsWater | DS18B20 | bus eau"
+        },
+        {
+          "value": 121,
+          "label": "121 | PortDsAir | DS18B20 | bus air"
+        }
+      ],
+      "flowio_binding_port_digital_input": [
+        {
+          "value": 200,
+          "label": "200 | PortDigitalIn1 | digital_in1 | GPIO34"
+        },
+        {
+          "value": 201,
+          "label": "201 | PortDigitalIn2 | digital_in2 | GPIO36"
+        },
+        {
+          "value": 202,
+          "label": "202 | PortDigitalIn3 | digital_in3 | GPIO39"
+        },
+        {
+          "value": 203,
+          "label": "203 | PortDigitalIn4 | digital_in4 | GPIO35"
+        }
+      ],
+      "flowio_binding_port_digital_output": [
+        {
+          "value": 300,
+          "label": "300 | PortRelay1 | relay1 | GPIO32"
+        },
+        {
+          "value": 301,
+          "label": "301 | PortRelay2 | relay2 | GPIO25"
+        },
+        {
+          "value": 302,
+          "label": "302 | PortRelay3 | relay3 | GPIO26"
+        },
+        {
+          "value": 303,
+          "label": "303 | PortRelay4 | relay4 | GPIO13"
+        },
+        {
+          "value": 304,
+          "label": "304 | PortRelay5 | relay5 | GPIO33"
+        },
+        {
+          "value": 305,
+          "label": "305 | PortRelay6 | relay6 | GPIO27"
+        },
+        {
+          "value": 306,
+          "label": "306 | PortRelay7 | relay7 | GPIO23"
+        },
+        {
+          "value": 307,
+          "label": "307 | PortRelay8 | relay8 | GPIO4"
+        },
+        {
+          "value": 400,
+          "label": "400 | PortPcf0Bit0 | sortie PCF8574 | bit 0"
+        },
+        {
+          "value": 401,
+          "label": "401 | PortPcf0Bit1 | sortie PCF8574 | bit 1"
+        },
+        {
+          "value": 402,
+          "label": "402 | PortPcf0Bit2 | sortie PCF8574 | bit 2"
+        },
+        {
+          "value": 403,
+          "label": "403 | PortPcf0Bit3 | sortie PCF8574 | bit 3"
+        },
+        {
+          "value": 404,
+          "label": "404 | PortPcf0Bit4 | sortie PCF8574 | bit 4"
+        },
+        {
+          "value": 405,
+          "label": "405 | PortPcf0Bit5 | sortie PCF8574 | bit 5"
+        },
+        {
+          "value": 406,
+          "label": "406 | PortPcf0Bit6 | sortie PCF8574 | bit 6"
+        }
+      ],
+      "flowio_edge_mode": [
+        {
+          "value": 0,
+          "label": "0 | Front descendant"
+        },
+        {
+          "value": 1,
+          "label": "1 | Front montant"
+        },
+        {
+          "value": 2,
+          "label": "2 | Deux fronts"
+        }
+      ]
+    }
   },
   "docs": {
     "*/depends_on_mask": {
@@ -439,10 +571,11 @@
       "module": "io/input/a0",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a0' (type UInt16).",
+      "label": "Port physique A0",
+      "help": "Identifiant du port physique utilise par l'entree analogique A0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a0BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/a1/a1_c0": {
       "module": "io/input/a1",
@@ -485,10 +618,11 @@
       "module": "io/input/a1",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a1' (type UInt16).",
+      "label": "Port physique A1",
+      "help": "Identifiant du port physique utilise par l'entree analogique A1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a1BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/a2/a2_c0": {
       "module": "io/input/a2",
@@ -531,10 +665,11 @@
       "module": "io/input/a2",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a2' (type UInt16).",
+      "label": "Port physique A2",
+      "help": "Identifiant du port physique utilise par l'entree analogique A2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a2BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/a3/a3_c0": {
       "module": "io/input/a3",
@@ -577,10 +712,11 @@
       "module": "io/input/a3",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a3' (type UInt16).",
+      "label": "Port physique A3",
+      "help": "Identifiant du port physique utilise par l'entree analogique A3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a3BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/a4/a4_c0": {
       "module": "io/input/a4",
@@ -623,10 +759,11 @@
       "module": "io/input/a4",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a4' (type UInt16).",
+      "label": "Port physique A4",
+      "help": "Identifiant du port physique utilise par l'entree analogique A4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a4BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/a5/a5_c0": {
       "module": "io/input/a5",
@@ -669,244 +806,256 @@
       "module": "io/input/a5",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/a5' (type UInt16).",
+      "label": "Port physique A5",
+      "help": "Identifiant du port physique utilise par l'entree analogique A5. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "a5BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_analog"
     },
     "io/input/i0/binding_port": {
       "module": "io/input/i0",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/i0' (type UInt16).",
+      "label": "Port physique I0",
+      "help": "Identifiant du port physique utilise par l'entree digitale I0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i0BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_input"
     },
     "io/input/i0/edge_mode": {
       "module": "io/input/i0",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Edge mode",
-      "help": "Parametre 'edge_mode' pour la branche 'io/input/i0' (type UInt8).",
+      "label": "Mode de front I0",
+      "help": "Front a compter pour I0 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i0EdgeModeVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_edge_mode"
     },
     "io/input/i0/i0_active_high": {
       "module": "io/input/i0",
       "name": "i0_active_high",
       "type": "Bool",
-      "label": "I0 active high",
-      "help": "Parametre 'i0_active_high' pour la branche 'io/input/i0' (type Bool).",
+      "label": "Actif a 1 I0",
+      "help": "Si active, l'entrée I0 est consideree active a l'etat haut.",
       "var": "i0ActiveHighVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i0/i0_name": {
       "module": "io/input/i0",
       "name": "i0_name",
       "type": "CharArray",
-      "label": "I0 name",
-      "help": "Parametre 'i0_name' pour la branche 'io/input/i0' (type CharArray).",
+      "label": "Nom entrée I0",
+      "help": "Nom lisible de l'entrée digitale I0.",
       "var": "i0NameVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i0/i0_pull_mode": {
       "module": "io/input/i0",
       "name": "i0_pull_mode",
       "type": "UInt8",
-      "label": "I0 pull mode",
-      "help": "Parametre 'i0_pull_mode' pour la branche 'io/input/i0' (type UInt8).",
+      "label": "Pull entrée I0",
+      "help": "Mode de resistance interne applique a l'entrée I0.",
       "var": "i0PullModeVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i1/binding_port": {
       "module": "io/input/i1",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/i1' (type UInt16).",
+      "label": "Port physique I1",
+      "help": "Identifiant du port physique utilise par l'entree digitale I1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i1BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_input"
     },
     "io/input/i1/edge_mode": {
       "module": "io/input/i1",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Edge mode",
-      "help": "Parametre 'edge_mode' pour la branche 'io/input/i1' (type UInt8).",
+      "label": "Mode de front I1",
+      "help": "Front a compter pour I1 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i1EdgeModeVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_edge_mode"
     },
     "io/input/i1/i1_active_high": {
       "module": "io/input/i1",
       "name": "i1_active_high",
       "type": "Bool",
-      "label": "I1 active high",
-      "help": "Parametre 'i1_active_high' pour la branche 'io/input/i1' (type Bool).",
+      "label": "Actif a 1 I1",
+      "help": "Si active, l'entrée I1 est consideree active a l'etat haut.",
       "var": "i1ActiveHighVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i1/i1_name": {
       "module": "io/input/i1",
       "name": "i1_name",
       "type": "CharArray",
-      "label": "I1 name",
-      "help": "Parametre 'i1_name' pour la branche 'io/input/i1' (type CharArray).",
+      "label": "Nom entrée I1",
+      "help": "Nom lisible de l'entrée digitale I1.",
       "var": "i1NameVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i1/i1_pull_mode": {
       "module": "io/input/i1",
       "name": "i1_pull_mode",
       "type": "UInt8",
-      "label": "I1 pull mode",
-      "help": "Parametre 'i1_pull_mode' pour la branche 'io/input/i1' (type UInt8).",
+      "label": "Pull entrée I1",
+      "help": "Mode de resistance interne applique a l'entrée I1.",
       "var": "i1PullModeVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i2/binding_port": {
       "module": "io/input/i2",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/i2' (type UInt16).",
+      "label": "Port physique I2",
+      "help": "Identifiant du port physique utilise par l'entree digitale I2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i2BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_input"
     },
     "io/input/i2/edge_mode": {
       "module": "io/input/i2",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Edge mode",
-      "help": "Parametre 'edge_mode' pour la branche 'io/input/i2' (type UInt8).",
+      "label": "Mode de front I2",
+      "help": "Front a compter pour I2 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i2EdgeModeVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_edge_mode"
     },
     "io/input/i2/i2_active_high": {
       "module": "io/input/i2",
       "name": "i2_active_high",
       "type": "Bool",
-      "label": "I2 active high",
-      "help": "Parametre 'i2_active_high' pour la branche 'io/input/i2' (type Bool).",
+      "label": "Actif a 1 I2",
+      "help": "Si active, l'entrée I2 est consideree active a l'etat haut.",
       "var": "i2ActiveHighVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i2/i2_name": {
       "module": "io/input/i2",
       "name": "i2_name",
       "type": "CharArray",
-      "label": "I2 name",
-      "help": "Parametre 'i2_name' pour la branche 'io/input/i2' (type CharArray).",
+      "label": "Nom entrée I2",
+      "help": "Nom lisible de l'entrée digitale I2.",
       "var": "i2NameVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i2/i2_pull_mode": {
       "module": "io/input/i2",
       "name": "i2_pull_mode",
       "type": "UInt8",
-      "label": "I2 pull mode",
-      "help": "Parametre 'i2_pull_mode' pour la branche 'io/input/i2' (type UInt8).",
+      "label": "Pull entrée I2",
+      "help": "Mode de resistance interne applique a l'entrée I2.",
       "var": "i2PullModeVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i3/binding_port": {
       "module": "io/input/i3",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/i3' (type UInt16).",
+      "label": "Port physique I3",
+      "help": "Identifiant du port physique utilise par l'entree digitale I3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i3BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_input"
     },
     "io/input/i3/edge_mode": {
       "module": "io/input/i3",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Edge mode",
-      "help": "Parametre 'edge_mode' pour la branche 'io/input/i3' (type UInt8).",
+      "label": "Mode de front I3",
+      "help": "Front a compter pour I3 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i3EdgeModeVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_edge_mode"
     },
     "io/input/i3/i3_active_high": {
       "module": "io/input/i3",
       "name": "i3_active_high",
       "type": "Bool",
-      "label": "I3 active high",
-      "help": "Parametre 'i3_active_high' pour la branche 'io/input/i3' (type Bool).",
+      "label": "Actif a 1 I3",
+      "help": "Si active, l'entrée I3 est consideree active a l'etat haut.",
       "var": "i3ActiveHighVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i3/i3_name": {
       "module": "io/input/i3",
       "name": "i3_name",
       "type": "CharArray",
-      "label": "I3 name",
-      "help": "Parametre 'i3_name' pour la branche 'io/input/i3' (type CharArray).",
+      "label": "Nom entrée I3",
+      "help": "Nom lisible de l'entrée digitale I3.",
       "var": "i3NameVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i3/i3_pull_mode": {
       "module": "io/input/i3",
       "name": "i3_pull_mode",
       "type": "UInt8",
-      "label": "I3 pull mode",
-      "help": "Parametre 'i3_pull_mode' pour la branche 'io/input/i3' (type UInt8).",
+      "label": "Pull entrée I3",
+      "help": "Mode de resistance interne applique a l'entrée I3.",
       "var": "i3PullModeVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i4/binding_port": {
       "module": "io/input/i4",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/input/i4' (type UInt16).",
+      "label": "Port physique I4",
+      "help": "Identifiant du port physique utilise par l'entree digitale I4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i4BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_input"
     },
     "io/input/i4/edge_mode": {
       "module": "io/input/i4",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Edge mode",
-      "help": "Parametre 'edge_mode' pour la branche 'io/input/i4' (type UInt8).",
+      "label": "Mode de front I4",
+      "help": "Front a compter pour I4 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i4EdgeModeVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_edge_mode"
     },
     "io/input/i4/i4_active_high": {
       "module": "io/input/i4",
       "name": "i4_active_high",
       "type": "Bool",
-      "label": "I4 active high",
-      "help": "Parametre 'i4_active_high' pour la branche 'io/input/i4' (type Bool).",
+      "label": "Actif a 1 I4",
+      "help": "Si active, l'entrée I4 est consideree active a l'etat haut.",
       "var": "i4ActiveHighVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i4/i4_name": {
       "module": "io/input/i4",
       "name": "i4_name",
       "type": "CharArray",
-      "label": "I4 name",
-      "help": "Parametre 'i4_name' pour la branche 'io/input/i4' (type CharArray).",
+      "label": "Nom entrée I4",
+      "help": "Nom lisible de l'entrée digitale I4.",
       "var": "i4NameVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/input/i4/i4_pull_mode": {
       "module": "io/input/i4",
       "name": "i4_pull_mode",
       "type": "UInt8",
-      "label": "I4 pull mode",
-      "help": "Parametre 'i4_pull_mode' pour la branche 'io/input/i4' (type UInt8).",
+      "label": "Pull entrée I4",
+      "help": "Mode de resistance interne applique a l'entrée I4.",
       "var": "i4PullModeVar_",
-      "source": "auto"
+      "source": "auto-hint"
     },
     "io/output/d0/binding_port": {
       "module": "io/output/d0",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d0' (type UInt16).",
+      "label": "Port physique D0",
+      "help": "Identifiant du port physique pilote par la sortie D0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d0BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d0/d0_active_high": {
       "module": "io/output/d0",
@@ -958,10 +1107,11 @@
       "module": "io/output/d1",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d1' (type UInt16).",
+      "label": "Port physique D1",
+      "help": "Identifiant du port physique pilote par la sortie D1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d1BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d1/d1_active_high": {
       "module": "io/output/d1",
@@ -1013,10 +1163,11 @@
       "module": "io/output/d2",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d2' (type UInt16).",
+      "label": "Port physique D2",
+      "help": "Identifiant du port physique pilote par la sortie D2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d2BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d2/d2_active_high": {
       "module": "io/output/d2",
@@ -1068,10 +1219,11 @@
       "module": "io/output/d3",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d3' (type UInt16).",
+      "label": "Port physique D3",
+      "help": "Identifiant du port physique pilote par la sortie D3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d3BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d3/d3_active_high": {
       "module": "io/output/d3",
@@ -1123,10 +1275,11 @@
       "module": "io/output/d4",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d4' (type UInt16).",
+      "label": "Port physique D4",
+      "help": "Identifiant du port physique pilote par la sortie D4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d4BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d4/d4_active_high": {
       "module": "io/output/d4",
@@ -1178,10 +1331,11 @@
       "module": "io/output/d5",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d5' (type UInt16).",
+      "label": "Port physique D5",
+      "help": "Identifiant du port physique pilote par la sortie D5. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d5BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d5/d5_active_high": {
       "module": "io/output/d5",
@@ -1233,10 +1387,11 @@
       "module": "io/output/d6",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d6' (type UInt16).",
+      "label": "Port physique D6",
+      "help": "Identifiant du port physique pilote par la sortie D6. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d6BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d6/d6_active_high": {
       "module": "io/output/d6",
@@ -1288,10 +1443,11 @@
       "module": "io/output/d7",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Binding port",
-      "help": "Parametre 'binding_port' pour la branche 'io/output/d7' (type UInt16).",
+      "label": "Port physique D7",
+      "help": "Identifiant du port physique pilote par la sortie D7. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d7BindingVar_",
-      "source": "auto"
+      "source": "cfgdoc",
+      "enum_set": "flowio_binding_port_digital_output"
     },
     "io/output/d7/d7_active_high": {
       "module": "io/output/d7",

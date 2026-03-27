@@ -45,6 +45,32 @@ static void sanitizeJsonString_(char* s)
     }
 }
 
+static void printJsonEscaped_(Print& out, const char* s)
+{
+    out.print('\"');
+    if (s) {
+        for (const char* p = s; *p != '\0'; ++p) {
+            switch (*p) {
+            case '\"': out.print("\\\""); break;
+            case '\\': out.print("\\\\"); break;
+            case '\b': out.print("\\b"); break;
+            case '\f': out.print("\\f"); break;
+            case '\n': out.print("\\n"); break;
+            case '\r': out.print("\\r"); break;
+            case '\t': out.print("\\t"); break;
+            default:
+                if ((uint8_t)*p < 0x20U) {
+                    out.print('?');
+                } else {
+                    out.print(*p);
+                }
+                break;
+            }
+        }
+    }
+    out.print('\"');
+}
+
 static bool parseBoolParam_(const String& in, bool fallback)
 {
     if (in.length() == 0) return fallback;
@@ -123,10 +149,6 @@ bool parseFlowStatusDomainParam_(const String& raw, FlowStatusDomain& domainOut)
     }
     if (raw.equalsIgnoreCase("pool")) {
         domainOut = FlowStatusDomain::Pool;
-        return true;
-    }
-    if (raw.equalsIgnoreCase("alarm")) {
-        domainOut = FlowStatusDomain::Alarm;
         return true;
     }
     return false;
@@ -262,6 +284,112 @@ bool appendRuntimeUiJsonValues_(JsonArray values, const uint8_t* payload, size_t
             memcpy(text, payload + offset, len);
             text[len] = '\0';
             value["value"] = text;
+            offset += len;
+            break;
+        }
+
+        default:
+            return false;
+        }
+    }
+
+    return offset == payloadLen;
+}
+
+bool appendRuntimeUiJsonValuesToStream_(Print& out, const uint8_t* payload, size_t payloadLen, bool& firstValue)
+{
+    if (!payload || payloadLen == 0U) return true;
+
+    size_t offset = 0U;
+    const uint8_t count = payload[offset++];
+    for (uint8_t i = 0; i < count; ++i) {
+        if ((offset + 3U) > payloadLen) return false;
+        const RuntimeUiId runtimeId = (RuntimeUiId)((RuntimeUiId)payload[offset] |
+                                                    ((RuntimeUiId)payload[offset + 1U] << 8));
+        offset += 2U;
+        const RuntimeUiWireType wireType = (RuntimeUiWireType)payload[offset++];
+        const RuntimeUiManifestItem* manifestItem = findRuntimeUiManifestItem(runtimeId);
+
+        if (!firstValue) out.print(',');
+        firstValue = false;
+
+        out.print('{');
+        out.print("\"id\":");
+        out.print((unsigned)runtimeId);
+        out.print(",\"key\":");
+        printJsonEscaped_(out, manifestItem ? manifestItem->key : "");
+        out.print(",\"type\":");
+        printJsonEscaped_(out, manifestItem ? manifestItem->type : runtimeUiWireTypeName_(wireType));
+        if (manifestItem && manifestItem->unit && manifestItem->unit[0] != '\0') {
+            out.print(",\"unit\":");
+            printJsonEscaped_(out, manifestItem->unit);
+        }
+
+        switch (wireType) {
+        case RuntimeUiWireType::NotFound:
+            out.print(",\"status\":\"not_found\"}");
+            break;
+
+        case RuntimeUiWireType::Unavailable:
+            out.print(",\"status\":\"unavailable\"}");
+            break;
+
+        case RuntimeUiWireType::Bool:
+            if ((offset + 1U) > payloadLen) return false;
+            out.print(",\"value\":");
+            out.print((payload[offset++] != 0U) ? "true" : "false");
+            out.print('}');
+            break;
+
+        case RuntimeUiWireType::Int32: {
+            if ((offset + 4U) > payloadLen) return false;
+            int32_t raw = 0;
+            const uint32_t bits = readLe32_(payload + offset);
+            memcpy(&raw, &bits, sizeof(raw));
+            out.print(",\"value\":");
+            out.print((int32_t)raw);
+            out.print('}');
+            offset += 4U;
+            break;
+        }
+
+        case RuntimeUiWireType::UInt32:
+            if ((offset + 4U) > payloadLen) return false;
+            out.print(",\"value\":");
+            out.print((unsigned long)readLe32_(payload + offset));
+            out.print('}');
+            offset += 4U;
+            break;
+
+        case RuntimeUiWireType::Float32: {
+            if ((offset + 4U) > payloadLen) return false;
+            const uint32_t bits = readLe32_(payload + offset);
+            float raw = 0.0f;
+            memcpy(&raw, &bits, sizeof(raw));
+            out.print(",\"value\":");
+            out.print(raw, 3);
+            out.print('}');
+            offset += 4U;
+            break;
+        }
+
+        case RuntimeUiWireType::Enum:
+            if ((offset + 1U) > payloadLen) return false;
+            out.print(",\"value\":");
+            out.print((unsigned)payload[offset++]);
+            out.print('}');
+            break;
+
+        case RuntimeUiWireType::String: {
+            if ((offset + 1U) > payloadLen) return false;
+            const uint8_t len = payload[offset++];
+            if ((offset + len) > payloadLen) return false;
+            char text[I2cCfgProtocol::MaxPayload + 1U] = {0};
+            memcpy(text, payload + offset, len);
+            text[len] = '\0';
+            out.print(",\"value\":");
+            printJsonEscaped_(out, text);
+            out.print('}');
             offset += len;
             break;
         }
@@ -420,6 +548,16 @@ void WebInterfaceModule::startServer_()
             return;
         }
         request->send(SPIFFS, "/assets/Logos_Texte_v2.png", "image/png");
+    });
+    server_.on("/assets/flowio-logotext.svg", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (!spiffsReady_ || !SPIFFS.exists("/assets/flowio_logotext.svg")) {
+            request->send(404, "text/plain", "Not found");
+            return;
+        }
+        AsyncWebServerResponse* response =
+            request->beginResponse(SPIFFS, "/assets/flowio_logotext.svg", "image/svg+xml");
+        addNoCacheHeaders_(response);
+        request->send(response);
     });
 
     server_.on("/assets/icon-journaux.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
@@ -1115,35 +1253,8 @@ void WebInterfaceModule::startServer_()
                                  "/api/runtime/alarms",
                                  kHttpLatencyFlowCfgInfoMs,
                                  kHttpLatencyFlowCfgWarnMs);
-        if (!flowCfgSvc_ && services_) {
-            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
-        }
-        if (!flowCfgSvc_ || !flowCfgSvc_->runtimeAlarmSnapshotJson) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.alarms\"}}");
-            return;
-        }
-        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.alarms.link\"}}");
-            return;
-        }
-
-        char alarmBuf[Limits::Alarm::SnapshotJsonBuf] = {0};
-        if (!flowCfgSvc_->runtimeAlarmSnapshotJson(flowCfgSvc_->ctx, alarmBuf, sizeof(alarmBuf))) {
-            if (alarmBuf[0] != '\0') {
-                request->send(500, "application/json", alarmBuf);
-            } else {
-                request->send(500, "application/json",
-                              "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.alarms.fetch\"}}");
-            }
-            return;
-        }
-
-        AsyncResponseStream* response = request->beginResponseStream("application/json");
-        addNoCacheHeaders_(response);
-        response->print(alarmBuf);
-        request->send(response);
+        request->send(503, "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"Disabled\",\"where\":\"runtime.alarms.disabled\"}}");
     });
 
     server_.on(
@@ -1203,9 +1314,10 @@ void WebInterfaceModule::startServer_()
                 ids[idCount++] = (RuntimeUiId)raw;
             }
 
-            DynamicJsonDocument respDoc(6144);
-            respDoc["ok"] = true;
-            JsonArray valuesOut = respDoc.createNestedArray("values");
+            AsyncResponseStream* response = request->beginResponseStream("application/json");
+            addNoCacheHeaders_(response);
+            response->print("{\"ok\":true,\"values\":[");
+            bool firstValue = true;
 
             size_t start = 0U;
             while (start < idCount) {
@@ -1233,11 +1345,13 @@ void WebInterfaceModule::startServer_()
                                                   payload,
                                                   sizeof(payload),
                                                   &written)) {
+                    delete response;
                     request->send(502, "application/json",
                                   "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.fetch\"}}");
                     return;
                 }
-                if (!appendRuntimeUiJsonValues_(valuesOut, payload, written)) {
+                if (!appendRuntimeUiJsonValuesToStream_(*response, payload, written, firstValue)) {
+                    delete response;
                     request->send(502, "application/json",
                                   "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.decode\"}}");
                     return;
@@ -1245,9 +1359,7 @@ void WebInterfaceModule::startServer_()
                 start += batchCount;
             }
 
-            AsyncResponseStream* response = request->beginResponseStream("application/json");
-            addNoCacheHeaders_(response);
-            serializeJson(respDoc, *response);
+            response->print("]}");
             request->send(response);
         },
         nullptr,

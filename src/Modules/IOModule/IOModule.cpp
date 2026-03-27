@@ -1446,11 +1446,16 @@ bool IOModule::configureRuntime_()
             s.endpoint = allocDigitalSensorEndpoint_(s.endpointId, valueType);
             if (!s.endpoint) continue;
             if (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
+                int32_t initialTotal = 0;
                 int32_t persistedTotal = 0;
                 if (loadCounterPersistedTotal_(s.logicalIdx, persistedTotal)) {
                     s.counterPersistedTotal = persistedTotal;
                     s.counterLastFlushedTotal = persistedTotal;
+                    initialTotal = persistedTotal;
                 }
+                s.lastCount = initialTotal;
+                s.lastValid = true;
+                static_cast<DigitalSensorEndpoint*>(s.endpoint)->updateCount(initialTotal, true, millis());
             }
             registry_.add(s.endpoint);
             (void)processDigitalInputDefinition_(i, millis());

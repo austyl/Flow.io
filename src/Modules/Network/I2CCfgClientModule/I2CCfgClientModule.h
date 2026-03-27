@@ -13,14 +13,19 @@
 #include "Core/ServiceBinding.h"
 #include "Core/I2cCfgProtocol.h"
 #include "Core/RuntimeUi.h"
+#include "Core/SystemLimits.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
 #include "Core/ConfigTypes.h"
 #include "Core/NvsKeys.h"
 #include "Core/Services/Services.h"
+#include <freertos/semphr.h>
 
 class I2CCfgClientModule : public ModulePassive {
 public:
     ModuleId moduleId() const override { return ModuleId::I2cCfgClient; }
+    const char* taskName() const override { return "i2c_cfg_client"; }
+    uint8_t taskCount() const override { return 1; }
+    const ModuleTaskSpec* taskSpecs() const override { return singleLoopTaskSpec(); }
 
     uint8_t dependencyCount() const override { return 3; }
     ModuleId dependency(uint8_t i) const override {
@@ -32,8 +37,10 @@ public:
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore&, ServiceRegistry&) override;
+    void loop() override;
 
 private:
+    static constexpr size_t kRuntimeStatusDomainCacheCount = (size_t)FlowStatusDomain::Pool;
     struct ConfigData {
         bool enabled = true;
         int32_t sda = 21;
@@ -77,6 +84,18 @@ private:
     uint8_t seq_ = 1;
     uint32_t retryAfterMs_ = 0;
     MqttConfigRouteProducer cfgMqttPub_{};
+    SemaphoreHandle_t runtimeCacheMutex_ = nullptr;
+    SemaphoreHandle_t requestMutex_ = nullptr;
+    SemaphoreHandle_t transportMutex_ = nullptr;
+    bool runtimeCacheValid_ = false;
+    uint32_t runtimeCacheFetchedAtMs_ = 0;
+    uint32_t nextRuntimeCacheRefreshAtMs_ = 0;
+    uint32_t priorityI2cBusyUntilMs_ = 0;
+    char runtimeStatusDomainCache_[kRuntimeStatusDomainCacheCount][640] = {{0}};
+    bool runtimeStatusDomainCacheValid_[kRuntimeStatusDomainCacheCount] = {false};
+    char runtimeStatusDomainFetchScratch_[640] = {0};
+    char runtimeStatusDomainCacheNext_[kRuntimeStatusDomainCacheCount][640] = {{0}};
+    bool runtimeStatusDomainCacheValidNext_[kRuntimeStatusDomainCacheCount] = {false};
 
     FlowCfgRemoteService svc_{
         ServiceBinding::bind<&I2CCfgClientModule::isReadySvc_>,
@@ -108,6 +127,14 @@ private:
     void recoverLinkAfterApplyFailure_(const char* step, bool transportOk, uint8_t status);
     void markRemoteUnavailable_();
     void markRemoteAvailable_();
+    bool beginRequestSession_(TickType_t timeoutTicks, bool interactive);
+    void endRequestSession_();
+    void notePriorityI2cRequest_(uint32_t holdMs);
+    bool priorityI2cWindowActive_() const;
+    void invalidateRuntimeCache_();
+    bool refreshRuntimeCacheIfNeeded_(bool force = false);
+    bool fetchRuntimeStatusDomainUncached_(FlowStatusDomain domain, char* out, size_t outLen);
+    static uint8_t runtimeStatusDomainCacheIndex_(FlowStatusDomain domain);
 
     bool transact_(uint8_t op,
                    const uint8_t* reqPayload,
@@ -116,6 +143,13 @@ private:
                    uint8_t* respPayload,
                    size_t respPayloadMax,
                    size_t& respLenOut);
+    bool transactUnlocked_(uint8_t op,
+                           const uint8_t* reqPayload,
+                           size_t reqLen,
+                           uint8_t& statusOut,
+                           uint8_t* respPayload,
+                           size_t respPayloadMax,
+                           size_t& respLenOut);
 
     static bool cmdFlowReboot_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen);
     static bool cmdFlowFactoryReset_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen);
