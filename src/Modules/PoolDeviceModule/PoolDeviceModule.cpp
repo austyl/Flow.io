@@ -15,7 +15,6 @@
 static void poolDeviceCfgDocsAnchor_(PoolDeviceModule& self)
 {
     self.cfgEnabledVar_[0].jsonName = "enabled";
-    self.cfgTypeVar_[0].jsonName = "type";
     self.cfgDependsVar_[0].jsonName = "depends_on_mask";
     self.cfgFlowVar_[0].jsonName = "flow_l_h";
     self.cfgTankCapVar_[0].jsonName = "tank_cap_ml";
@@ -31,15 +30,6 @@ static void poolDeviceCfgDocsAnchor_(PoolDeviceModule& self)
     self.cfgEnabledVar_[5].moduleName = "pdm/pd5";
     self.cfgEnabledVar_[6].moduleName = "pdm/pd6";
     self.cfgEnabledVar_[7].moduleName = "pdm/pd7";
-
-    self.cfgTypeVar_[0].moduleName = "pdm/pd0";
-    self.cfgTypeVar_[1].moduleName = "pdm/pd1";
-    self.cfgTypeVar_[2].moduleName = "pdm/pd2";
-    self.cfgTypeVar_[3].moduleName = "pdm/pd3";
-    self.cfgTypeVar_[4].moduleName = "pdm/pd4";
-    self.cfgTypeVar_[5].moduleName = "pdm/pd5";
-    self.cfgTypeVar_[6].moduleName = "pdm/pd6";
-    self.cfgTypeVar_[7].moduleName = "pdm/pd7";
 
     self.cfgDependsVar_[0].moduleName = "pdm/pd0";
     self.cfgDependsVar_[1].moduleName = "pdm/pd1";

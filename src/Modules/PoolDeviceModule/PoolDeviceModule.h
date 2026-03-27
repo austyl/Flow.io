@@ -161,7 +161,6 @@ private:
     bool snapshotRouteFromIndex_(uint8_t snapshotIdx, uint8_t& slotIdxOut, bool& metricsOut) const;
     bool buildStateSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildMetricsSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
-    static const char* typeStr_(uint8_t type);
     static const char* blockReasonStr_(uint8_t reason);
 
     // Commands
@@ -179,7 +178,6 @@ private:
     char cfgModuleName_[POOL_DEVICE_MAX][16]{};
     char cfgRuntimeModuleName_[POOL_DEVICE_MAX][16]{};
     char nvsEnabledKey_[POOL_DEVICE_MAX][16]{};
-    char nvsTypeKey_[POOL_DEVICE_MAX][16]{};
     char nvsDependsKey_[POOL_DEVICE_MAX][16]{};
     char nvsFlowKey_[POOL_DEVICE_MAX][16]{};
     char nvsTankCapKey_[POOL_DEVICE_MAX][16]{};
@@ -212,8 +210,6 @@ private:
 
     // CFGDOC: {"label":"Activation appareil","help":"Active ou désactive l'appareil du pool concerne."}
     ConfigVariable<bool,0> cfgEnabledVar_[POOL_DEVICE_MAX]{};
-    // CFGDOC: {"label":"Type appareil","help":"Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard)."}
-    ConfigVariable<uint8_t,0> cfgTypeVar_[POOL_DEVICE_MAX]{};
     // CFGDOC: {"label":"Masque dépendances","help":"Masque de dépendances inter-appareils."}
     ConfigVariable<uint8_t,0> cfgDependsVar_[POOL_DEVICE_MAX]{};
     // CFGDOC: {"label":"Débit (L/h)","help":"Débit nominal en litres par heure pour le calcul d'injection.","unit":"L/h"}

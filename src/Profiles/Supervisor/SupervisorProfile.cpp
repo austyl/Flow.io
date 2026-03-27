@@ -10,7 +10,7 @@ namespace Supervisor {
 const SupervisorRuntimeOptions& runtimeOptions()
 {
     static constexpr SupervisorRuntimeOptions kRuntimeOptions{
-        10000U,
+        60000U,
         3000U
     };
     return kRuntimeOptions;

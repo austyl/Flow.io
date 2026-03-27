@@ -59,7 +59,6 @@ Branches config (modèle 8/8):
 
 Clés persistantes (format):
 - `pd%uen` -> `enabled`
-- `pd%uty` -> `type`
 - `pd%udp` -> `depends_on_mask`
 - `pd%uflh` -> `flow_l_h`
 - `pd%utc` -> `tank_cap_ml`
@@ -105,7 +104,7 @@ Publications:
   - clé `DataKeys::PoolDeviceMetricsBase + slot` (`88..95`)
 
 Données runtime:
-- state: `enabled`, `desiredOn`, `actualOn`, `type`, `blockReason`, `tsMs`
+- state: `enabled`, `desiredOn`, `actualOn`, `blockReason`, `tsMs`
 - metrics: `runningSecDay/Week/Month/Total`, `injectedMl*`, `tankRemainingMl`, `tsMs`
 
 ## Persistance runtime
@@ -205,11 +204,16 @@ Entités créées:
 ## Initialisation des slots dans le profil
 
 Les slots `pd0..pd7` sont définis via `defineDevice()` dans `src/Profiles/FlowIO/FlowIOBootstrap.cpp`, à partir du domaine actif et des bindings `PoolBinding`:
-- `pd0` filtration
-- `pd1` pH (peristaltique, cuve, dépend filtration, max uptime défaut `30 min`)
-- `pd2` chlore (peristaltique, cuve, dépend filtration, max uptime défaut `30 min`)
-- `pd3` robot (dépend filtration)
-- `pd4` remplissage (max uptime défaut `30 min`)
-- `pd5` électrolyse (dépend filtration, max uptime défaut `600 min`)
-- `pd6` lumières
-- `pd7` chauffage eau
+
+Le type métier est fixé par le profil et n'est plus exposé en configuration. Le mapping effectif passe par `pdN -> dN -> binding_port -> relais physique`.
+
+| Slot | Rôle métier | Sortie IO | Relais physique | Dépendances | Particularités |
+| --- | --- | --- | --- | --- | --- |
+| `pd0` | filtration | `d0` | `PortRelay1` / `relay1` | aucune | pompe de filtration pilotée par `PoolLogic` |
+| `pd1` | pH | `d1` | `PortRelay2` / `relay2` | `pd0` | pompe péristaltique, cuve suivie, débit nominal, uptime max `30 min/j` |
+| `pd2` | chlore | `d2` | `PortRelay3` / `relay3` | `pd0` | pompe péristaltique, cuve suivie, débit nominal, uptime max `30 min/j` |
+| `pd3` | robot | `d3` | `PortRelay5` / `relay5` | `pd0` | relais standard |
+| `pd4` | remplissage | `d4` | `PortRelay7` / `relay7` | aucune | relais standard, uptime max `30 min/j` |
+| `pd5` | électrolyse | `d5` | `PortRelay4` / `relay4` | `pd0` | relais standard, uptime max `600 min/j` |
+| `pd6` | lumières | `d6` | `PortRelay6` / `relay6` | aucune | relais standard |
+| `pd7` | chauffage eau | `d7` | `PortRelay8` / `relay8` | aucune | relais standard |

@@ -1,9 +1,9 @@
 {
   "_meta": {
     "generated": true,
-    "total": 333,
-    "decl_total": 219,
-    "decl_with_cfgdoc": 123,
+    "total": 324,
+    "decl_total": 218,
+    "decl_with_cfgdoc": 122,
     "missing_cfgdoc_count": 96,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
@@ -207,15 +207,6 @@
       "var": "cfgTankInitVar_",
       "source": "cfgdoc-series",
       "unit": "mL"
-    },
-    "*/type": {
-      "module": "*",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
     },
     "alarms/enabled": {
       "module": "alarms",
@@ -1652,15 +1643,6 @@
       "source": "cfgdoc-series",
       "unit": "mL"
     },
-    "pdm/pd0/type": {
-      "module": "pdm/pd0",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
-    },
     "pdm/pd1/depends_on_mask": {
       "module": "pdm/pd1",
       "name": "depends_on_mask",
@@ -1718,15 +1700,6 @@
       "var": "cfgTankInitVar_",
       "source": "cfgdoc-series",
       "unit": "mL"
-    },
-    "pdm/pd1/type": {
-      "module": "pdm/pd1",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
     },
     "pdm/pd2/depends_on_mask": {
       "module": "pdm/pd2",
@@ -1786,15 +1759,6 @@
       "source": "cfgdoc-series",
       "unit": "mL"
     },
-    "pdm/pd2/type": {
-      "module": "pdm/pd2",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
-    },
     "pdm/pd3/depends_on_mask": {
       "module": "pdm/pd3",
       "name": "depends_on_mask",
@@ -1852,15 +1816,6 @@
       "var": "cfgTankInitVar_",
       "source": "cfgdoc-series",
       "unit": "mL"
-    },
-    "pdm/pd3/type": {
-      "module": "pdm/pd3",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
     },
     "pdm/pd4/depends_on_mask": {
       "module": "pdm/pd4",
@@ -1920,15 +1875,6 @@
       "source": "cfgdoc-series",
       "unit": "mL"
     },
-    "pdm/pd4/type": {
-      "module": "pdm/pd4",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
-    },
     "pdm/pd5/depends_on_mask": {
       "module": "pdm/pd5",
       "name": "depends_on_mask",
@@ -1986,15 +1932,6 @@
       "var": "cfgTankInitVar_",
       "source": "cfgdoc-series",
       "unit": "mL"
-    },
-    "pdm/pd5/type": {
-      "module": "pdm/pd5",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
     },
     "pdm/pd6/depends_on_mask": {
       "module": "pdm/pd6",
@@ -2054,15 +1991,6 @@
       "source": "cfgdoc-series",
       "unit": "mL"
     },
-    "pdm/pd6/type": {
-      "module": "pdm/pd6",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
-    },
     "pdm/pd7/depends_on_mask": {
       "module": "pdm/pd7",
       "name": "depends_on_mask",
@@ -2120,15 +2048,6 @@
       "var": "cfgTankInitVar_",
       "source": "cfgdoc-series",
       "unit": "mL"
-    },
-    "pdm/pd7/type": {
-      "module": "pdm/pd7",
-      "name": "type",
-      "type": "uint8_t",
-      "label": "Type appareil",
-      "help": "Type logique de l'appareil (0=filtration, 1=peristaltique, 2=relais standard).",
-      "var": "cfgTypeVar_",
-      "source": "cfgdoc-series"
     },
     "pdmrt/pd0/metrics_blob": {
       "module": "pdmrt/pd0",

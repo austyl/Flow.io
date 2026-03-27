@@ -104,7 +104,7 @@ Références:
 | CS | 15 |
 | DC | 2 |
 | RST | 4 |
-| MOSI/SDA | 23 |
+| MOSI/SDA | 19 |
 | SCLK/SCL | 18 |
 
 ### Nextion et pont série

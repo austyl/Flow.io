@@ -73,7 +73,7 @@ private:
 
     int8_t pirPin_ = -1;
     int8_t wifiResetPin_ = -1;
-    uint32_t pirTimeoutMs_ = 120000U;
+    uint32_t pirTimeoutMs_ = 60000U;
     uint32_t pirDebounceMs_ = 120U;
     bool pirActiveHigh_ = true;
     uint32_t wifiResetHoldMs_ = 3000U;

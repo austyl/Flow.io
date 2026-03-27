@@ -157,7 +157,6 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
         snprintf(cfgModuleName_[i], sizeof(cfgModuleName_[i]), "pdm/pd%u", (unsigned)i);
         snprintf(nvsEnabledKey_[i], sizeof(nvsEnabledKey_[i]), NvsKeys::PoolDevice::EnabledFmt, (unsigned)i);
-        snprintf(nvsTypeKey_[i], sizeof(nvsTypeKey_[i]), NvsKeys::PoolDevice::TypeFmt, (unsigned)i);
         snprintf(nvsDependsKey_[i], sizeof(nvsDependsKey_[i]), NvsKeys::PoolDevice::DependsFmt, (unsigned)i);
         snprintf(nvsFlowKey_[i], sizeof(nvsFlowKey_[i]), NvsKeys::PoolDevice::FlowFmt, (unsigned)i);
         snprintf(nvsTankCapKey_[i], sizeof(nvsTankCapKey_[i]), NvsKeys::PoolDevice::TankCapFmt, (unsigned)i);
@@ -195,15 +194,6 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgEnabledVar_[i].persistence = ConfigPersistence::Persistent;
         cfgEnabledVar_[i].size = 0;
         cfg.registerVar(cfgEnabledVar_[i], kCfgModuleId, localBranchId);
-
-        cfgTypeVar_[i].nvsKey = nvsTypeKey_[i];
-        cfgTypeVar_[i].jsonName = "type";
-        cfgTypeVar_[i].moduleName = cfgModuleName_[i];
-        cfgTypeVar_[i].type = ConfigType::UInt8;
-        cfgTypeVar_[i].value = &s.def.type;
-        cfgTypeVar_[i].persistence = ConfigPersistence::Persistent;
-        cfgTypeVar_[i].size = 0;
-        cfg.registerVar(cfgTypeVar_[i], kCfgModuleId, localBranchId);
 
         cfgDependsVar_[i].nvsKey = nvsDependsKey_[i];
         cfgDependsVar_[i].jsonName = "depends_on_mask";

@@ -96,13 +96,6 @@ const char* PoolDeviceModule::deviceLabel(uint8_t idx) const
     return (s.def.label[0] != '\0') ? s.def.label : s.id;
 }
 
-const char* PoolDeviceModule::typeStr_(uint8_t type)
-{
-    if (type == POOL_DEVICE_RT_FILTRATION) return "filtration";
-    if (type == POOL_DEVICE_RT_PERISTALTIC) return "peristaltic";
-    return "relay";
-}
-
 const char* PoolDeviceModule::blockReasonStr_(uint8_t reason)
 {
     if (reason == POOL_DEVICE_BLOCK_DISABLED) return "disabled";
@@ -179,18 +172,16 @@ bool PoolDeviceModule::buildStateSnapshot_(uint8_t slotIdx, char* out, size_t le
     if (!poolDeviceRuntimeState(*dataStore_, slotIdx, entry)) return false;
 
     const char* label = deviceLabel(slotIdx);
-    const char* typeStr = typeStr_(entry.type);
     const char* blockReason = blockReasonStr_(entry.blockReason);
     const int wrote = snprintf(
         out, len,
         "{\"id\":\"pd%u\",\"name\":\"%s\",\"enabled\":%s,\"desired\":%s,\"on\":%s,"
-        "\"type\":\"%s\",\"block\":\"%s\",\"ts\":%lu}",
+        "\"block\":\"%s\",\"ts\":%lu}",
         (unsigned)slotIdx,
         (label && label[0] != '\0') ? label : "pd",
         entry.enabled ? "true" : "false",
         entry.desiredOn ? "true" : "false",
         entry.actualOn ? "true" : "false",
-        typeStr,
         blockReason,
         (unsigned long)entry.tsMs
     );

@@ -23,7 +23,7 @@
 namespace {
 static constexpr uint32_t kFwPollMs = 500U;
 static constexpr uint32_t kStartupSplashHoldMs = 5000U;
-static constexpr uint32_t kStartupBacklightForceOnMs = 3600000U;
+static constexpr uint32_t kStartupBacklightForceOnMs = 60000U;
 static constexpr uint32_t kButtonBootGuardMs = 8000U;
 static constexpr uint32_t kButtonArmHighStableMs = 500U;
 static constexpr uint32_t kPageRotateMs = 10000U;

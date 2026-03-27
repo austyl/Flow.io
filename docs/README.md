@@ -119,7 +119,7 @@ Références principales:
 | 15 | TFT ST7789 CS | écran local Supervisor |
 | 2 | TFT ST7789 DC | écran local Supervisor |
 | 4 | TFT ST7789 RST | écran local Supervisor |
-| 23 | TFT ST7789 MOSI/SDA | écran local Supervisor |
+| 19 | TFT ST7789 MOSI/SDA | écran local Supervisor |
 | 18 | TFT ST7789 SCLK/SCL | écran local Supervisor |
 | 36 | entrée PIR | extinction automatique du backlight et rallumage sur détection de présence |
 | 1 / 3 | UART0 | console série par défaut |

@@ -284,8 +284,6 @@ constexpr char FiltrationCalcStop[] = "pl_fcen"; // Pool logic runtime key for c
 namespace PoolDevice {
 /** @brief printf format for per-slot `enabled` key (example `pd0en`). */
 constexpr char EnabledFmt[] = "pd%uen"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
-/** @brief printf format for per-slot `type` key (example `pd0ty`). */
-constexpr char TypeFmt[] = "pd%uty"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
 /** @brief printf format for per-slot dependency mask key (example `pd0dp`). */
 constexpr char DependsFmt[] = "pd%udp"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
 /** @brief printf format for per-slot flow key (example `pd0flh`). */

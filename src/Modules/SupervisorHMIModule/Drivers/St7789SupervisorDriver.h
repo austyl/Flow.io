@@ -98,7 +98,7 @@ struct St7789SupervisorDriverConfig {
     int8_t csPin = 15;
     int8_t dcPin = 2;
     int8_t rstPin = 4;
-    int8_t mosiPin = 23;
+    int8_t mosiPin = 19;
     int8_t sclkPin = 18;
     bool swapColorBytes = true;
     bool invertColors = false;
@@ -120,6 +120,11 @@ private:
     const char* netModeText_(NetworkAccessMode mode) const;
 
     St7789SupervisorDriverConfig cfg_{};
+#if defined(VSPI)
+    SPIClass spiBus_{VSPI};
+#else
+    SPIClass spiBus_{HSPI};
+#endif
     SupervisorSt7789 display_;
     bool started_ = false;
     bool layoutDrawn_ = false;
@@ -132,6 +137,7 @@ private:
     bool lastHasRssi_ = false;
     int32_t lastRssiDbm_ = -127;
     bool lastMqttReady_ = false;
+    uint8_t lastSystemState_ = 0xFFU;
     bool lastRows_[7]{};
     bool lastHasPh_ = false;
     float lastPhValue_ = 0.0f;

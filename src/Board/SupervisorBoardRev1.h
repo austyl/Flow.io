@@ -27,7 +27,7 @@ inline constexpr St7789DisplaySpec kSupervisorBoardRev1Display{
     15,
     2,
     4,
-    23,
+    19,
     18,
     false,
     true,

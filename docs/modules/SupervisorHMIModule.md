@@ -37,7 +37,7 @@ Valeurs actuelles:
 - TFT CS: `15`
 - TFT DC: `2`
 - TFT RST: `4`
-- TFT MOSI: `23`
+- TFT MOSI: `19`
 - TFT SCLK: `18`
 - PIR: `36`
 - bouton reset WiFi: `disabled`
