@@ -383,6 +383,99 @@ uint8_t I2CCfgClientModule::runtimeStatusDomainCacheIndex_(FlowStatusDomain doma
     return (raw > 0U) ? (uint8_t)(raw - 1U) : 0U;
 }
 
+I2CCfgClientModule::RuntimeUiCacheEntry* I2CCfgClientModule::findRuntimeUiCacheEntry_(RuntimeUiId id)
+{
+    if (id == 0U) return nullptr;
+    for (size_t i = 0; i < kRuntimeUiMirrorMaxEntries; ++i) {
+        RuntimeUiCacheEntry& entry = runtimeUiCache_[i];
+        if (entry.valid && entry.id == id) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+const I2CCfgClientModule::RuntimeUiCacheEntry* I2CCfgClientModule::findRuntimeUiCacheEntry_(RuntimeUiId id) const
+{
+    if (id == 0U) return nullptr;
+    for (size_t i = 0; i < kRuntimeUiMirrorMaxEntries; ++i) {
+        const RuntimeUiCacheEntry& entry = runtimeUiCache_[i];
+        if (entry.valid && entry.id == id) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+I2CCfgClientModule::RuntimeUiCacheEntry* I2CCfgClientModule::allocateRuntimeUiCacheEntry_(RuntimeUiId id)
+{
+    if (id == 0U) return nullptr;
+    if (RuntimeUiCacheEntry* existing = findRuntimeUiCacheEntry_(id)) {
+        return existing;
+    }
+
+    RuntimeUiCacheEntry* oldest = &runtimeUiCache_[0];
+    for (size_t i = 0; i < kRuntimeUiMirrorMaxEntries; ++i) {
+        RuntimeUiCacheEntry& entry = runtimeUiCache_[i];
+        if (!entry.valid) {
+            entry = RuntimeUiCacheEntry{};
+            entry.id = id;
+            return &entry;
+        }
+        if (!oldest->valid || entry.fetchedAtMs < oldest->fetchedAtMs) {
+            oldest = &entry;
+        }
+    }
+
+    *oldest = RuntimeUiCacheEntry{};
+    oldest->id = id;
+    return oldest;
+}
+
+bool I2CCfgClientModule::parseRuntimeUiRecord_(const uint8_t* payload,
+                                               size_t payloadLen,
+                                               size_t offset,
+                                               RuntimeUiId* idOut,
+                                               size_t* recordLenOut) const
+{
+    if (!payload || offset >= payloadLen) return false;
+    if ((payloadLen - offset) < 3U) return false;
+
+    const RuntimeUiId runtimeId = (RuntimeUiId)((RuntimeUiId)payload[offset] |
+                                                ((RuntimeUiId)payload[offset + 1U] << 8));
+    const RuntimeUiWireType wireType = (RuntimeUiWireType)payload[offset + 2U];
+    size_t payloadBytes = 0U;
+
+    switch (wireType) {
+        case RuntimeUiWireType::NotFound:
+        case RuntimeUiWireType::Unavailable:
+            payloadBytes = 0U;
+            break;
+        case RuntimeUiWireType::Bool:
+        case RuntimeUiWireType::Enum:
+            payloadBytes = 1U;
+            break;
+        case RuntimeUiWireType::Int32:
+        case RuntimeUiWireType::UInt32:
+        case RuntimeUiWireType::Float32:
+            payloadBytes = 4U;
+            break;
+        case RuntimeUiWireType::String: {
+            if ((payloadLen - offset) < 4U) return false;
+            payloadBytes = 1U + (size_t)payload[offset + 3U];
+            break;
+        }
+        default:
+            return false;
+    }
+
+    const size_t recordLen = 3U + payloadBytes;
+    if ((payloadLen - offset) < recordLen) return false;
+    if (idOut) *idOut = runtimeId;
+    if (recordLenOut) *recordLenOut = recordLen;
+    return true;
+}
+
 void I2CCfgClientModule::invalidateRuntimeCache_()
 {
     if (!runtimeCacheMutex_) {
@@ -390,6 +483,7 @@ void I2CCfgClientModule::invalidateRuntimeCache_()
         runtimeCacheFetchedAtMs_ = 0U;
         memset(runtimeStatusDomainCache_, 0, sizeof(runtimeStatusDomainCache_));
         memset(runtimeStatusDomainCacheValid_, 0, sizeof(runtimeStatusDomainCacheValid_));
+        memset(runtimeUiCache_, 0, sizeof(runtimeUiCache_));
         publishFlowRemoteReady_(false);
         return;
     }
@@ -399,6 +493,7 @@ void I2CCfgClientModule::invalidateRuntimeCache_()
     runtimeCacheFetchedAtMs_ = 0U;
     memset(runtimeStatusDomainCache_, 0, sizeof(runtimeStatusDomainCache_));
     memset(runtimeStatusDomainCacheValid_, 0, sizeof(runtimeStatusDomainCacheValid_));
+    memset(runtimeUiCache_, 0, sizeof(runtimeUiCache_));
     xSemaphoreGive(runtimeCacheMutex_);
     publishFlowRemoteReady_(false);
 }
@@ -1236,61 +1331,98 @@ bool I2CCfgClientModule::runtimeUiValues_(const RuntimeUiId* ids,
                                           size_t outLen,
                                           size_t* writtenOut)
 {
+    auto measurePayloadLen = [&](const uint8_t* payload, size_t payloadCapacity) -> size_t {
+        if (!payload || payloadCapacity == 0U) return 0U;
+        const uint8_t recordCount = payload[0];
+        size_t totalLen = 1U;
+        size_t offset = 1U;
+        for (uint8_t i = 0; i < recordCount; ++i) {
+            size_t recordLen = 0U;
+            if (!parseRuntimeUiRecord_(payload, payloadCapacity, offset, nullptr, &recordLen)) {
+                return 0U;
+            }
+            offset += recordLen;
+            totalLen += recordLen;
+        }
+        return totalLen;
+    };
+
     if (writtenOut) *writtenOut = 0U;
     if (!out || outLen == 0U) return false;
     out[0] = 0U;
-    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) return false;
-
-    if (!ensureReady_()) {
-        LOGW("runtimeUiValues failed: link not ready");
-        endRequestSession_();
-        return false;
-    }
     if (!ids || count == 0U) {
         if (writtenOut) *writtenOut = 0U;
-        endRequestSession_();
         return true;
     }
 
-    const size_t reqLen = 1U + ((size_t)count * 2U);
-    if (reqLen > I2cCfgProtocol::MaxPayload) {
-        LOGW("runtimeUiValues request too large count=%u", (unsigned)count);
-        endRequestSession_();
-        return false;
+    if (composeRuntimeUiValuesFromCache_(ids, count, out, outLen, false, nullptr)) {
+        if (writtenOut) *writtenOut = measurePayloadLen(out, outLen);
+        return true;
     }
 
-    uint8_t req[I2cCfgProtocol::MaxPayload] = {0};
-    req[0] = count;
+    bool hasAnyCachedValue = false;
+    if (runtimeCacheMutex_ && xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+        for (uint8_t i = 0; i < count; ++i) {
+            const RuntimeUiCacheEntry* entry = findRuntimeUiCacheEntry_(ids[i]);
+            if (entry && entry->valid) hasAnyCachedValue = true;
+        }
+        xSemaphoreGive(runtimeCacheMutex_);
+    }
+
+    static constexpr uint8_t kMaxRuntimeUiIdsPerFetch = (uint8_t)((I2cCfgProtocol::MaxPayload - 1U) / 2U);
+    RuntimeUiId fetchIds[kMaxRuntimeUiIdsPerFetch] = {};
+    uint8_t fetchCount = 0U;
+
+    auto flushFetchChunk = [&]() -> bool {
+        if (fetchCount == 0U) return true;
+        uint8_t fetched[I2cCfgProtocol::MaxPayload] = {0};
+        size_t fetchedLen = 0U;
+        if (!fetchRuntimeUiValuesUncached_(fetchIds,
+                                           fetchCount,
+                                           fetched,
+                                           sizeof(fetched),
+                                           &fetchedLen)) {
+            if (hasAnyCachedValue && composeRuntimeUiValuesFromCache_(ids, count, out, outLen, true, nullptr)) {
+                if (writtenOut) *writtenOut = measurePayloadLen(out, outLen);
+                return true;
+            }
+            return false;
+        }
+        if (!cacheRuntimeUiPayload_(fetched, fetchedLen)) {
+            LOGW("runtimeUiValues cache update failed count=%u resp_len=%u", (unsigned)fetchCount, (unsigned)fetchedLen);
+        }
+        fetchCount = 0U;
+        return true;
+    };
+
+    const uint32_t now = millis();
     for (uint8_t i = 0; i < count; ++i) {
-        const size_t offset = 1U + ((size_t)i * 2U);
-        req[offset] = (uint8_t)(ids[i] & 0xFFU);
-        req[offset + 1U] = (uint8_t)((ids[i] >> 8) & 0xFFU);
+        bool needsFetch = true;
+        if (runtimeCacheMutex_ && xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+            const RuntimeUiCacheEntry* entry = findRuntimeUiCacheEntry_(ids[i]);
+            needsFetch = !(entry && entry->valid && ((uint32_t)(now - entry->fetchedAtMs) < kRuntimeCacheTtlMs));
+            xSemaphoreGive(runtimeCacheMutex_);
+        }
+
+        if (!needsFetch) continue;
+
+        fetchIds[fetchCount++] = ids[i];
+        if (fetchCount >= kMaxRuntimeUiIdsPerFetch && !flushFetchChunk()) {
+            return false;
+        }
     }
 
-    uint8_t status = I2cCfgProtocol::StatusFailed;
-    size_t respLen = 0U;
-    const bool ok = transact_(I2cCfgProtocol::OpGetRuntimeUiValues,
-                              req,
-                              reqLen,
-                              status,
-                              out,
-                              outLen,
-                              respLen);
-    if (!ok || status != I2cCfgProtocol::StatusOk) {
-        markRemoteUnavailable_();
-        LOGW("runtimeUiValues failed transport=%s status=%u (%s) count=%u resp_len=%u",
-             ok ? "ok" : "failed",
-             (unsigned)status,
-             statusName(status),
-             (unsigned)count,
-             (unsigned)respLen);
-        endRequestSession_();
+    if (fetchCount > 0U && !flushFetchChunk()) {
         return false;
     }
 
-    markRemoteAvailable_();
-    if (writtenOut) *writtenOut = respLen;
-    endRequestSession_();
+    if (!composeRuntimeUiValuesFromCache_(ids, count, out, outLen, true, nullptr)) {
+        if (hasAnyCachedValue) {
+            LOGW("runtimeUiValues cache compose failed after refresh count=%u", (unsigned)count);
+        }
+        return false;
+    }
+    if (writtenOut) *writtenOut = measurePayloadLen(out, outLen);
     return true;
 }
 
@@ -1460,6 +1592,149 @@ bool I2CCfgClientModule::fetchRuntimeStatusDomainUncached_(FlowStatusDomain doma
         LOGW("runtimeStatus domain=%s truncated bytes=%u", statusDomainName(domain), (unsigned)written);
     }
     endRequestSession_();
+    return true;
+}
+
+bool I2CCfgClientModule::fetchRuntimeUiValuesUncached_(const RuntimeUiId* ids,
+                                                       uint8_t count,
+                                                       uint8_t* out,
+                                                       size_t outLen,
+                                                       size_t* writtenOut)
+{
+    if (writtenOut) *writtenOut = 0U;
+    if (!out || outLen == 0U) return false;
+    out[0] = 0U;
+    if (!beginRequestSession_(pdMS_TO_TICKS(1500), true)) return false;
+
+    if (!ensureReady_()) {
+        LOGW("runtimeUiValues failed: link not ready");
+        endRequestSession_();
+        return false;
+    }
+
+    const size_t reqLen = 1U + ((size_t)count * 2U);
+    if (reqLen > I2cCfgProtocol::MaxPayload) {
+        LOGW("runtimeUiValues request too large count=%u", (unsigned)count);
+        endRequestSession_();
+        return false;
+    }
+
+    uint8_t req[I2cCfgProtocol::MaxPayload] = {0};
+    req[0] = count;
+    for (uint8_t i = 0; i < count; ++i) {
+        const size_t offset = 1U + ((size_t)i * 2U);
+        req[offset] = (uint8_t)(ids[i] & 0xFFU);
+        req[offset + 1U] = (uint8_t)((ids[i] >> 8) & 0xFFU);
+    }
+
+    uint8_t status = I2cCfgProtocol::StatusFailed;
+    size_t respLen = 0U;
+    const bool ok = transact_(I2cCfgProtocol::OpGetRuntimeUiValues,
+                              req,
+                              reqLen,
+                              status,
+                              out,
+                              outLen,
+                              respLen);
+    if (!ok || status != I2cCfgProtocol::StatusOk) {
+        markRemoteUnavailable_();
+        LOGW("runtimeUiValues failed transport=%s status=%u (%s) count=%u resp_len=%u",
+             ok ? "ok" : "failed",
+             (unsigned)status,
+             statusName(status),
+             (unsigned)count,
+             (unsigned)respLen);
+        endRequestSession_();
+        return false;
+    }
+
+    markRemoteAvailable_();
+    if (writtenOut) *writtenOut = respLen;
+    endRequestSession_();
+    return true;
+}
+
+bool I2CCfgClientModule::cacheRuntimeUiPayload_(const uint8_t* payload, size_t payloadLen)
+{
+    if (!payload || payloadLen == 0U || !runtimeCacheMutex_) return false;
+    if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(100)) != pdTRUE) return false;
+
+    const uint32_t now = millis();
+    const uint8_t recordCount = payload[0];
+    size_t offset = 1U;
+    bool ok = true;
+
+    for (uint8_t i = 0; i < recordCount; ++i) {
+        RuntimeUiId runtimeId = 0U;
+        size_t recordLen = 0U;
+        if (!parseRuntimeUiRecord_(payload, payloadLen, offset, &runtimeId, &recordLen)) {
+            ok = false;
+            break;
+        }
+
+        RuntimeUiCacheEntry* entry = allocateRuntimeUiCacheEntry_(runtimeId);
+        if (!entry || recordLen > sizeof(entry->data)) {
+            ok = false;
+            break;
+        }
+
+        memcpy(entry->data, payload + offset, recordLen);
+        entry->len = (uint8_t)recordLen;
+        entry->fetchedAtMs = now;
+        entry->valid = true;
+        offset += recordLen;
+    }
+
+    xSemaphoreGive(runtimeCacheMutex_);
+    return ok;
+}
+
+bool I2CCfgClientModule::composeRuntimeUiValuesFromCache_(const RuntimeUiId* ids,
+                                                          uint8_t count,
+                                                          uint8_t* out,
+                                                          size_t outLen,
+                                                          bool allowStale,
+                                                          bool* allFreshOut)
+{
+    if (allFreshOut) *allFreshOut = false;
+    if (!ids || count == 0U || !out || outLen == 0U || !runtimeCacheMutex_) return false;
+    if (xSemaphoreTake(runtimeCacheMutex_, pdMS_TO_TICKS(100)) != pdTRUE) return false;
+
+    const uint32_t now = millis();
+    size_t totalLen = 1U;
+    bool allFresh = true;
+
+    for (uint8_t i = 0; i < count; ++i) {
+        const RuntimeUiCacheEntry* entry = findRuntimeUiCacheEntry_(ids[i]);
+        if (!entry || !entry->valid || entry->len == 0U) {
+            xSemaphoreGive(runtimeCacheMutex_);
+            return false;
+        }
+        const bool fresh = ((uint32_t)(now - entry->fetchedAtMs) < kRuntimeCacheTtlMs);
+        if (!fresh) {
+            allFresh = false;
+            if (!allowStale) {
+                xSemaphoreGive(runtimeCacheMutex_);
+                return false;
+            }
+        }
+        if ((totalLen + entry->len) > outLen) {
+            xSemaphoreGive(runtimeCacheMutex_);
+            return false;
+        }
+        totalLen += entry->len;
+    }
+
+    out[0] = count;
+    size_t outOffset = 1U;
+    for (uint8_t i = 0; i < count; ++i) {
+        const RuntimeUiCacheEntry* entry = findRuntimeUiCacheEntry_(ids[i]);
+        memcpy(out + outOffset, entry->data, entry->len);
+        outOffset += entry->len;
+    }
+
+    xSemaphoreGive(runtimeCacheMutex_);
+    if (allFreshOut) *allFreshOut = allFresh;
     return true;
 }
 

@@ -9,11 +9,13 @@
     const flowWebAssetVersionStorageKey = 'flow_web_asset_version';
     const deferredVisualAssetsStateKey = 'flow_web_deferred_visual_assets';
     const upgradeUiSessionStorageKey = 'flow_upgrade_ui_session';
-    const upgradeStatusPollIntervalMs = 900;
-    const deferredBrandAssetDelayMs = 320;
+    const upgradeStatusPollActiveMs = 900;
+    const upgradeStatusPollReconnectMs = 5000;
+    const upgradeStatusPollDoneMs = 7000;
+    const upgradeStatusPollIdleMs = 15000;
+    const upgradeStatusPollErrorMs = 10000;
     const deferredMenuAssetStartDelayMs = 520;
     const deferredMenuAssetStepMs = 140;
-    const deferredBrandAssetReloadDelayMs = 2400;
     const deferredMenuAssetReloadDelayMs = 1400;
     const deferredMenuAssetReloadStepMs = 850;
     const deferredMenuAssetReloadFallbackDelayMs = 6500;
@@ -27,7 +29,6 @@
     let flowStatusLiveTimer = null;
     let pageLoadToken = 0;
     let deferredVisualAssetsScheduled = false;
-    let brandAssetsActivated = false;
     let menuAssetsActivated = false;
     let deferredMenuAssetsArmed = false;
 
@@ -226,23 +227,23 @@
       document.documentElement.style.setProperty(varName, "url('" + versionedWebAssetUrl(path) + "')");
     }
 
-    function activateBrandAssets() {
-      if (brandAssetsActivated) return;
-      brandAssetsActivated = true;
-      setDeferredVisualAssetUrl('--flowio-brand-url', '/webinterface/i/f.svg');
-    }
-
     function activateMenuAssets(deferred, stepDelayMs) {
-      if (menuAssetsActivated || hideMenuSvg) return;
+      if (menuAssetsActivated) return;
       menuAssetsActivated = true;
       const stepMs = Math.max(0, Number(stepDelayMs) || deferredMenuAssetStepMs);
-      const steps = [
-        ['--menu-icon-measures-url', '/webinterface/i/m.svg'],
-        ['--menu-icon-terminal-url', '/webinterface/i/t.svg'],
-        ['--menu-icon-system-url', '/webinterface/i/s.svg'],
-        ['--menu-icon-flowcfg-url', '/webinterface/i/d.svg'],
-        ['--menu-icon-supervisorcfg-url', '/webinterface/i/e.svg']
-      ];
+      const steps = [];
+      if (!hideMenuSvg) {
+        steps.push(
+          ['--menu-icon-measures-url', '/webinterface/i/m.svg'],
+          ['--menu-icon-terminal-url', '/webinterface/i/t.svg'],
+          ['--menu-icon-system-url', '/webinterface/i/s.svg'],
+          ['--menu-icon-flowcfg-url', '/webinterface/i/d.svg'],
+          ['--menu-icon-supervisorcfg-url', '/webinterface/i/e.svg']
+        );
+      }
+      steps.push(
+        ['--ui-refresh-icon-url', '/webinterface/i/r.svg']
+      );
       if (!deferred) {
         steps.forEach((entry) => {
           setDeferredVisualAssetUrl(entry[0], entry[1]);
@@ -281,20 +282,11 @@
       if (deferredVisualAssetsScheduled) return;
       deferredVisualAssetsScheduled = true;
       if (hasWarmDeferredVisualAssets() && !isReloadNavigation()) {
-        activateBrandAssets();
         activateMenuAssets(false);
         return;
       }
 
       const isReload = isReloadNavigation();
-      const brandDelayMs = isReload ? deferredBrandAssetReloadDelayMs : deferredBrandAssetDelayMs;
-      setTimeout(() => {
-        activateBrandAssets();
-        if (hideMenuSvg) {
-          markDeferredVisualAssetsWarm();
-        }
-      }, brandDelayMs);
-
       if (isReload) {
         armDeferredMenuAssets(
           deferredMenuAssetReloadDelayMs,
@@ -309,7 +301,8 @@
       }, deferredMenuAssetStartDelayMs);
     }
 
-    async function loadWebMeta() {
+    async function loadWebMeta(options) {
+      const opts = options || {};
       try {
         const data = await fetchOkJson('/api/web/meta', { cache: 'no-store' }, 'meta web indisponible');
         const currentUpgradeSession = readUpgradeUiSession();
@@ -346,7 +339,6 @@
         applyMenuIconPreference(!!data.hide_menu_svg);
         applyStatusIconPreference(!!data.unify_status_card_icons);
         if (hasWarmDeferredVisualAssets()) {
-          activateBrandAssets();
           activateMenuAssets(false);
         }
         if (typeof data.firmware_version === 'string') {
@@ -360,7 +352,9 @@
         }
         supervisorUptimeMs = Number(data.upms) || 0;
         supervisorHeap = (data.heap && typeof data.heap === 'object') ? data.heap : {};
-        refreshDrawerRuntimeMeta(false).catch(() => {});
+        if (!opts.skipDrawerRuntimeRender) {
+          renderDrawerRuntimeMeta();
+        }
         if (isPageActive('page-status')) {
           refreshFlowStatus(false).catch(() => {});
         }
@@ -372,11 +366,17 @@
       return window.innerWidth <= 900;
     }
 
+    function isDrawerExpanded() {
+      return isMobileLayout()
+        ? drawer.classList.contains('mobile-open')
+        : !drawer.classList.contains('collapsed');
+    }
+
     function setMobileDrawerOpen(open) {
       drawer.classList.toggle('mobile-open', open);
       overlay.classList.toggle('visible', open);
       if (open) {
-        refreshDrawerRuntimeMeta(false).catch(() => {});
+        refreshDrawerRuntimeMeta(true).catch(() => {});
       }
     }
 
@@ -386,8 +386,38 @@
       }
     }
 
-    function startUpgradeStatusPolling() {
-      upgradeStatusPoller.start();
+    function currentUpgradeStatusPollDelayMs() {
+      const current = readUpgradeUiSession();
+      const phase = String(current && current.phase ? current.phase : 'idle');
+      if (current && (current.awaitingReconnect || phase === 'reboot' || phase === 'reconnect')) {
+        return upgradeStatusPollReconnectMs;
+      }
+      if (phase === 'target' || phase === 'download' || phase === 'flash') {
+        return upgradeStatusPollActiveMs;
+      }
+      if (phase === 'done') return upgradeStatusPollDoneMs;
+      if (phase === 'error') return upgradeStatusPollErrorMs;
+      return upgradeStatusPollIdleMs;
+    }
+
+    function scheduleNextUpgradeStatusPoll(delayMs) {
+      if (document.hidden || getActivePageId() !== 'page-system') return;
+      const nextDelay = Math.max(0, Number.isFinite(delayMs) ? delayMs : currentUpgradeStatusPollDelayMs());
+      upgradeStatusPoller.schedule(nextDelay);
+    }
+
+    async function pollUpgradeStatusTick() {
+      if (document.hidden || getActivePageId() !== 'page-system') return;
+      await refreshUpgradeStatus();
+      scheduleNextUpgradeStatusPoll();
+    }
+
+    function startUpgradeStatusPolling(immediate) {
+      if (immediate) {
+        scheduleNextUpgradeStatusPoll(0);
+        return;
+      }
+      scheduleNextUpgradeStatusPoll();
     }
 
     function stopUpgradeStatusPolling() {
@@ -508,7 +538,7 @@
       } else {
         if (hideMenuSvg) return;
         drawer.classList.toggle('collapsed');
-        refreshDrawerRuntimeMeta(false).catch(() => {});
+        refreshDrawerRuntimeMeta(isDrawerExpanded()).catch(() => {});
       }
     }));
 
@@ -517,7 +547,7 @@
       if (!isMobileLayout()) {
         setMobileDrawerOpen(false);
       }
-      refreshDrawerRuntimeMeta(false).catch(() => {});
+      refreshDrawerRuntimeMeta(isDrawerExpanded()).catch(() => {});
     });
 
     const term = document.getElementById('term');
@@ -536,12 +566,15 @@
     const nextionPath = document.getElementById('nextionPath');
     const supervisorPath = document.getElementById('supervisorPath');
     const spiffsPath = document.getElementById('spiffsPath');
-    const saveCfgBtn = document.getElementById('saveCfg');
+    const applyUpdateHostBtn = document.getElementById('applyUpdateHost');
+    const applyFlowPathBtn = document.getElementById('applyFlowPath');
+    const applyNextionPathBtn = document.getElementById('applyNextionPath');
+    const applySupervisorPathBtn = document.getElementById('applySupervisorPath');
+    const applySpiffsPathBtn = document.getElementById('applySpiffsPath');
     const upSupervisorBtn = document.getElementById('upSupervisor');
     const upFlowBtn = document.getElementById('upFlow');
     const upNextionBtn = document.getElementById('upNextion');
     const upSpiffsBtn = document.getElementById('upSpiffs');
-    const refreshStateBtn = document.getElementById('refreshState');
     const upgradeProgressBar = document.getElementById('upgradeProgressBar');
     const upgradePct = document.getElementById('upgradePct');
     const upgradeJourneyLabel = document.getElementById('upgradeJourneyLabel');
@@ -567,6 +600,7 @@
     const flowStatusGrid = document.getElementById('flowStatusGrid');
     const flowStatusRaw = document.getElementById('flowStatusRaw');
     const poolMeasuresRefreshBtn = document.getElementById('poolMeasuresRefresh');
+    const poolMeasuresDomains = document.getElementById('poolMeasuresDomains');
     const poolMeasuresStatus = document.getElementById('poolMeasuresStatus');
     const poolMeasuresGrid = document.getElementById('poolMeasuresGrid');
     const flowCfgTitle = document.getElementById('flowCfgTitle');
@@ -597,7 +631,7 @@
     let supCfgCurrentData = {};
     let wifiScanAutoRequested = false;
     let flowStatusReqSeq = 0;
-    const fieldApplyCheckIcon = 'OK';
+    const fieldApplyCheckIcon = '✓';
     const flowStatusDomainTtlMs = 20000;
     const flowStatusDomainKeys = ['system', 'wifi', 'mqtt', 'pool', 'i2c'];
     const flowStatusDomainCache = {
@@ -607,14 +641,28 @@
       pool: { data: null, fetchedAt: 0 },
       i2c: { data: null, fetchedAt: 0 }
     };
-    let runtimeManifestCache = null;
-    let poolMeasureEntries = [];
+    const runtimeMeasureDomainKeys = ['pool', 'mqtt', 'system', 'wifi'];
+    let runtimeManifestDomainCache = null;
+    let runtimeManifestDomainLoadPromise = null;
+    const poolMeasureDomainState = {
+      pool: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 },
+      mqtt: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 },
+      system: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 },
+      wifi: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 }
+    };
     const upgradeReconnectFetchTimeoutMs = 1400;
+    const upgradeConfigFieldDefs = [
+      { key: 'update_host', input: updateHost, button: applyUpdateHostBtn, successMessage: 'Serveur HTTP enregistré.' },
+      { key: 'flowio_path', input: flowPath, button: applyFlowPathBtn, successMessage: 'Chemin Flow.IO enregistré.' },
+      { key: 'nextion_path', input: nextionPath, button: applyNextionPathBtn, successMessage: 'Chemin Nextion enregistré.' },
+      { key: 'supervisor_path', input: supervisorPath, button: applySupervisorPathBtn, successMessage: 'Chemin Supervisor enregistré.' },
+      { key: 'spiffs_path', input: spiffsPath, button: applySpiffsPathBtn, successMessage: 'Chemin SPIFFS enregistré.' }
+    ];
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     let logSource = 'flow';
     let logSocket = null;
-    const upgradeStatusPoller = createIntervalRunner(() => refreshUpgradeStatus(), upgradeStatusPollIntervalMs);
+    const upgradeStatusPoller = createTimeoutRunner(() => pollUpgradeStatusTick());
     const upgradeReconnectStageTimer = createTimeoutRunner(() => enterUpgradeReconnectPhase());
     const upgradeReconnectCompletionTimer = createTimeoutRunner(() => markUpgradeUiCompletedAfterReconnect());
     const upgradeReconnectMonitor = createIntervalRunner(() => probeUpgradeReconnect(), 1500);
@@ -874,11 +922,11 @@
       const phase = String(session && session.phase ? session.phase : 'idle');
       const progress = Math.max(0, Math.min(100, Number(session && session.backendProgress) || 0));
       const reconnectProgress = Math.max(0, Math.min(100, Number(session && session.reconnectProgress) || 0));
-      if (phase === 'target') return 8;
-      if (phase === 'download') return 14 + Math.round(progress * 0.28);
-      if (phase === 'flash') return 46 + Math.round(progress * 0.30);
-      if (phase === 'reboot') return 82;
-      if (phase === 'reconnect') return 92 + Math.round(reconnectProgress * 0.07);
+      if (phase === 'target') return 1;
+      if (phase === 'download') return 1 + Math.round(progress * 0.04);
+      if (phase === 'flash') return 5 + Math.round(progress * 0.90);
+      if (phase === 'reboot') return 97;
+      if (phase === 'reconnect') return 97 + Math.round(reconnectProgress * 0.03);
       if (phase === 'done') return 100;
       if (phase === 'error') return Math.max(6, Math.min(96, Number(session && session.lastPercent) || 12));
       return 0;
@@ -907,13 +955,6 @@
       if (progress !== null) return progress + '%';
       if (state === 'error') return 'erreur';
       return '';
-    }
-
-    function upgradeStepIcon(state) {
-      if (state === 'done') return '✓';
-      if (state === 'active') return '↻';
-      if (state === 'error') return '!';
-      return '○';
     }
 
     function upgradeStepState(stepId, session) {
@@ -945,7 +986,18 @@
 
         const icon = document.createElement('span');
         icon.className = 'step-ic ' + state;
-        icon.textContent = upgradeStepIcon(state);
+        if (state === 'active') {
+          const refreshIcon = document.createElement('span');
+          refreshIcon.className = 'step-refresh-icon';
+          refreshIcon.setAttribute('aria-hidden', 'true');
+          icon.appendChild(refreshIcon);
+        } else if (state === 'done') {
+          icon.textContent = '✓';
+        } else if (state === 'error') {
+          icon.textContent = '!';
+        } else {
+          icon.textContent = '○';
+        }
         row.appendChild(icon);
 
         const label = document.createElement('span');
@@ -1280,20 +1332,65 @@
         supervisorPath.value = data.supervisor_path || '';
         nextionPath.value = data.nextion_path || '';
         spiffsPath.value = data.spiffs_path || data.cfgdocs_path || '';
+        syncUpgradeConfigFieldInitialValues();
       } catch (err) {
         setUpgradeMessage('Échec du chargement de la configuration : ' + err);
       }
     }
 
-    async function saveUpgradeConfig() {
-      await fetchOkJson('/api/fwupdate/config', createFormPostOptions({
+    function buildUpgradeConfigPayload() {
+      return {
         update_host: updateHost.value.trim(),
         flowio_path: flowPath.value.trim(),
         supervisor_path: supervisorPath.value.trim(),
         nextion_path: nextionPath.value.trim(),
         spiffs_path: spiffsPath.value.trim()
-      }), 'échec enregistrement');
-      setUpgradeMessage('Configuration enregistrée.');
+      };
+    }
+
+    function syncUpgradeConfigFieldInitialValues(keys) {
+      const changedKeys = Array.isArray(keys) ? new Set(keys) : null;
+      upgradeConfigFieldDefs.forEach((def) => {
+        if (!def || !def.input || !def.button) return;
+        if (changedKeys && !changedKeys.has(def.key)) return;
+        def.input.dataset.initialValue = def.input.value.trim();
+        updateUpgradeConfigFieldApplyState(def);
+      });
+    }
+
+    function isUpgradeConfigFieldDirty(def) {
+      if (!def || !def.input) return false;
+      return def.input.value.trim() !== String(def.input.dataset.initialValue || '');
+    }
+
+    function updateUpgradeConfigFieldApplyState(def) {
+      if (!def || !def.button) return;
+      const dirty = isUpgradeConfigFieldDirty(def);
+      def.button.disabled = !dirty;
+      def.button.classList.toggle('is-dirty', dirty);
+      def.button.classList.remove('is-pending');
+      def.button.title = dirty ? 'Appliquer ce changement' : 'Aucun changement a appliquer';
+      def.button.setAttribute('aria-label', def.button.title);
+    }
+
+    async function saveUpgradeConfig(values, successMessage) {
+      const payload = values && typeof values === 'object'
+        ? values
+        : buildUpgradeConfigPayload();
+      await fetchOkJson('/api/fwupdate/config', createFormPostOptions(payload), 'échec enregistrement');
+      syncUpgradeConfigFieldInitialValues(Object.keys(payload));
+      setUpgradeMessage(successMessage || 'Configuration enregistrée.');
+    }
+
+    async function applyUpgradeConfigField(def) {
+      if (!def || !def.input || !def.button || !isUpgradeConfigFieldDirty(def)) return;
+      def.button.disabled = true;
+      def.button.classList.add('is-pending');
+      try {
+        await saveUpgradeConfig({ [def.key]: def.input.value.trim() }, def.successMessage);
+      } finally {
+        updateUpgradeConfigFieldApplyState(def);
+      }
     }
 
     async function refreshUpgradeStatus() {
@@ -1312,6 +1409,7 @@
     async function startUpgrade(target) {
       try {
         startUpgradeUiSession(target);
+        startUpgradeStatusPolling(true);
         await saveUpgradeConfig();
         let endpoint = '/fwupdate/nextion';
         if (target === 'supervisor') endpoint = '/fwupdate/supervisor';
@@ -1507,8 +1605,22 @@
 
     function isDrawerRuntimeMetaVisible() {
       return !!appRuntimeMeta
-        && ((!isMobileLayout() && !drawer.classList.contains('collapsed'))
-          || (isMobileLayout() && drawer.classList.contains('mobile-open')));
+        && isDrawerExpanded();
+    }
+
+    function renderDrawerRuntimeMeta() {
+      if (!appRuntimeMeta) return;
+      const heapFreeValue =
+        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'free')
+          ? supervisorHeap.free
+          : null;
+      const heapMinValue =
+        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'min_free')
+          ? supervisorHeap.min_free
+          : null;
+      const heapFreeText = heapFreeValue === null ? '-' : fmtFlowBytes(heapFreeValue);
+      const heapMinText = heapMinValue === null ? '-' : fmtFlowBytes(heapMinValue);
+      setDrawerRuntimeMetaValues(heapFreeText, heapMinText);
     }
 
     function fmtFlowFixed(value, decimals, unit) {
@@ -2321,7 +2433,6 @@
     }
 
     function showPoolMeasuresError(err) {
-      poolMeasuresGrid.innerHTML = '';
       poolMeasuresStatus.textContent = 'Chargement mesures echoue: ' + err;
     }
 
@@ -2329,56 +2440,143 @@
       poolMeasuresPoller.start();
     }
 
-    async function loadRuntimeManifest(forceRefresh) {
-      if (!forceRefresh && runtimeManifestCache && Array.isArray(runtimeManifestCache.values)) {
-        return runtimeManifestCache;
-      }
-      const data = await fetchOkJson(versionedWebAssetUrl('/webinterface/runtimeui.json'), undefined, 'manifeste runtime indisponible');
-      if (!Array.isArray(data.values)) throw new Error('manifeste runtime indisponible');
-      runtimeManifestCache = data;
-      return data;
+    function normalizeRuntimeMeasureDomainKey(domain) {
+      const key = String(domain || '').trim().toLowerCase();
+      return runtimeMeasureDomainKeys.includes(key) ? key : '';
     }
 
-    function runtimeManifestEntryByKey(manifest, key) {
-      const values = Array.isArray(manifest && manifest.values) ? manifest.values : [];
-      return values.find((entry) => entry && String(entry.key || '') === String(key || '')) || null;
+    function createEmptyRuntimeManifestDomainCache() {
+      return {
+        pool: [],
+        mqtt: [],
+        system: [],
+        wifi: []
+      };
+    }
+
+    function activePoolMeasureDomainKeys() {
+      return runtimeMeasureDomainKeys.filter((domainKey) => poolMeasureDomainState[domainKey].active);
+    }
+
+    function countJsonBraces(line) {
+      let depth = 0;
+      for (let i = 0; i < line.length; ++i) {
+        const ch = line.charAt(i);
+        if (ch === '{') depth += 1;
+        if (ch === '}') depth -= 1;
+      }
+      return depth;
+    }
+
+    function registerRuntimeManifestEntry(cache, entry) {
+      if (!entry || !Number.isFinite(Number(entry.id))) return;
+      const domainKey = normalizeRuntimeMeasureDomainKey(entry.domain);
+      if (!domainKey || !Array.isArray(cache[domainKey])) return;
+      cache[domainKey].push(entry);
+    }
+
+    async function parseRuntimeManifestStreamIntoCache(response, cache) {
+      if (!response.body || typeof response.body.getReader !== 'function' || typeof TextDecoder !== 'function') {
+        const data = await response.json().catch(() => null);
+        const values = Array.isArray(data && data.values) ? data.values : [];
+        values.forEach((entry) => registerRuntimeManifestEntry(cache, entry));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let insideValues = false;
+      let insideEntry = false;
+      let braceDepth = 0;
+      let entryLines = [];
+
+      const processLine = (rawLine) => {
+        const line = String(rawLine || '').trim();
+        if (!line) return;
+        if (!insideValues) {
+          if (line.indexOf('"values"') !== -1 && line.indexOf('[') !== -1) {
+            insideValues = true;
+          }
+          return;
+        }
+        if (!insideEntry) {
+          if (line.charAt(0) === '{') {
+            insideEntry = true;
+            braceDepth = countJsonBraces(line);
+            entryLines = [line];
+          }
+          return;
+        }
+
+        entryLines.push(line);
+        braceDepth += countJsonBraces(line);
+        if (braceDepth > 0) return;
+
+        const objectText = entryLines.join('\n').replace(/,$/, '');
+        entryLines = [];
+        insideEntry = false;
+        try {
+          registerRuntimeManifestEntry(cache, JSON.parse(objectText));
+        } catch (err) {
+          throw new Error('manifeste runtime invalide');
+        }
+      };
+
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(processLine);
+      }
+      buffer += decoder.decode();
+      if (buffer) processLine(buffer);
+    }
+
+    async function loadRuntimeManifestDomains(forceRefresh) {
+      if (!forceRefresh && runtimeManifestDomainCache) {
+        return runtimeManifestDomainCache;
+      }
+      if (!forceRefresh && runtimeManifestDomainLoadPromise) {
+        return runtimeManifestDomainLoadPromise;
+      }
+
+      runtimeManifestDomainLoadPromise = (async () => {
+        const response = await fetch(versionedWebAssetUrl('/webinterface/runtimeui.json'), {
+          cache: forceRefresh ? 'no-store' : 'default'
+        });
+        if (!response.ok) throw new Error('manifeste runtime indisponible');
+        const nextCache = createEmptyRuntimeManifestDomainCache();
+        await parseRuntimeManifestStreamIntoCache(response, nextCache);
+        runtimeManifestDomainCache = nextCache;
+        return runtimeManifestDomainCache;
+      })();
+
+      try {
+        return await runtimeManifestDomainLoadPromise;
+      } finally {
+        runtimeManifestDomainLoadPromise = null;
+      }
+    }
+
+    async function runtimeMeasureEntriesForDomain(domainKey, forceRefresh) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      if (!cleanDomain) return [];
+      const cache = await loadRuntimeManifestDomains(!!forceRefresh);
+      return Array.isArray(cache[cleanDomain]) ? cache[cleanDomain] : [];
     }
 
     async function refreshDrawerRuntimeMeta(forceRefresh) {
-      if (!appRuntimeMeta || !isDrawerRuntimeMetaVisible()) return;
-      const heapFreeValue =
-        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'free')
-          ? supervisorHeap.free
-          : null;
-      const heapMinValue =
-        supervisorHeap && Object.prototype.hasOwnProperty.call(supervisorHeap, 'min_free')
-          ? supervisorHeap.min_free
-          : null;
-      const heapFreeText = heapFreeValue === null ? '-' : fmtFlowBytes(heapFreeValue);
-      const heapMinText = heapMinValue === null ? '-' : fmtFlowBytes(heapMinValue);
-      setDrawerRuntimeMetaValues(heapFreeText, heapMinText);
+      if (!appRuntimeMeta) return;
+      renderDrawerRuntimeMeta();
+      if (!isDrawerRuntimeMetaVisible() || !forceRefresh) return;
+      await loadWebMeta({ skipDrawerRuntimeRender: false });
     }
 
     function startDrawerRuntimeTimer() {
       drawerRuntimePoller.start();
-    }
-
-    function runtimeManifestMeasureEntries(manifest) {
-      const values = Array.isArray(manifest && manifest.values) ? manifest.values : [];
-      return values
-        .filter((entry) => entry && Number.isFinite(Number(entry.id)))
-        .sort((a, b) => {
-          const domainA = String(a.domain || '');
-          const domainB = String(b.domain || '');
-          if (domainA !== domainB) return domainA.localeCompare(domainB, 'fr');
-          const groupA = String(a.group || '');
-          const groupB = String(b.group || '');
-          if (groupA !== groupB) return groupA.localeCompare(groupB, 'fr');
-          const orderA = Number(a.order) || 0;
-          const orderB = Number(b.order) || 0;
-          if (orderA !== orderB) return orderA - orderB;
-          return (Number(a.id) || 0) - (Number(b.id) || 0);
-        });
     }
 
     function formatRuntimeDomainLabel(domain) {
@@ -2421,11 +2619,17 @@
     }
 
     async function fetchRuntimeValues(ids) {
-      const data = await fetchOkJson('/api/runtime/values', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: ids })
-      }, 'lecture runtime indisponible', fetchFlowRemoteQueued);
+      const cleanIds = (ids || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      if (!cleanIds.length) return [];
+      const query = cleanIds.join(',');
+      const data = await fetchOkJson(
+        '/api/runtime/values?ids=' + encodeURIComponent(query),
+        { cache: 'no-store' },
+        'lecture runtime indisponible',
+        fetchFlowRemoteQueued
+      );
       if (!Array.isArray(data.values)) throw new Error('lecture runtime indisponible');
       return data.values;
     }
@@ -2559,22 +2763,17 @@
       return badge;
     }
 
-    function renderPoolMeasures(values) {
+    function buildPoolMeasureCards(entries, values) {
+      const fragment = document.createDocumentFragment();
       const valueById = new Map();
       (values || []).forEach((item) => {
         const id = Number(item && item.id);
         if (Number.isFinite(id)) valueById.set(id, item);
       });
 
-      poolMeasuresGrid.innerHTML = '';
-      if (!poolMeasureEntries.length) {
-        poolMeasuresStatus.textContent = 'Aucune valeur runtime exposee.';
-        return;
-      }
-
       const groups = [];
       const groupsByName = new Map();
-      poolMeasureEntries.forEach((entry) => {
+      (entries || []).forEach((entry) => {
         const domainKey = String(entry.domain || 'runtime');
         const groupKey = String(entry.group || '').trim();
         const cardKey = domainKey + '::' + groupKey;
@@ -2657,33 +2856,211 @@
           card.appendChild(kv);
         }
 
-        poolMeasuresGrid.appendChild(card);
+        fragment.appendChild(card);
       });
-      poolMeasuresStatus.textContent =
-        'Mesures chargees : ' + poolMeasureEntries.length + ' valeurs.';
+      return fragment;
     }
 
-    async function refreshPoolMeasures(forceManifest) {
-      poolMeasuresStatus.textContent = 'chargement...';
+    function renderPoolMeasureDomainButtons() {
+      if (!poolMeasuresDomains) return;
+      poolMeasuresDomains.innerHTML = '';
+      runtimeMeasureDomainKeys.forEach((domainKey) => {
+        const state = poolMeasureDomainState[domainKey];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'control-chip' + (state.active ? ' active' : '') + (state.loading ? ' is-loading' : '');
+        button.textContent = formatRuntimeDomainLabel(domainKey);
+        button.setAttribute('aria-pressed', state.active ? 'true' : 'false');
+        button.addEventListener('click', async () => {
+          await togglePoolMeasureDomain(domainKey);
+        });
+        poolMeasuresDomains.appendChild(button);
+      });
+    }
 
-      const manifest = await loadRuntimeManifest(!!forceManifest);
-      poolMeasureEntries = runtimeManifestMeasureEntries(manifest);
-      const ids = poolMeasureEntries.map((entry) => Number(entry.id)).filter((id) => Number.isFinite(id));
-      if (!ids.length) {
-        renderPoolMeasures([]);
+    function renderPoolMeasuresGrid() {
+      if (!poolMeasuresGrid) return;
+      poolMeasuresGrid.innerHTML = '';
+
+      const activeDomains = activePoolMeasureDomainKeys();
+      if (!activeDomains.length) {
+        const empty = document.createElement('div');
+        empty.className = 'measure-domain-empty';
+        empty.textContent = 'Activez un badge pour charger un domaine. Aucun acces I2C n est lance tant qu aucun badge n est clique.';
+        poolMeasuresGrid.appendChild(empty);
         return;
       }
 
-      const values = await fetchRuntimeValues(ids);
-      renderPoolMeasures(values);
+      let renderedCardCount = 0;
+      activeDomains.forEach((domainKey) => {
+        const state = poolMeasureDomainState[domainKey];
+        if (state.loading) {
+          const card = document.createElement('div');
+          card.className = 'status-card';
+          const heading = document.createElement('h3');
+          heading.textContent = formatRuntimeDomainLabel(domainKey);
+          const summary = document.createElement('p');
+          summary.className = 'status-card-summary';
+          summary.textContent = 'Chargement en cours...';
+          card.appendChild(heading);
+          card.appendChild(summary);
+          poolMeasuresGrid.appendChild(card);
+          renderedCardCount += 1;
+          return;
+        }
+        if (state.error) {
+          const card = document.createElement('div');
+          card.className = 'status-card';
+          const heading = document.createElement('h3');
+          heading.textContent = formatRuntimeDomainLabel(domainKey);
+          const summary = document.createElement('p');
+          summary.className = 'status-card-summary';
+          summary.textContent = state.error;
+          card.appendChild(heading);
+          card.appendChild(summary);
+          poolMeasuresGrid.appendChild(card);
+          renderedCardCount += 1;
+          return;
+        }
+        if (!state.entries.length) {
+          const card = document.createElement('div');
+          card.className = 'status-card';
+          const heading = document.createElement('h3');
+          heading.textContent = formatRuntimeDomainLabel(domainKey);
+          const summary = document.createElement('p');
+          summary.className = 'status-card-summary';
+          summary.textContent = 'Aucune valeur runtime exposee pour ce domaine.';
+          card.appendChild(heading);
+          card.appendChild(summary);
+          poolMeasuresGrid.appendChild(card);
+          renderedCardCount += 1;
+          return;
+        }
+        const cards = buildPoolMeasureCards(state.entries, state.values);
+        renderedCardCount += cards.childNodes.length;
+        poolMeasuresGrid.appendChild(cards);
+      });
+
+      if (renderedCardCount === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'measure-domain-empty';
+        empty.textContent = 'Aucune valeur runtime disponible pour les domaines actifs.';
+        poolMeasuresGrid.appendChild(empty);
+      }
+    }
+
+    function refreshPoolMeasuresStatus() {
+      const activeDomains = activePoolMeasureDomainKeys();
+      if (!activeDomains.length) {
+        poolMeasuresStatus.textContent = 'Aucun domaine charge.';
+        return;
+      }
+
+      let loadingCount = 0;
+      let errorCount = 0;
+      let valueCount = 0;
+      activeDomains.forEach((domainKey) => {
+        const state = poolMeasureDomainState[domainKey];
+        if (state.loading) loadingCount += 1;
+        if (state.error) errorCount += 1;
+        valueCount += state.entries.length;
+      });
+
+      if (loadingCount > 0) {
+        poolMeasuresStatus.textContent =
+          'Chargement en cours : ' + loadingCount + ' domaine' + (loadingCount > 1 ? 's' : '') + '.';
+        return;
+      }
+      if (errorCount > 0) {
+        poolMeasuresStatus.textContent =
+          'Lecture partielle : ' + errorCount + ' domaine' + (errorCount > 1 ? 's' : '') + ' en erreur.';
+        return;
+      }
+      poolMeasuresStatus.textContent =
+        activeDomains.length + ' domaine' + (activeDomains.length > 1 ? 's' : '') +
+        ' actif' + (activeDomains.length > 1 ? 's' : '') + ' · ' +
+        valueCount + ' valeur' + (valueCount > 1 ? 's' : '') + ' affichee' + (valueCount > 1 ? 's' : '') + '.';
+    }
+
+    function refreshPoolMeasuresView() {
+      renderPoolMeasureDomainButtons();
+      renderPoolMeasuresGrid();
+      refreshPoolMeasuresStatus();
+    }
+
+    async function loadPoolMeasureDomain(domainKey, forceRefresh) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      if (!cleanDomain) return;
+      const state = poolMeasureDomainState[cleanDomain];
+      if (!state.active) return;
+      const requestSeq = state.requestSeq + 1;
+      state.requestSeq = requestSeq;
+      state.loading = true;
+      state.error = '';
+      refreshPoolMeasuresView();
+
+      try {
+        const entries = await runtimeMeasureEntriesForDomain(cleanDomain, !!forceRefresh);
+        const ids = entries.map((entry) => Number(entry.id)).filter((id) => Number.isFinite(id));
+        const values = ids.length ? await fetchRuntimeValues(ids) : [];
+        if (state.requestSeq !== requestSeq) return;
+        state.entries = entries;
+        state.values = values;
+        state.error = '';
+      } catch (err) {
+        if (state.requestSeq !== requestSeq) return;
+        state.entries = [];
+        state.values = [];
+        state.error = 'Chargement ' + formatRuntimeDomainLabel(cleanDomain) + ' echoue: ' + err;
+      } finally {
+        if (state.requestSeq === requestSeq) {
+          state.loading = false;
+        }
+        refreshPoolMeasuresView();
+      }
+    }
+
+    async function refreshActivePoolMeasureDomains(forceRefresh) {
+      const activeDomains = activePoolMeasureDomainKeys();
+      if (!activeDomains.length) {
+        refreshPoolMeasuresView();
+        return;
+      }
+      for (const domainKey of activeDomains) {
+        if (!poolMeasureDomainState[domainKey].active) continue;
+        await loadPoolMeasureDomain(domainKey, !!forceRefresh);
+      }
+    }
+
+    async function togglePoolMeasureDomain(domainKey) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      if (!cleanDomain) return;
+      const state = poolMeasureDomainState[cleanDomain];
+      if (state.active) {
+        state.active = false;
+        state.loading = false;
+        state.error = '';
+        state.requestSeq += 1;
+        refreshPoolMeasuresView();
+        return;
+      }
+      state.active = true;
+      await loadPoolMeasureDomain(cleanDomain, false);
+    }
+
+    async function refreshPoolMeasures(forceRefresh) {
+      await refreshActivePoolMeasureDomains(!!forceRefresh);
     }
 
     async function onPoolMeasuresPageShown() {
-      try {
-        await refreshPoolMeasures(false);
-        startPoolMeasuresTimer();
-      } catch (err) {
-        showPoolMeasuresError(err);
+      refreshPoolMeasuresView();
+      startPoolMeasuresTimer();
+      if (activePoolMeasureDomainKeys().length) {
+        try {
+          await refreshActivePoolMeasureDomains(false);
+        } catch (err) {
+          showPoolMeasuresError(err);
+        }
       }
     }
 
@@ -3844,18 +4221,23 @@
     }
 
     function initUpgradeBindings() {
-      bindClickAction(saveCfgBtn, async () => {
-        try {
-          await saveUpgradeConfig();
-        } catch (err) {
-          setUpgradeMessage('Échec de l\'enregistrement : ' + err);
-        }
+      upgradeConfigFieldDefs.forEach((def) => {
+        if (!def || !def.input || !def.button) return;
+        updateUpgradeConfigFieldApplyState(def);
+        def.input.addEventListener('input', () => updateUpgradeConfigFieldApplyState(def));
+        def.input.addEventListener('change', () => updateUpgradeConfigFieldApplyState(def));
+        bindClickAction(def.button, async () => {
+          try {
+            await applyUpgradeConfigField(def);
+          } catch (err) {
+            setUpgradeMessage('Échec de l\'enregistrement : ' + err);
+          }
+        });
       });
       bindClickAction(upSupervisorBtn, () => startUpgrade('supervisor'));
       bindClickAction(upFlowBtn, () => startUpgrade('flowio'));
       bindClickAction(upNextionBtn, () => startUpgrade('nextion'));
       bindClickAction(upSpiffsBtn, () => startUpgrade('spiffs'));
-      bindClickAction(refreshStateBtn, () => refreshUpgradeStatus());
     }
 
     function initStatusBindings() {

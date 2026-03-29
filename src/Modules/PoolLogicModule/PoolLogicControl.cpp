@@ -369,6 +369,12 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     forceFiltrationReconcile = pendingFiltrationReconcile_;
     pendingFiltrationReconcile_ = false;
     portEXIT_CRITICAL(&pendingMux_);
+    if (forceFiltrationReconcile && schedSvc_ && schedSvc_->isActive) {
+        windowActive = schedSvc_->isActive(schedSvc_->ctx, SLOT_FILTR_WINDOW);
+        portENTER_CRITICAL(&pendingMux_);
+        filtrationWindowActive_ = windowActive;
+        portEXIT_CRITICAL(&pendingMux_);
+    }
 
     // Filtration arbitration intentionally applies safety, then manual mode,
     // then automatic scheduling/winter logic in that order.
@@ -495,8 +501,8 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     }
 
     if (forceFiltrationReconcile) {
-        // Re-entering auto mode should immediately reconcile the live pump state
-        // against the current scheduler window instead of waiting for a retry.
+        // Auto mode changes arrive through ConfigChanged, so force one immediate
+        // reconciliation in the loop regardless of the previous manual path.
         filtrationFsm_.lastDesired = !filtrationDesired;
         filtrationFsm_.lastCmdMs = 0U;
     }

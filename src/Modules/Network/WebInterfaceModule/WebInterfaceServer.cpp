@@ -509,6 +509,117 @@ bool appendRuntimeUiJsonValuesToStream_(Print& out, const uint8_t* payload, size
     return offset == payloadLen;
 }
 
+constexpr size_t kMaxRuntimeHttpIds = 48U;
+
+bool parseRuntimeUiIdsCsv_(const char* raw, RuntimeUiId* idsOut, size_t capacity, size_t& countOut)
+{
+    countOut = 0U;
+    if (!raw || !idsOut || capacity == 0U) return false;
+
+    uint32_t current = 0U;
+    bool hasDigit = false;
+
+    auto flushCurrent = [&]() -> bool {
+        if (!hasDigit) return true;
+        if (countOut >= capacity || current == 0U || current > 65535U) return false;
+        idsOut[countOut++] = (RuntimeUiId)current;
+        current = 0U;
+        hasDigit = false;
+        return true;
+    };
+
+    for (const char* p = raw; *p != '\0'; ++p) {
+        const char ch = *p;
+        if (ch >= '0' && ch <= '9') {
+            hasDigit = true;
+            current = (current * 10U) + (uint32_t)(ch - '0');
+            if (current > 65535U) return false;
+            continue;
+        }
+        if (ch == ',' || ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            if (ch == ',') {
+                if (!flushCurrent()) return false;
+            }
+            continue;
+        }
+        return false;
+    }
+
+    return flushCurrent() && countOut > 0U;
+}
+
+void sendRuntimeUiValuesResponse_(AsyncWebServerRequest* request,
+                                  const FlowCfgRemoteService* flowCfgSvc,
+                                  const RuntimeUiId* ids,
+                                  size_t idCount)
+{
+    if (!request || !flowCfgSvc || !flowCfgSvc->runtimeUiValues) {
+        if (request) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values\"}}");
+        }
+        return;
+    }
+    if (flowCfgSvc->isReady && !flowCfgSvc->isReady(flowCfgSvc->ctx)) {
+        request->send(503, "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values.link\"}}");
+        return;
+    }
+    if (!ids || idCount == 0U) {
+        request->send(400, "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+        return;
+    }
+
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    addNoCacheHeaders_(response);
+    response->print("{\"ok\":true,\"values\":[");
+    bool firstValue = true;
+
+    size_t start = 0U;
+    while (start < idCount) {
+        size_t batchCount = 0U;
+        size_t batchBudget = 1U;  // record count byte
+        while ((start + batchCount) < idCount) {
+            const RuntimeUiManifestItem* item = findRuntimeUiManifestItem(ids[start + batchCount]);
+            const bool isString = item && item->type && strcmp(item->type, "string") == 0;
+            const size_t estimate = runtimeUiWireEstimate_(item);
+
+            if (batchCount > 0U && (isString || (batchBudget + estimate) > I2cCfgProtocol::MaxPayload)) {
+                break;
+            }
+            batchBudget += estimate;
+            ++batchCount;
+            if (isString) break;
+        }
+        if (batchCount == 0U) batchCount = 1U;
+
+        uint8_t payload[I2cCfgProtocol::MaxPayload] = {0};
+        size_t written = 0U;
+        if (!flowCfgSvc->runtimeUiValues(flowCfgSvc->ctx,
+                                         ids + start,
+                                         (uint8_t)batchCount,
+                                         payload,
+                                         sizeof(payload),
+                                         &written)) {
+            delete response;
+            request->send(502, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.fetch\"}}");
+            return;
+        }
+        if (!appendRuntimeUiJsonValuesToStream_(*response, payload, written, firstValue)) {
+            delete response;
+            request->send(502, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.decode\"}}");
+            return;
+        }
+        start += batchCount;
+    }
+
+    response->print("]}");
+    request->send(response);
+}
+
 struct HttpLatencyScope {
     AsyncWebServerRequest* req;
     const char* route;
@@ -747,13 +858,6 @@ void WebInterfaceModule::startServer_()
         }
         request->send(SPIFFS, "/assets/Logos_Favicon.png", "image/png");
     });
-    server_.on("/assets/flowio-logo-v2.png", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        if (!spiffsReady_ || !SPIFFS.exists("/assets/Logos_Texte_v2.png")) {
-            request->send(404, "text/plain", "Not found");
-            return;
-        }
-        request->send(SPIFFS, "/assets/Logos_Texte_v2.png", "image/png");
-    });
     auto webInterfaceLandingUrl = [this]() -> String {
         NetworkAccessMode mode = NetworkAccessMode::None;
         if (!netAccessSvc_ && services_) {
@@ -820,7 +924,7 @@ void WebInterfaceModule::startServer_()
     registerWebSvgRoute("/webinterface/i/s.svg");
     registerWebSvgRoute("/webinterface/i/d.svg");
     registerWebSvgRoute("/webinterface/i/e.svg");
-    registerWebSvgRoute("/webinterface/i/f.svg");
+    registerWebSvgRoute("/webinterface/i/r.svg");
     registerWebSvgRoute("/webinterface/i/u.svg");
     server_.on("/webinterface/cfgdocs.fr.json", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
@@ -1464,6 +1568,32 @@ void WebInterfaceModule::startServer_()
                       "{\"ok\":false,\"err\":{\"code\":\"Disabled\",\"where\":\"runtime.alarms.disabled\"}}");
     });
 
+    server_.on("/api/runtime/values", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request,
+                                 "/api/runtime/values",
+                                 kHttpLatencyFlowCfgInfoMs,
+                                 kHttpLatencyFlowCfgWarnMs);
+        if (!flowCfgSvc_ && services_) {
+            flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
+        }
+        if (!request->hasParam("ids")) {
+            request->send(400, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+            return;
+        }
+
+        RuntimeUiId ids[kMaxRuntimeHttpIds] = {};
+        size_t idCount = 0U;
+        const AsyncWebParameter* idsParam = request->getParam("ids");
+        if (!idsParam || !parseRuntimeUiIdsCsv_(idsParam->value().c_str(), ids, kMaxRuntimeHttpIds, idCount)) {
+            request->send(400, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+            return;
+        }
+
+        sendRuntimeUiValuesResponse_(request, flowCfgSvc_, ids, idCount);
+    });
+
     server_.on(
         "/api/runtime/values",
         HTTP_POST,
@@ -1475,16 +1605,6 @@ void WebInterfaceModule::startServer_()
             if (!flowCfgSvc_ && services_) {
                 flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
             }
-            if (!flowCfgSvc_ || !flowCfgSvc_->runtimeUiValues) {
-                request->send(503, "application/json",
-                              "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values\"}}");
-                return;
-            }
-            if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-                request->send(503, "application/json",
-                              "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values.link\"}}");
-                return;
-            }
             if (!request->_tempObject) {
                 request->send(400, "application/json",
                               "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.body\"}}");
@@ -1494,7 +1614,7 @@ void WebInterfaceModule::startServer_()
             char* body = static_cast<char*>(request->_tempObject);
             request->_tempObject = nullptr;
 
-            DynamicJsonDocument reqDoc(2048);
+            StaticJsonDocument<2048> reqDoc;
             const DeserializationError reqErr = deserializeJson(reqDoc, body);
             free(body);
             if (reqErr) {
@@ -1510,7 +1630,6 @@ void WebInterfaceModule::startServer_()
                 return;
             }
 
-            static constexpr size_t kMaxRuntimeHttpIds = 48U;
             RuntimeUiId ids[kMaxRuntimeHttpIds] = {};
             size_t idCount = 0U;
             for (JsonVariantConst item : idsIn) {
@@ -1520,54 +1639,13 @@ void WebInterfaceModule::startServer_()
                 if (raw == 0U || raw > 65535U) continue;
                 ids[idCount++] = (RuntimeUiId)raw;
             }
-
-            AsyncResponseStream* response = request->beginResponseStream("application/json");
-            addNoCacheHeaders_(response);
-            response->print("{\"ok\":true,\"values\":[");
-            bool firstValue = true;
-
-            size_t start = 0U;
-            while (start < idCount) {
-                size_t batchCount = 0U;
-                size_t batchBudget = 1U;  // record count byte
-                while ((start + batchCount) < idCount) {
-                    const RuntimeUiManifestItem* item = findRuntimeUiManifestItem(ids[start + batchCount]);
-                    const bool isString = item && item->type && strcmp(item->type, "string") == 0;
-                    const size_t estimate = runtimeUiWireEstimate_(item);
-
-                    if (batchCount > 0U && (isString || (batchBudget + estimate) > I2cCfgProtocol::MaxPayload)) {
-                        break;
-                    }
-                    batchBudget += estimate;
-                    ++batchCount;
-                    if (isString) break;
-                }
-                if (batchCount == 0U) batchCount = 1U;
-
-                uint8_t payload[I2cCfgProtocol::MaxPayload] = {0};
-                size_t written = 0U;
-                if (!flowCfgSvc_->runtimeUiValues(flowCfgSvc_->ctx,
-                                                  ids + start,
-                                                  (uint8_t)batchCount,
-                                                  payload,
-                                                  sizeof(payload),
-                                                  &written)) {
-                    delete response;
-                    request->send(502, "application/json",
-                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.fetch\"}}");
-                    return;
-                }
-                if (!appendRuntimeUiJsonValuesToStream_(*response, payload, written, firstValue)) {
-                    delete response;
-                    request->send(502, "application/json",
-                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.decode\"}}");
-                    return;
-                }
-                start += batchCount;
+            if (idCount == 0U) {
+                request->send(400, "application/json",
+                              "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+                return;
             }
 
-            response->print("]}");
-            request->send(response);
+            sendRuntimeUiValuesResponse_(request, flowCfgSvc_, ids, idCount);
         },
         nullptr,
         [](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {

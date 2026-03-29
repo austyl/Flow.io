@@ -43,6 +43,14 @@ public:
 
 private:
     static constexpr size_t kRuntimeStatusDomainCacheCount = (size_t)FlowStatusDomain::Pool;
+    static constexpr size_t kRuntimeUiMirrorMaxEntries = 64U;
+    struct RuntimeUiCacheEntry {
+        RuntimeUiId id = 0U;
+        uint32_t fetchedAtMs = 0U;
+        uint8_t len = 0U;
+        bool valid = false;
+        uint8_t data[I2cCfgProtocol::MaxPayload] = {0};
+    };
     struct ConfigData {
         bool enabled = true;
         int32_t sda = 21;
@@ -96,6 +104,7 @@ private:
     uint32_t priorityI2cBusyUntilMs_ = 0;
     char runtimeStatusDomainCache_[kRuntimeStatusDomainCacheCount][640] = {{0}};
     bool runtimeStatusDomainCacheValid_[kRuntimeStatusDomainCacheCount] = {false};
+    RuntimeUiCacheEntry runtimeUiCache_[kRuntimeUiMirrorMaxEntries] = {};
     char runtimeStatusDomainFetchScratch_[640] = {0};
     char runtimeStatusDomainCacheNext_[kRuntimeStatusDomainCacheCount][640] = {{0}};
     bool runtimeStatusDomainCacheValidNext_[kRuntimeStatusDomainCacheCount] = {false};
@@ -140,6 +149,13 @@ private:
     bool parseFlowRemoteSnapshotFromCache_(FlowRemoteRuntimeData& out);
     void publishFlowRemoteSnapshotFromCache_();
     bool fetchRuntimeStatusDomainUncached_(FlowStatusDomain domain, char* out, size_t outLen);
+    bool fetchRuntimeUiValuesUncached_(const RuntimeUiId* ids, uint8_t count, uint8_t* out, size_t outLen, size_t* writtenOut);
+    bool composeRuntimeUiValuesFromCache_(const RuntimeUiId* ids, uint8_t count, uint8_t* out, size_t outLen, bool allowStale, bool* allFreshOut);
+    bool cacheRuntimeUiPayload_(const uint8_t* payload, size_t payloadLen);
+    RuntimeUiCacheEntry* findRuntimeUiCacheEntry_(RuntimeUiId id);
+    const RuntimeUiCacheEntry* findRuntimeUiCacheEntry_(RuntimeUiId id) const;
+    RuntimeUiCacheEntry* allocateRuntimeUiCacheEntry_(RuntimeUiId id);
+    bool parseRuntimeUiRecord_(const uint8_t* payload, size_t payloadLen, size_t offset, RuntimeUiId* idOut, size_t* recordLenOut) const;
     static uint8_t runtimeStatusDomainCacheIndex_(FlowStatusDomain domain);
 
     bool transact_(uint8_t op,

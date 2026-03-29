@@ -534,6 +534,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
     if (eventBus_) {
         eventBus_->subscribe(EventId::SchedulerEventTriggered, &PoolLogicModule::onEventStatic_, this);
+        eventBus_->subscribe(EventId::ConfigChanged, &PoolLogicModule::onEventStatic_, this);
     }
 
     if (!enabled_) {
@@ -623,6 +624,21 @@ void PoolLogicModule::onEventStatic_(const Event& e, void* user)
 void PoolLogicModule::onEvent_(const Event& e)
 {
     if (!enabled_) return;
+
+    if (e.id == EventId::ConfigChanged) {
+        if (!e.payload || e.len < sizeof(ConfigChangedPayload)) return;
+        const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
+        if (p->moduleId == (uint8_t)ConfigModuleId::PoolLogic &&
+            p->localBranchId == kCfgBranchMode &&
+            strcmp(p->nvsKey, NvsKeys::PoolLogic::AutoMode) == 0 &&
+            autoMode_) {
+            portENTER_CRITICAL(&pendingMux_);
+            pendingFiltrationReconcile_ = true;
+            portEXIT_CRITICAL(&pendingMux_);
+        }
+        return;
+    }
+
     if (e.id != EventId::SchedulerEventTriggered) return;
     if (!e.payload || e.len < sizeof(SchedulerEventTriggeredPayload)) return;
 

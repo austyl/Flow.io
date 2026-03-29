@@ -349,7 +349,6 @@ void drawStaticLayout_(SupervisorSt7789& d, bool swapBytes, int16_t w, int16_t h
     (void)h;
     d.fillScreen(panelColor_(swapBytes, kColorBg));
     d.fillRect(0, 0, w, kHeaderH, panelColor_(swapBytes, kColorHeader));
-    d.drawFastHLine(0, (int16_t)(kHeaderH - 1), w, panelColor_(swapBytes, kColorDivider));
 }
 
 void drawHeaderWifi_(SupervisorSt7789& d, bool swapBytes, bool hasRssi, int32_t rssiDbm)
@@ -367,27 +366,6 @@ void drawHeaderTime_(SupervisorSt7789& d, bool swapBytes, int16_t w, const char*
     const int16_t tw = gfxTextWidth_(d, timeTxt ? timeTxt : "--:--");
     d.setCursor((int16_t)(w - tw - 12), 34);
     d.print(timeTxt ? timeTxt : "--:--");
-}
-
-void drawHeaderMqtt_(SupervisorSt7789& d, bool swapBytes, int16_t w, const char* timeTxt, bool mqttReady)
-{
-    (void)timeTxt;
-    const int16_t pillW = 88;
-    const int16_t pillH = 28;
-    const int16_t pillX = (int16_t)((w - pillW) / 2);
-    const int16_t clearX = (int16_t)(pillX - 8);
-    const int16_t clearW = (int16_t)(pillW + 16);
-    d.fillRect(clearX, 0, clearW, kHeaderH, panelColor_(swapBytes, kColorHeader));
-    drawBadge_(d,
-               swapBytes,
-               pillX,
-               10,
-               pillW,
-               pillH,
-               mqttReady ? kColorStatusGreen : kColorStatusRed,
-               mqttReady ? kColorStatusGreen : kColorStatusRed,
-               rgb565_(255, 255, 255),
-               "MQTT");
 }
 
 uint8_t systemState_(const SupervisorHmiViewModel& vm)
@@ -899,7 +877,6 @@ bool St7789SupervisorDriver::render(const SupervisorHmiViewModel& vm, bool force
         lastTime_[0] = '\0';
         lastHasRssi_ = !hasAnyRssi;
         lastRssiDbm_ = hasAnyRssi ? (activeRssi - 1) : -126;
-        lastMqttReady_ = !vm.flowMqttReady;
         lastSystemState_ = 0xFFU;
         lastHasPh_ = !vm.flowHasPh;
         lastPhValue_ = vm.flowPhValue - 1.0f;
@@ -923,14 +900,6 @@ bool St7789SupervisorDriver::render(const SupervisorHmiViewModel& vm, bool force
     if (strcmp(lastTime_, timeBuf) != 0) {
         drawHeaderTime_(display_, swapBytes, w, timeBuf);
         snprintf(lastTime_, sizeof(lastTime_), "%s", timeBuf);
-    }
-
-    if (strcmp(lastTime_, timeBuf) == 0 && lastMqttReady_ != vm.flowMqttReady) {
-        drawHeaderMqtt_(display_, swapBytes, w, timeBuf, vm.flowMqttReady);
-        lastMqttReady_ = vm.flowMqttReady;
-    } else if (lastMqttReady_ != vm.flowMqttReady) {
-        drawHeaderMqtt_(display_, swapBytes, w, timeBuf, vm.flowMqttReady);
-        lastMqttReady_ = vm.flowMqttReady;
     }
 
     const bool measuresChanged = force || pageChanged ||

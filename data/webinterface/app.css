@@ -44,12 +44,12 @@
       --state-muted-fg: #8FA1B3;
       --state-muted-bg: #B8C7D6;
       --state-muted-ring: rgba(184, 199, 214, 0.2);
-      --flowio-brand-url: none;
       --menu-icon-measures-url: none;
       --menu-icon-terminal-url: none;
       --menu-icon-system-url: none;
       --menu-icon-flowcfg-url: none;
       --menu-icon-supervisorcfg-url: none;
+      --ui-refresh-icon-url: none;
       --drawer-width: 228px;
     }
     * { box-sizing: border-box; }
@@ -115,17 +115,23 @@
       display: inline-flex;
       align-items: center;
       min-width: 0;
-      height: 30px;
+      min-height: 30px;
     }
     .brand-wordmark {
-      display: block;
-      width: 108px;
-      height: 24px;
-      background-image: var(--flowio-brand-url);
-      background-repeat: no-repeat;
-      background-position: center 100%;
-      background-size: 100% auto;
-      filter: drop-shadow(0 6px 10px rgba(11, 31, 58, 0.08));
+      display: inline-flex;
+      align-items: baseline;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .brand-flow {
+      color: #101820;
+    }
+    .brand-io {
+      color: var(--btn-grad-start);
     }
     .drawer.collapsed .drawer-user { display: none; }
     .menu-group { display: grid; gap: 6px; margin-top: 10px; }
@@ -137,16 +143,6 @@
       gap: 8px;
       justify-content: flex-start;
       padding: 16px 4px 2px 2px;
-    }
-    .brand-mark {
-      width: 62px;
-      height: 56px;
-      flex: 0 0 auto;
-      background-image: var(--flowio-brand-url);
-      background-repeat: no-repeat;
-      background-position: center 0;
-      background-size: 114% auto;
-      filter: drop-shadow(0 8px 12px rgba(11, 31, 58, 0.12));
     }
     .app-icon-shell {
       width: 122px;
@@ -326,10 +322,6 @@
         width: 44px;
         flex: 0 0 44px;
       }
-      .drawer.collapsed .brand-mark {
-        width: 42px;
-        height: 46px;
-      }
     .drawer.collapsed .drawer-footer {
       justify-content: center;
       align-items: center;
@@ -351,16 +343,17 @@
       display: inline-flex;
       align-items: center;
       min-width: 0;
-      height: 24px;
+      min-height: 24px;
     }
     .mobile-wordmark {
-      display: block;
-      width: 108px;
-      height: 24px;
-      background-image: var(--flowio-brand-url);
-      background-repeat: no-repeat;
-      background-position: center 100%;
-      background-size: 100% auto;
+      display: inline-flex;
+      align-items: baseline;
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      white-space: nowrap;
+      user-select: none;
     }
     .page { display: none; }
     .page.active { display: block; }
@@ -392,6 +385,23 @@
       flex-wrap: wrap;
       margin-top: 10px;
       margin-bottom: 12px;
+    }
+    .measure-domain-divider {
+      margin: 12px 0;
+    }
+    .measure-domain-empty {
+      grid-column: 1 / -1;
+      border: 1px dashed #C9D5E0;
+      border-radius: 18px;
+      padding: 20px 18px;
+      background: #F5F8FB;
+      color: #5D7288;
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .control-chip.is-loading {
+      opacity: 0.72;
     }
     .autoscroll-chip {
       display: inline-flex;
@@ -815,6 +825,55 @@
       flex: 0 0 auto;
       white-space: nowrap;
     }
+    .field-inline-entry {
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      width: 100%;
+    }
+    .field-inline-entry input {
+      flex: 1;
+      min-width: 0;
+      padding-right: 44px;
+    }
+    .field-inline-select-action {
+      position: relative;
+      width: 100%;
+      min-width: 0;
+    }
+    .field-inline-select-action select {
+      width: 100%;
+      padding-left: 44px;
+      padding-right: 30px;
+    }
+    .field-inline-refresh {
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 1;
+    }
+    .field-inline-entry .control-field-apply {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 1;
+    }
+    .field-inline-entry .control-field-apply.is-dirty:hover {
+      transform: translateY(calc(-50% - 1px));
+    }
+    .field-upgrade-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .field-upgrade-row > .btn-primary {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
     .field-switch {
       display: flex;
       align-items: center;
@@ -892,6 +951,23 @@
       justify-content: center;
       font-size: 18px;
       font-weight: 700;
+    }
+    .btn-refresh-icon {
+      color: var(--btn-fg);
+    }
+    .refresh-icon-glyph {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: currentColor;
+      -webkit-mask-image: var(--ui-refresh-icon-url);
+      -webkit-mask-position: center;
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-size: contain;
+      mask-image: var(--ui-refresh-icon-url);
+      mask-position: center;
+      mask-repeat: no-repeat;
+      mask-size: contain;
     }
     .btn-compact {
       min-height: 36px;
@@ -1028,6 +1104,20 @@
     .step-ic.active {
       background: #EEEDFE;
       color: #534AB7;
+    }
+    .step-refresh-icon {
+      width: 10px;
+      height: 10px;
+      display: block;
+      background-color: currentColor;
+      -webkit-mask-image: var(--ui-refresh-icon-url);
+      -webkit-mask-position: center;
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-size: contain;
+      mask-image: var(--ui-refresh-icon-url);
+      mask-position: center;
+      mask-repeat: no-repeat;
+      mask-size: contain;
       animation: spin 1s linear infinite;
     }
     .step-ic.pending {
@@ -1506,6 +1596,8 @@
       cursor: pointer;
     }
     .control-field-apply.is-dirty:hover {
+      background: #2CA8B4;
+      color: #FFFFFF;
       transform: translateY(-1px);
     }
     .control-field-apply.is-pending {
@@ -1673,14 +1765,7 @@
         background: linear-gradient(180deg, rgba(254,254,254,0.94) 0%, rgba(254,254,254,1) 24%);
       }
       .brand-wordmark {
-        width: 104px;
-        height: 22px;
-        background-position: center 100%;
-        background-size: 100% auto;
-      }
-      .brand-mark {
-        width: 58px;
-        height: 52px;
+        font-size: 25px;
       }
       .app-footer-copy {
         width: 100%;
@@ -1728,6 +1813,23 @@
       }
       .field-inline-action button {
         width: 100%;
+      }
+      .field-inline-entry {
+        width: 100%;
+      }
+      .field-inline-select-action {
+        width: 100%;
+      }
+      .field-upgrade-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .field-upgrade-row > .btn-primary {
+        width: 100%;
+      }
+      .field-inline-entry .control-field-apply {
+        width: 30px;
+        min-width: 30px;
       }
       .upgrade-journey {
         padding: 15px 14px 14px;
