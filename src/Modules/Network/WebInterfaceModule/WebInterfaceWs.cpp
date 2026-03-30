@@ -17,6 +17,9 @@
 #endif
 
 namespace {
+static constexpr uint32_t kWsMinFreeBytes = 12288U;
+static constexpr uint32_t kWsMinLargestBytes = 3072U;
+
 struct HeapForensicSnapshot {
     uint32_t freeBytes = 0;
     uint32_t minFreeBytes = 0;
@@ -28,7 +31,7 @@ HeapForensicSnapshot captureHeapForensicSnapshot_()
     HeapForensicSnapshot snap{};
     snap.freeBytes = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_8BIT);
     snap.minFreeBytes = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
-    snap.largestFreeBlock = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    snap.largestFreeBlock = snap.freeBytes;
     return snap;
 }
 
@@ -209,11 +212,28 @@ void WebInterfaceModule::onWsLogEvent_(AsyncWebSocket*,
 #endif
 
     if (type == WS_EVT_CONNECT) {
+        ++wsLogConnectCount_;
         if (client) {
-            client->setCloseClientOnQueueFull(true);
+            client->setCloseClientOnQueueFull(false);
             client->keepAlivePeriod(15);
             client->text("[webinterface] logs supervisor connectes");
         }
+        LOGI("wslog connect id=%lu clients=%u connects=%lu",
+             (unsigned long)(client ? client->id() : 0U),
+             (unsigned)wsLog_.count(),
+             (unsigned long)wsLogConnectCount_);
+    } else if (type == WS_EVT_DISCONNECT) {
+        ++wsLogDisconnectCount_;
+        LOGW("wslog disconnect id=%lu clients=%u disconnects=%lu sent=%lu dropped=%lu partial=%lu discarded=%lu coalesced=%lu heap=%lu",
+             (unsigned long)(client ? client->id() : 0U),
+             (unsigned)wsLog_.count(),
+             (unsigned long)wsLogDisconnectCount_,
+             (unsigned long)wsLogSentCount_,
+             (unsigned long)wsLogDropCount_,
+             (unsigned long)wsLogPartialCount_,
+             (unsigned long)wsLogDiscardCount_,
+             (unsigned long)wsLogCoalescedCount_,
+             (unsigned long)ESP.getFreeHeap());
     }
 
 #if FLOW_WEB_HEAP_FORENSICS
@@ -229,6 +249,25 @@ void WebInterfaceModule::onWsLogEvent_(AsyncWebSocket*,
 #endif
 }
 
+bool WebInterfaceModule::acquireRuntimeValuesBodyScratch_()
+{
+    bool acquired = false;
+    portENTER_CRITICAL(&runtimeValuesBodyMux_);
+    if (!runtimeValuesBodyBusy_) {
+        runtimeValuesBodyBusy_ = true;
+        acquired = true;
+    }
+    portEXIT_CRITICAL(&runtimeValuesBodyMux_);
+    return acquired;
+}
+
+void WebInterfaceModule::releaseRuntimeValuesBodyScratch_()
+{
+    portENTER_CRITICAL(&runtimeValuesBodyMux_);
+    runtimeValuesBodyBusy_ = false;
+    portEXIT_CRITICAL(&runtimeValuesBodyMux_);
+}
+
 void WebInterfaceModule::flushLine_(bool force)
 {
     if (lineLen_ == 0) return;
@@ -237,6 +276,14 @@ void WebInterfaceModule::flushLine_(bool force)
     const size_t payloadLen = lineLen_;
     lineBuf_[lineLen_] = '\0';
     if (ws_.count() == 0) {
+        lineLen_ = 0;
+        return;
+    }
+
+    const HeapForensicSnapshot heapSnap = captureHeapForensicSnapshot_();
+    if (heapSnap.freeBytes < kWsMinFreeBytes || heapSnap.largestFreeBlock < kWsMinLargestBytes) {
+        ++wsFlowDropCount_;
+        logWsFlowPressure_("heap_guard");
         lineLen_ = 0;
         return;
     }
@@ -297,5 +344,21 @@ void WebInterfaceModule::logWsFlowPressure_(const char* reason)
          (unsigned long)wsFlowDropCount_,
          (unsigned long)wsFlowPartialCount_,
          (unsigned long)wsFlowDiscardCount_,
+         (unsigned long)ESP.getFreeHeap());
+}
+
+void WebInterfaceModule::logWsLogPressure_(const char* reason)
+{
+    const uint32_t nowMs = millis();
+    if ((nowMs - wsLogLastPressureLogMs_) < 2000U) return;
+    wsLogLastPressureLogMs_ = nowMs;
+    LOGW("wslog pressure reason=%s clients=%u sent=%lu dropped=%lu partial=%lu discarded=%lu coalesced=%lu heap=%lu",
+         reason ? reason : "unknown",
+         (unsigned)wsLog_.count(),
+         (unsigned long)wsLogSentCount_,
+         (unsigned long)wsLogDropCount_,
+         (unsigned long)wsLogPartialCount_,
+         (unsigned long)wsLogDiscardCount_,
+         (unsigned long)wsLogCoalescedCount_,
          (unsigned long)ESP.getFreeHeap());
 }

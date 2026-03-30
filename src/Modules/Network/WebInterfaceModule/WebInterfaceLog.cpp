@@ -6,6 +6,12 @@
 #include "WebInterfaceModule.h"
 
 #include <time.h>
+#include <esp_heap_caps.h>
+
+namespace {
+static constexpr uint32_t kWsLogMinFreeBytes = 12288U;
+static constexpr uint32_t kWsLogMinLargestBytes = 3072U;
+}
 
 bool WebInterfaceModule::isLogByte_(uint8_t c)
 {
@@ -139,6 +145,9 @@ void WebInterfaceModule::onLocalLogSinkWrite_(void* ctx, const LogEntry& e)
     }
 
     if (xQueueSend(self->localLogQueue_, line, 0) != pdTRUE) {
+        ++self->wsLogDropCount_;
+        ++self->wsLogCoalescedCount_;
+        ++self->wsLogPendingSummaryDrops_;
         char dropped[kLocalLogLineMax] = {0};
         (void)xQueueReceive(self->localLogQueue_, dropped, 0);
         (void)xQueueSend(self->localLogQueue_, line, 0);
@@ -150,7 +159,85 @@ void WebInterfaceModule::flushLocalLogQueue_()
     if (!started_ || !localLogQueue_) return;
 
     char line[kLocalLogLineMax] = {0};
-    while (xQueueReceive(localLogQueue_, line, 0) == pdTRUE) {
-        wsLog_.textAll(line);
+    if (wsLog_.count() == 0U) {
+        uint32_t drained = 0U;
+        while (xQueueReceive(localLogQueue_, line, 0) == pdTRUE) {
+            ++drained;
+        }
+        if (drained > 0U) {
+            wsLogDropCount_ += drained;
+            wsLogCoalescedCount_ += drained;
+            wsLogPendingSummaryDrops_ += drained;
+        }
+        return;
+    }
+
+    auto sendLogLine = [&](const char* text) -> bool {
+        if (!text || text[0] == '\0') return true;
+        const uint32_t freeBytes = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        const uint32_t largestBytes = freeBytes;
+        if (freeBytes < kWsLogMinFreeBytes || largestBytes < kWsLogMinLargestBytes) {
+            ++wsLogDropCount_;
+            ++wsLogCoalescedCount_;
+            ++wsLogPendingSummaryDrops_;
+            logWsLogPressure_("heap_guard");
+            return false;
+        }
+        if (!wsLog_.availableForWriteAll()) {
+            ++wsLogDropCount_;
+            ++wsLogCoalescedCount_;
+            ++wsLogPendingSummaryDrops_;
+            logWsLogPressure_("queue_full");
+            return false;
+        }
+        const AsyncWebSocket::SendStatus status = wsLog_.textAll(text);
+        if (status == AsyncWebSocket::ENQUEUED) {
+            ++wsLogSentCount_;
+            return true;
+        }
+        ++wsLogDropCount_;
+        ++wsLogCoalescedCount_;
+        ++wsLogPendingSummaryDrops_;
+        if (status == AsyncWebSocket::PARTIALLY_ENQUEUED) {
+            ++wsLogPartialCount_;
+            logWsLogPressure_("partial_enqueue");
+        } else {
+            ++wsLogDiscardCount_;
+            logWsLogPressure_("discarded");
+        }
+        return false;
+    };
+
+    uint8_t sentBurst = 0U;
+    while (sentBurst < kWsLogFlushBurstMax) {
+        if (wsLogPendingSummaryDrops_ > 0U) {
+            char summary[96] = {0};
+            const uint32_t droppedCount = wsLogPendingSummaryDrops_;
+            const int wrote = snprintf(summary,
+                                       sizeof(summary),
+                                       "[webinterface] logs coalesces: %lu ligne(s) ignoree(s)",
+                                       (unsigned long)droppedCount);
+            if (wrote <= 0 || !sendLogLine(summary)) {
+                break;
+            }
+            wsLogPendingSummaryDrops_ = 0U;
+            ++sentBurst;
+            continue;
+        }
+
+        if (xQueueReceive(localLogQueue_, line, 0) != pdTRUE) {
+            break;
+        }
+        if (!sendLogLine(line)) {
+            uint32_t drained = 0U;
+            while (xQueueReceive(localLogQueue_, line, 0) == pdTRUE) {
+                ++drained;
+            }
+            wsLogDropCount_ += drained;
+            wsLogCoalescedCount_ += drained;
+            wsLogPendingSummaryDrops_ += drained;
+            break;
+        }
+        ++sentBurst;
     }
 }

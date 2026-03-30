@@ -74,6 +74,9 @@ private:
                        size_t len);
     void flushLine_(bool force);
     void logWsFlowPressure_(const char* reason);
+    void logWsLogPressure_(const char* reason);
+    bool acquireRuntimeValuesBodyScratch_();
+    void releaseRuntimeValuesBodyScratch_();
 
     // Log formatting and local sink plumbing
     void flushLocalLogQueue_();
@@ -123,9 +126,14 @@ private:
     static constexpr size_t kLocalLogLineMax = 192;
     static constexpr UBaseType_t kLocalLogQueueLen = 24;
     QueueHandle_t localLogQueue_ = nullptr;
+    static constexpr size_t kRuntimeValuesBodyMax = 2048U;
+    static constexpr uint8_t kWsLogFlushBurstMax = 4U;
 
     char lineBuf_[kLineBufferSize] = {0};
     size_t lineLen_ = 0;
+    char runtimeValuesBodyScratch_[kRuntimeValuesBodyMax + 1U] = {0};
+    portMUX_TYPE runtimeValuesBodyMux_ = portMUX_INITIALIZER_UNLOCKED;
+    volatile bool runtimeValuesBodyBusy_ = false;
     uint32_t wsFlowConnectCount_ = 0;
     uint32_t wsFlowDisconnectCount_ = 0;
     uint32_t wsFlowSentCount_ = 0;
@@ -133,6 +141,15 @@ private:
     uint32_t wsFlowPartialCount_ = 0;
     uint32_t wsFlowDiscardCount_ = 0;
     uint32_t wsFlowLastPressureLogMs_ = 0;
+    uint32_t wsLogConnectCount_ = 0;
+    uint32_t wsLogDisconnectCount_ = 0;
+    uint32_t wsLogSentCount_ = 0;
+    uint32_t wsLogDropCount_ = 0;
+    uint32_t wsLogPartialCount_ = 0;
+    uint32_t wsLogDiscardCount_ = 0;
+    uint32_t wsLogCoalescedCount_ = 0;
+    uint32_t wsLogLastPressureLogMs_ = 0;
+    uint32_t wsLogPendingSummaryDrops_ = 0;
 
     WebInterfaceService webInterfaceSvc_{
         ServiceBinding::bind<&WebInterfaceModule::setPaused_>,

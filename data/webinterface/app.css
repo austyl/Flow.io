@@ -387,14 +387,29 @@
       margin-bottom: 12px;
     }
     .measure-domain-divider {
-      margin: 12px 0;
+      margin: 0;
+    }
+    .measure-results-shell {
+      display: grid;
+      gap: 12px;
+    }
+    .measure-status {
+      margin-top: 0;
+      background: rgba(247, 250, 252, 0.9);
+    }
+    .measure-status-grid {
+      margin-top: 0;
+    }
+    .measure-status-grid .status-card {
+      background: #FBFDFF;
+      box-shadow: 0 8px 20px rgba(16, 43, 76, 0.05);
     }
     .measure-domain-empty {
       grid-column: 1 / -1;
       border: 1px dashed #C9D5E0;
       border-radius: 18px;
       padding: 20px 18px;
-      background: #F5F8FB;
+      background: #FFFFFF;
       color: #5D7288;
       font-size: 14px;
       line-height: 1.5;
@@ -838,21 +853,21 @@
       padding-right: 44px;
     }
     .field-inline-select-action {
-      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
       width: 100%;
       min-width: 0;
     }
     .field-inline-select-action select {
       width: 100%;
-      padding-left: 44px;
-      padding-right: 30px;
+      min-width: 0;
     }
     .field-inline-refresh {
-      position: absolute;
-      left: 6px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 1;
+      position: static;
+      transform: none;
+      flex: 0 0 auto;
     }
     .field-inline-entry .control-field-apply {
       position: absolute;
@@ -869,9 +884,17 @@
       align-items: center;
       gap: 8px;
       min-width: 0;
+      flex-wrap: nowrap;
+    }
+    .upgrade-form-grid > .field > .field-inline-entry,
+    .field-upgrade-row > .field-inline-entry {
+      flex: 0 1 50ch;
+      width: min(100%, 50ch);
+      min-width: 0;
     }
     .field-upgrade-row > .btn-primary {
       flex: 0 0 auto;
+      min-width: 54px;
       white-space: nowrap;
     }
     .field-switch {
@@ -879,40 +902,87 @@
       align-items: center;
       min-height: 42px;
     }
+    .config-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .config-section-head h2 {
+      margin-bottom: 0;
+    }
+    .wifi-section-head {
+      min-height: 34px;
+    }
+    .wifi-section-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      color: var(--panel-frame-text);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
     .password-wrap { position: relative; }
-    .password-wrap input { width: 100%; padding-right: 46px; }
+    .password-wrap input { width: 100%; padding-right: 88px; }
     .password-toggle {
       position: absolute;
       right: 7px;
       top: 50%;
       transform: translateY(-50%);
-      width: 30px;
+      min-width: 62px;
       height: 30px;
-      border: 0;
-      border-radius: 8px;
-      padding: 0;
-      background: transparent;
+      border: 1px solid #B8C7D6;
+      border-radius: 9px;
+      padding: 0 10px;
+      background: #F6FAFD;
+      color: #102B4C;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      opacity: 0.72;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.03em;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
     }
-    .password-toggle:hover { background: rgba(0,194,209,0.16); opacity: 1; }
-    .password-toggle:focus-visible { outline: 2px solid rgba(0,194,209,0.5); }
+    .password-toggle:hover {
+      background: rgba(0,194,209,0.14);
+      border-color: rgba(0,194,209,0.5);
+    }
+    .password-toggle:focus-visible {
+      outline: 2px solid rgba(0,194,209,0.5);
+      border-color: rgba(0,194,209,0.5);
+    }
     input, select {
+      box-sizing: border-box;
       width: 100%;
       max-width: 100%;
       min-width: 0;
+      min-height: 42px;
       border-radius: 12px;
       border: 1px solid #B8C7D6;
       background: #FFFFFF;
       color: #102B4C;
       font: inherit;
+      line-height: 1.2;
       padding: 10px 12px;
+    }
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      padding-right: 38px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #6B7F92 50%),
+        linear-gradient(135deg, #6B7F92 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
     }
     #wifiSsidList {
       white-space: nowrap;
@@ -999,6 +1069,7 @@
     }
     .upgrade-journey {
       margin-top: 12px;
+      width: min(100%, 440px);
       padding: 18px 18px 16px;
       border-radius: 16px;
       background: #FFFFFF;
@@ -1224,6 +1295,8 @@
       border-radius: 14px;
       padding: 12px;
       background: var(--panel-shell-bg);
+      display: flex;
+      flex-direction: column;
     }
     .system-action h3 {
       margin: 0 0 6px 0;
@@ -1235,6 +1308,13 @@
       margin: 0 0 10px 0;
       font-size: 13px;
       color: var(--panel-frame-text);
+    }
+    .system-action-actions {
+      margin-top: auto;
+      justify-content: flex-end;
+    }
+    .system-reboot-btn {
+      min-width: 108px;
     }
     .control-card {
       border: none;
@@ -1817,15 +1897,20 @@
       .field-inline-entry {
         width: 100%;
       }
+      .config-section-head {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .wifi-section-toggle {
+        width: 100%;
+        justify-content: space-between;
+      }
       .field-inline-select-action {
         width: 100%;
+        grid-template-columns: minmax(0, 1fr) auto;
       }
       .field-upgrade-row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .field-upgrade-row > .btn-primary {
-        width: 100%;
+        align-items: center;
       }
       .field-inline-entry .control-field-apply {
         width: 30px;

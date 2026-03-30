@@ -353,18 +353,28 @@ void drawStaticLayout_(SupervisorSt7789& d, bool swapBytes, int16_t w, int16_t h
 
 void drawHeaderWifi_(SupervisorSt7789& d, bool swapBytes, bool hasRssi, int32_t rssiDbm)
 {
-    d.fillRect(0, 0, 74, kHeaderH, panelColor_(swapBytes, kColorHeader));
+    d.fillRect(0, 0, 62, kHeaderH, panelColor_(swapBytes, kColorHeader));
     const uint8_t wifiBars = hasRssi ? barsFromPct_(pctFromRssi_(rssiDbm)) : 0U;
-    drawWifiBars_(d, swapBytes, 14, 10, wifiBars);
+    drawWifiBars_(d, swapBytes, 8, 12, wifiBars);
+}
+
+void drawHeaderLogo_(SupervisorSt7789& d, bool swapBytes, int16_t w)
+{
+    const int16_t logoW = 116;
+    const int16_t logoH = 26;
+    const int16_t logoX = (int16_t)((w - logoW) / 2);
+    const int16_t logoY = (int16_t)((kHeaderH - logoH) / 2);
+    d.fillRect((int16_t)(logoX - 4), 0, (int16_t)(logoW + 8), kHeaderH, panelColor_(swapBytes, kColorHeader));
+    drawLogoWordmark_(d, swapBytes, logoX, logoY, logoW, logoH);
 }
 
 void drawHeaderTime_(SupervisorSt7789& d, bool swapBytes, int16_t w, const char* timeTxt)
 {
-    static constexpr int16_t kTimeAreaW = 116;
+    static constexpr int16_t kTimeAreaW = 98;
     d.fillRect((int16_t)(w - kTimeAreaW), 0, kTimeAreaW, kHeaderH, panelColor_(swapBytes, kColorHeader));
-    setGfxFont_(d, swapBytes, &FreeSans18pt7b, kColorText, kColorHeader);
+    setGfxFont_(d, swapBytes, &FreeSansBold12pt7b, kColorText, kColorHeader);
     const int16_t tw = gfxTextWidth_(d, timeTxt ? timeTxt : "--:--");
-    d.setCursor((int16_t)(w - tw - 12), 34);
+    d.setCursor((int16_t)(w - tw - 12), 31);
     d.print(timeTxt ? timeTxt : "--:--");
 }
 
@@ -402,7 +412,7 @@ void drawSystemStatus_(SupervisorSt7789& d,
     }
 
     const char* label = (state == 1U) ? "MQTT off" : "Flow indispo";
-    setGfxFont_(d, swapBytes, &FreeSansBold9pt7b, systemStateColor_(state), kColorGaugeCardBg);
+    setGfxFont_(d, swapBytes, &FreeSans9pt7b, systemStateColor_(state), kColorGaugeCardBg);
     const int16_t tw = gfxTextWidth_(d, label);
     d.setCursor((int16_t)(x + ((w - tw) / 2)), (int16_t)(gfxBaselineCenteredInBox_(d, label, y, 24) + 1));
     d.print(label);
@@ -666,16 +676,13 @@ void drawMeasuresBody_(SupervisorSt7789& d, bool swapBytes, int16_t w, int16_t h
     const int16_t heroX = kSidePad;
     const int16_t heroW = (int16_t)(w - (2 * kSidePad));
     const uint8_t systemState = systemState_(vm);
-    const int16_t heroWordmarkX = (int16_t)(heroX + 10);
-    const int16_t heroWordmarkW = 119;
-    const int16_t heroWordmarkH = 27;
-    const int16_t heroWordmarkY = (int16_t)(heroY + ((heroH - heroWordmarkH) / 2));
-    const int16_t heroStatusX = (int16_t)(heroWordmarkX + heroWordmarkW + 10);
-    const int16_t heroStatusW = (int16_t)((heroX + heroW) - heroStatusX - 10);
+    const int16_t heroLabelX = (int16_t)(heroX + 14);
+    const int16_t heroStatusX = (int16_t)(heroLabelX + 64);
+    const int16_t heroStatusW = (int16_t)((heroX + heroW) - heroStatusX - 12);
 
     d.fillRoundRect(heroX, heroY, heroW, heroH, 12, panelColor_(swapBytes, kColorGaugeCardBg));
     d.drawRoundRect(heroX, heroY, heroW, heroH, 12, panelColor_(swapBytes, kColorCardBorder));
-    drawLogoWordmark_(d, swapBytes, heroWordmarkX, heroWordmarkY, heroWordmarkW, heroWordmarkH);
+    drawGfxText_(d, swapBytes, &FreeSans9pt7b, kColorMuted, kColorGaugeCardBg, heroLabelX, (int16_t)(heroY + 29), "Statut:");
     drawSystemStatus_(d,
                       swapBytes,
                       heroStatusX,
@@ -872,6 +879,7 @@ bool St7789SupervisorDriver::render(const SupervisorHmiViewModel& vm, bool force
     const bool pageChanged = (lastPage_ != (uint8_t)page);
     if (!layoutDrawn_ || force || pageChanged) {
         drawStaticLayout_(display_, swapBytes, w, h, page);
+        drawHeaderLogo_(display_, swapBytes, w);
         layoutDrawn_ = true;
         lastPage_ = (uint8_t)page;
         lastTime_[0] = '\0';

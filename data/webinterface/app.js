@@ -14,6 +14,7 @@
     const upgradeStatusPollDoneMs = 7000;
     const upgradeStatusPollIdleMs = 15000;
     const upgradeStatusPollErrorMs = 10000;
+    const rebootActionDelaySeconds = 5;
     const deferredMenuAssetStartDelayMs = 520;
     const deferredMenuAssetStepMs = 140;
     const deferredMenuAssetReloadDelayMs = 1400;
@@ -31,6 +32,7 @@
     let deferredVisualAssetsScheduled = false;
     let menuAssetsActivated = false;
     let deferredMenuAssetsArmed = false;
+    const pendingSystemActionCountdowns = new Map();
 
     function applyMenuIconPreference(hidden) {
       hideMenuSvg = !!hidden;
@@ -97,9 +99,22 @@
       return { res, data };
     }
 
+    function extractApiErrorMessage(data, fallback) {
+      if (!data || typeof data !== 'object') return fallback;
+      const err = data.err;
+      if (!err || typeof err !== 'object') return fallback;
+
+      const msg = typeof err.msg === 'string' ? err.msg.trim() : '';
+      const code = typeof err.code === 'string' ? err.code.trim() : '';
+      const where = typeof err.where === 'string' ? err.where.trim() : '';
+      const detail = msg || [code, where].filter(Boolean).join(' @ ');
+      if (!detail) return fallback;
+      return fallback ? (fallback + ' : ' + detail) : detail;
+    }
+
     function ensureOkJsonResponse(response, message) {
       if (!response.res.ok || !response.data || response.data.ok !== true) {
-        throw new Error(message);
+        throw new Error(extractApiErrorMessage(response.data, message));
       }
       return response.data;
     }
@@ -803,8 +818,8 @@
       line.focus();
     }
 
-    const iconeOeilOuvert = 'VOIR';
-    const iconeOeilBarre = 'MASQ';
+    const iconeOeilOuvert = 'Cacher';
+    const iconeOeilBarre = 'Voir';
 
     function mettreAJourEtatVisibiliteMotDePasse(inputEl, toggleBtn, labelAfficher, labelMasquer) {
       if (!inputEl || !toggleBtn) return;
@@ -2886,7 +2901,7 @@
       if (!activeDomains.length) {
         const empty = document.createElement('div');
         empty.className = 'measure-domain-empty';
-        empty.textContent = 'Activez un badge pour charger un domaine. Aucun acces I2C n est lance tant qu aucun badge n est clique.';
+        empty.textContent = 'Activez un badge pour charger un domaine.';
         poolMeasuresGrid.appendChild(empty);
         return;
       }
@@ -4220,6 +4235,53 @@
       }
     }
 
+    function clearPendingSystemAction(button) {
+      if (!button) return;
+      const pending = pendingSystemActionCountdowns.get(button);
+      if (pending && pending.timer) {
+        clearTimeout(pending.timer);
+      }
+      pendingSystemActionCountdowns.delete(button);
+      button.disabled = false;
+      button.textContent = 'Redémarrer';
+    }
+
+    function startDelayedSystemAction(button, countdownLabel, actionRunner, failurePrefix) {
+      if (!button || typeof actionRunner !== 'function') return;
+      clearPendingSystemAction(button);
+
+      let remaining = rebootActionDelaySeconds;
+      button.disabled = true;
+
+      const tick = () => {
+        button.textContent = remaining + ' s';
+        systemStatusText.textContent = countdownLabel + ' dans ' + remaining + ' s...';
+
+        if (remaining <= 1) {
+          pendingSystemActionCountdowns.delete(button);
+          runAsyncTaskSafely(async () => {
+            button.textContent = '...';
+            try {
+              await actionRunner();
+            } catch (err) {
+              clearPendingSystemAction(button);
+              systemStatusText.textContent = failurePrefix + ' : ' + err;
+              return;
+            }
+            button.textContent = 'Redémarrer';
+            button.disabled = false;
+          });
+          return;
+        }
+
+        remaining -= 1;
+        const timer = setTimeout(tick, 1000);
+        pendingSystemActionCountdowns.set(button, { timer });
+      };
+
+      tick();
+    }
+
     function initUpgradeBindings() {
       upgradeConfigFieldDefs.forEach((def) => {
         if (!def || !def.input || !def.button) return;
@@ -4291,19 +4353,21 @@
     }
 
     function initSystemBindings() {
-      bindClickAction(rebootSupervisorBtn, async () => {
-        try {
-          await callSystemAction('supervisor', 'reboot');
-        } catch (err) {
-          systemStatusText.textContent = 'Redémarrage du Superviseur échoué : ' + err;
-        }
+      bindClickAction(rebootSupervisorBtn, () => {
+        startDelayedSystemAction(
+          rebootSupervisorBtn,
+          'Redémarrage du Superviseur',
+          () => callSystemAction('supervisor', 'reboot'),
+          'Redémarrage du Superviseur échoué'
+        );
       });
-      bindClickAction(rebootFlowBtn, async () => {
-        try {
-          await callSystemAction('flow', 'reboot');
-        } catch (err) {
-          systemStatusText.textContent = 'Redémarrage de Flow.IO échoué : ' + err;
-        }
+      bindClickAction(rebootFlowBtn, () => {
+        startDelayedSystemAction(
+          rebootFlowBtn,
+          'Redémarrage de Flow.IO',
+          () => callSystemAction('flow', 'reboot'),
+          'Redémarrage de Flow.IO échoué'
+        );
       });
       bindClickAction(flowFactoryResetBtn, async () => {
         if (!confirm('Confirmer la réinitialisation usine de Flow.IO ? Cette action efface la configuration distante.')) return;

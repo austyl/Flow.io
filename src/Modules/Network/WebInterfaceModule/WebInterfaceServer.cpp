@@ -15,6 +15,7 @@
 #include "Core/ModuleLog.h"
 
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <time.h>
 #include <Arduino.h>
@@ -74,18 +75,45 @@ static void printJsonEscaped_(Print& out, const char* s)
     out.print('\"');
 }
 
-static bool parseBoolParam_(const String& in, bool fallback)
+static bool parseBoolParam_(const char* in, bool fallback)
 {
-    if (in.length() == 0) return fallback;
-    if (in.equalsIgnoreCase("1") || in.equalsIgnoreCase("true") || in.equalsIgnoreCase("yes") ||
-        in.equalsIgnoreCase("on")) {
+    if (!in || in[0] == '\0') return fallback;
+    if (strcasecmp(in, "1") == 0 || strcasecmp(in, "true") == 0 || strcasecmp(in, "yes") == 0 ||
+        strcasecmp(in, "on") == 0) {
         return true;
     }
-    if (in.equalsIgnoreCase("0") || in.equalsIgnoreCase("false") || in.equalsIgnoreCase("no") ||
-        in.equalsIgnoreCase("off")) {
+    if (strcasecmp(in, "0") == 0 || strcasecmp(in, "false") == 0 || strcasecmp(in, "no") == 0 ||
+        strcasecmp(in, "off") == 0) {
         return false;
     }
     return fallback;
+}
+
+static bool copyRequestParamValue_(AsyncWebServerRequest* request,
+                                   const char* name,
+                                   bool post,
+                                   char* out,
+                                   size_t outLen,
+                                   const char* fallback = "")
+{
+    if (!out || outLen == 0U) return false;
+    out[0] = '\0';
+    if (!request || !name) {
+        snprintf(out, outLen, "%s", fallback ? fallback : "");
+        return false;
+    }
+    if (!request->hasParam(name, post)) {
+        snprintf(out, outLen, "%s", fallback ? fallback : "");
+        return false;
+    }
+    const AsyncWebParameter* param = request->getParam(name, post);
+    if (!param) {
+        snprintf(out, outLen, "%s", fallback ? fallback : "");
+        return false;
+    }
+    const String value = param->value();
+    snprintf(out, outLen, "%s", value.c_str());
+    return true;
 }
 
 template <size_t N>
@@ -100,8 +128,11 @@ constexpr uint32_t kHttpLatencyInfoMs = 40U;
 constexpr uint32_t kHttpLatencyWarnMs = 120U;
 constexpr uint32_t kHttpLatencyFlowCfgInfoMs = 200U;
 constexpr uint32_t kHttpLatencyFlowCfgWarnMs = 900U;
+constexpr uint32_t kHeapGuardAssetFreeBytesMinor = 12288U;
+constexpr uint32_t kHeapGuardAssetFreeBytesMajor = 15360U;
 
 const char* httpMethodName_(uint8_t method);
+void addNoCacheHeaders_(AsyncWebServerResponse* response);
 
 struct HeapForensicSnapshot {
     uint32_t freeBytes = 0;
@@ -129,6 +160,169 @@ const char* pathBaseName_(const char* path)
     if (!path || path[0] == '\0') return "-";
     const char* slash = strrchr(path, '/');
     return (slash && slash[1] != '\0') ? (slash + 1) : path;
+}
+
+bool hasPathSuffix_(const char* path, const char* suffix)
+{
+    if (!path || !suffix) return false;
+    const size_t pathLen = strlen(path);
+    const size_t suffixLen = strlen(suffix);
+    return pathLen >= suffixLen && strcmp(path + (pathLen - suffixLen), suffix) == 0;
+}
+
+bool isMinorWebAssetPath_(const char* path)
+{
+    return hasPathSuffix_(path, ".svg") || hasPathSuffix_(path, ".png") || hasPathSuffix_(path, ".ico");
+}
+
+bool shouldRejectAssetByFreeHeap_(const char* assetPath, uint32_t* freeBytesOut = nullptr)
+{
+    const uint32_t freeBytes = (uint32_t)ESP.getFreeHeap();
+    if (freeBytesOut) *freeBytesOut = freeBytes;
+    const uint32_t minFreeBytes = isMinorWebAssetPath_(assetPath)
+        ? kHeapGuardAssetFreeBytesMinor
+        : kHeapGuardAssetFreeBytesMajor;
+    return freeBytes < minFreeBytes;
+}
+
+void appendJsonFieldName_(Print& out, const char* key)
+{
+    out.print(",\"");
+    out.print(key ? key : "");
+    out.print("\":");
+}
+
+void appendJsonFieldValue_(Print& out, const char* key, JsonVariantConst value)
+{
+    appendJsonFieldName_(out, key);
+    serializeJson(value, out);
+}
+
+bool sendFlowStatusCompactResponse_(AsyncWebServerRequest* request, const FlowCfgRemoteService* flowCfgSvc)
+{
+    if (!request || !flowCfgSvc || !flowCfgSvc->runtimeStatusDomainJson) return false;
+
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    addNoCacheHeaders_(response);
+    response->print("{\"ok\":true");
+
+    char domainBuf[640] = {0};
+    StaticJsonDocument<768> domainDoc;
+    bool anyDomainOk = false;
+
+    auto loadDomain = [&](FlowStatusDomain domain) -> JsonObjectConst {
+        memset(domainBuf, 0, sizeof(domainBuf));
+        domainDoc.clear();
+        if (!flowCfgSvc->runtimeStatusDomainJson(flowCfgSvc->ctx, domain, domainBuf, sizeof(domainBuf))) {
+            return JsonObjectConst();
+        }
+        const DeserializationError err = deserializeJson(domainDoc, domainBuf);
+        if (err || !domainDoc.is<JsonObjectConst>()) {
+            domainDoc.clear();
+            return JsonObjectConst();
+        }
+        JsonObjectConst root = domainDoc.as<JsonObjectConst>();
+        if (!(root["ok"] | false)) {
+            domainDoc.clear();
+            return JsonObjectConst();
+        }
+        anyDomainOk = true;
+        return root;
+    };
+
+    {
+        JsonObjectConst root = loadDomain(FlowStatusDomain::System);
+        if (!root.isNull()) {
+            appendJsonFieldName_(*response, "fw");
+            printJsonEscaped_(*response, root["fw"] | "");
+            appendJsonFieldValue_(*response, "upms", root["upms"]);
+            response->print(",\"heap\":{");
+            JsonObjectConst heapIn = root["heap"];
+            response->print("\"free\":");
+            serializeJson(heapIn["free"], *response);
+            appendJsonFieldValue_(*response, "min_free", heapIn["min_free"]);
+            response->print('}');
+        }
+    }
+
+    {
+        JsonObjectConst root = loadDomain(FlowStatusDomain::Wifi);
+        if (!root.isNull()) {
+            JsonObjectConst wifiIn = root["wifi"];
+            response->print(",\"wifi\":{");
+            response->print("\"rdy\":");
+            serializeJson(wifiIn["rdy"], *response);
+            appendJsonFieldName_(*response, "ip");
+            printJsonEscaped_(*response, wifiIn["ip"] | "");
+            appendJsonFieldValue_(*response, "hrss", wifiIn["hrss"]);
+            appendJsonFieldValue_(*response, "rssi", wifiIn["rssi"]);
+            response->print('}');
+        }
+    }
+
+    {
+        JsonObjectConst root = loadDomain(FlowStatusDomain::Mqtt);
+        if (!root.isNull()) {
+            JsonObjectConst mqttIn = root["mqtt"];
+            response->print(",\"mqtt\":{");
+            response->print("\"rdy\":");
+            serializeJson(mqttIn["rdy"], *response);
+            appendJsonFieldName_(*response, "srv");
+            printJsonEscaped_(*response, mqttIn["srv"] | "");
+            appendJsonFieldValue_(*response, "rxdrp", mqttIn["rxdrp"]);
+            appendJsonFieldValue_(*response, "prsf", mqttIn["prsf"]);
+            appendJsonFieldValue_(*response, "hndf", mqttIn["hndf"]);
+            appendJsonFieldValue_(*response, "ovr", mqttIn["ovr"]);
+            response->print('}');
+        }
+    }
+
+    {
+        JsonObjectConst root = loadDomain(FlowStatusDomain::Pool);
+        if (!root.isNull()) {
+            JsonObjectConst poolIn = root["pool"];
+            response->print(",\"pool\":{");
+            response->print("\"has\":");
+            serializeJson(poolIn["has"], *response);
+            appendJsonFieldValue_(*response, "auto", poolIn["auto"]);
+            appendJsonFieldValue_(*response, "wint", poolIn["wint"]);
+            appendJsonFieldValue_(*response, "wat", poolIn["wat"]);
+            appendJsonFieldValue_(*response, "air", poolIn["air"]);
+            appendJsonFieldValue_(*response, "ph", poolIn["ph"]);
+            appendJsonFieldValue_(*response, "orp", poolIn["orp"]);
+            appendJsonFieldValue_(*response, "fil", poolIn["fil"]);
+            appendJsonFieldValue_(*response, "php", poolIn["php"]);
+            appendJsonFieldValue_(*response, "clp", poolIn["clp"]);
+            appendJsonFieldValue_(*response, "rbt", poolIn["rbt"]);
+            response->print('}');
+        }
+    }
+
+    {
+        JsonObjectConst root = loadDomain(FlowStatusDomain::I2c);
+        if (!root.isNull()) {
+            JsonObjectConst i2cIn = root["i2c"];
+            response->print(",\"i2c\":{");
+            response->print("\"lnk\":");
+            serializeJson(i2cIn["lnk"], *response);
+            appendJsonFieldValue_(*response, "seen", i2cIn["seen"]);
+            appendJsonFieldValue_(*response, "req", i2cIn["req"]);
+            appendJsonFieldValue_(*response, "breq", i2cIn["breq"]);
+            appendJsonFieldValue_(*response, "ago", i2cIn["ago"]);
+            response->print('}');
+        }
+    }
+
+    if (!anyDomainOk) {
+        delete response;
+        request->send(500, "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.status\"}}");
+        return false;
+    }
+
+    response->print('}');
+    request->send(response);
+    return true;
 }
 
 void fillSpiffsAssetForensicMeta_(SpiffsAssetForensicMeta* out,
@@ -236,25 +430,26 @@ int flowCfgApplyHttpStatus_(const char* ackJson)
     return 500;
 }
 
-bool parseFlowStatusDomainParam_(const String& raw, FlowStatusDomain& domainOut)
+bool parseFlowStatusDomainParam_(const char* raw, FlowStatusDomain& domainOut)
 {
-    if (raw.equalsIgnoreCase("system")) {
+    if (!raw || raw[0] == '\0') return false;
+    if (strcasecmp(raw, "system") == 0) {
         domainOut = FlowStatusDomain::System;
         return true;
     }
-    if (raw.equalsIgnoreCase("wifi")) {
+    if (strcasecmp(raw, "wifi") == 0) {
         domainOut = FlowStatusDomain::Wifi;
         return true;
     }
-    if (raw.equalsIgnoreCase("mqtt")) {
+    if (strcasecmp(raw, "mqtt") == 0) {
         domainOut = FlowStatusDomain::Mqtt;
         return true;
     }
-    if (raw.equalsIgnoreCase("i2c")) {
+    if (strcasecmp(raw, "i2c") == 0) {
         domainOut = FlowStatusDomain::I2c;
         return true;
     }
-    if (raw.equalsIgnoreCase("pool")) {
+    if (strcasecmp(raw, "pool") == 0) {
         domainOut = FlowStatusDomain::Pool;
         return true;
     }
@@ -656,7 +851,7 @@ struct HttpLatencyScope {
 
         const char* method = req ? httpMethodName_(req->method()) : "?";
         const uint32_t heapFree = (uint32_t)ESP.getFreeHeap();
-        const uint32_t heapLargest = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+        const uint32_t heapLargest = heapFree;
         if (elapsedMs >= warnMs) {
             LOGW("HTTP slow %s %s latency=%lums heap=%lu largest=%lu",
                  method,
@@ -770,11 +965,22 @@ void WebInterfaceModule::startServer_()
                const char* contentType,
                bool cacheAware,
                const char* gzipOverridePath = nullptr,
-               SpiffsAssetForensicMeta* forensicMeta = nullptr) -> AsyncWebServerResponse* {
+               SpiffsAssetForensicMeta* forensicMeta = nullptr,
+               bool* heapRejected = nullptr) -> AsyncWebServerResponse* {
         if (!request || !assetPath || !contentType || !spiffsReady_) return nullptr;
+        if (heapRejected) *heapRejected = false;
 
         const size_t assetPathLen = strlen(assetPath);
         if (assetPathLen == 0U || assetPathLen >= 112U) return nullptr;
+
+        uint32_t freeBytes = 0U;
+        if (shouldRejectAssetByFreeHeap_(assetPath, &freeBytes)) {
+            if (heapRejected) *heapRejected = true;
+            LOGW("Web asset busy path=%s free=%lu",
+                 assetPath,
+                 (unsigned long)freeBytes);
+            return nullptr;
+        }
 
 #if FLOW_WEB_HEAP_FORENSICS
         const uint32_t forensicStartUs = micros();
@@ -858,7 +1064,7 @@ void WebInterfaceModule::startServer_()
         }
         request->send(SPIFFS, "/assets/Logos_Favicon.png", "image/png");
     });
-    auto webInterfaceLandingUrl = [this]() -> String {
+    auto webInterfaceLandingUrl = [this]() -> const char* {
         NetworkAccessMode mode = NetworkAccessMode::None;
         if (!netAccessSvc_ && services_) {
             netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
@@ -869,8 +1075,8 @@ void WebInterfaceModule::startServer_()
             mode = NetworkAccessMode::Station;
         }
         return (mode == NetworkAccessMode::AccessPoint)
-            ? String("/webinterface?page=page-system")
-            : String("/webinterface");
+            ? "/webinterface?page=page-system"
+            : "/webinterface";
     };
 
     server_.on("/", HTTP_GET, [webInterfaceLandingUrl](AsyncWebServerRequest* request) {
@@ -879,30 +1085,33 @@ void WebInterfaceModule::startServer_()
 
     server_.on("/webinterface/app.css", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
-            beginSpiffsAssetResponse(request, "/webinterface/app.css", "text/css", true, nullptr, &forensicMeta);
+            beginSpiffsAssetResponse(request, "/webinterface/app.css", "text/css", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
-            request->send(404, "text/plain", "Not found");
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
             return;
         }
         sendPreparedAssetResponse(request, response, &forensicMeta);
     });
     server_.on("/webinterface/app.js", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
-            beginSpiffsAssetResponse(request, "/webinterface/app.js", "application/javascript", true, nullptr, &forensicMeta);
+            beginSpiffsAssetResponse(request, "/webinterface/app.js", "application/javascript", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
-            request->send(404, "text/plain", "Not found");
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
             return;
         }
         sendPreparedAssetResponse(request, response, &forensicMeta);
     });
     server_.on("/webinterface/runtimeui.json", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
-            beginSpiffsAssetResponse(request, "/webinterface/runtimeui.json", "application/json", true, nullptr, &forensicMeta);
+            beginSpiffsAssetResponse(request, "/webinterface/runtimeui.json", "application/json", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
-            request->send(404, "text/plain", "Not found");
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
             return;
         }
         sendPreparedAssetResponse(request, response, &forensicMeta);
@@ -910,10 +1119,11 @@ void WebInterfaceModule::startServer_()
     auto registerWebSvgRoute = [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](const char* assetPath) {
         server_.on(assetPath, HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse, assetPath](AsyncWebServerRequest* request) {
             SpiffsAssetForensicMeta forensicMeta{};
+            bool heapRejected = false;
             AsyncWebServerResponse* response =
-                beginSpiffsAssetResponse(request, assetPath, "image/svg+xml", true, nullptr, &forensicMeta);
+                beginSpiffsAssetResponse(request, assetPath, "image/svg+xml", true, nullptr, &forensicMeta, &heapRejected);
             if (!response) {
-                request->send(404, "text/plain", "Not found");
+                request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
                 return;
             }
             sendPreparedAssetResponse(request, response, &forensicMeta);
@@ -928,11 +1138,16 @@ void WebInterfaceModule::startServer_()
     registerWebSvgRoute("/webinterface/i/u.svg");
     server_.on("/webinterface/cfgdocs.fr.json", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
             beginSpiffsAssetResponse(
-                request, "/webinterface/cfgdocs.fr.json", "application/json", true, "/webinterface/cfgdocs.jz", &forensicMeta);
+                request, "/webinterface/cfgdocs.fr.json", "application/json", true, "/webinterface/cfgdocs.jz", &forensicMeta, &heapRejected);
         if (response) {
             sendPreparedAssetResponse(request, response, &forensicMeta);
+            return;
+        }
+        if (heapRejected) {
+            request->send(503, "application/json", "{\"ok\":false,\"err\":{\"code\":\"Busy\",\"where\":\"cfgdocs\"}}");
             return;
         }
         AsyncWebServerResponse* fallbackResponse =
@@ -942,11 +1157,16 @@ void WebInterfaceModule::startServer_()
     });
     server_.on("/webinterface/cfgmods.fr.json", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
             beginSpiffsAssetResponse(
-                request, "/webinterface/cfgmods.fr.json", "application/json", true, "/webinterface/cfgmods.jz", &forensicMeta);
+                request, "/webinterface/cfgmods.fr.json", "application/json", true, "/webinterface/cfgmods.jz", &forensicMeta, &heapRejected);
         if (response) {
             sendPreparedAssetResponse(request, response, &forensicMeta);
+            return;
+        }
+        if (heapRejected) {
+            request->send(503, "application/json", "{\"ok\":false,\"err\":{\"code\":\"Busy\",\"where\":\"cfgmods\"}}");
             return;
         }
         AsyncWebServerResponse* fallbackResponse =
@@ -998,10 +1218,13 @@ void WebInterfaceModule::startServer_()
         }
         if (spiffsReady_ && SPIFFS.exists("/webinterface/index.html")) {
             SpiffsAssetForensicMeta forensicMeta{};
+            bool heapRejected = false;
             AsyncWebServerResponse* response =
-                beginSpiffsAssetResponse(request, "/webinterface/index.html", "text/html", false, nullptr, &forensicMeta);
+                beginSpiffsAssetResponse(request, "/webinterface/index.html", "text/html", false, nullptr, &forensicMeta, &heapRejected);
             if (!response) {
-                request->send(500, "text/plain", "Failed to load web interface");
+                request->send(heapRejected ? 503 : 500,
+                              "text/plain",
+                              heapRejected ? "Busy" : "Failed to load web interface");
                 return;
             }
             sendPreparedAssetResponse(request, response, &forensicMeta);
@@ -1125,41 +1348,43 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String hostStr;
-        String flowStr;
-        String supStr;
-        String nxStr;
-        String spiffsStr;
-        if (request->hasParam("update_host", true)) {
-            hostStr = request->getParam("update_host", true)->value();
-        }
-        if (request->hasParam("flowio_path", true)) {
-            flowStr = request->getParam("flowio_path", true)->value();
-        }
-        if (request->hasParam("supervisor_path", true)) {
-            supStr = request->getParam("supervisor_path", true)->value();
-        }
-        if (request->hasParam("nextion_path", true)) {
-            nxStr = request->getParam("nextion_path", true)->value();
-        }
+        char hostStr[192] = {0};
+        char flowStr[192] = {0};
+        char supStr[192] = {0};
+        char nxStr[192] = {0};
+        char spiffsStr[192] = {0};
+        const bool hasHost = copyRequestParamValue_(request, "update_host", true, hostStr, sizeof(hostStr), "");
+        const bool hasFlow = copyRequestParamValue_(request, "flowio_path", true, flowStr, sizeof(flowStr), "");
+        const bool hasSupervisor =
+            copyRequestParamValue_(request, "supervisor_path", true, supStr, sizeof(supStr), "");
+        const bool hasNextion = copyRequestParamValue_(request, "nextion_path", true, nxStr, sizeof(nxStr), "");
+        bool hasSpiffs = false;
         if (request->hasParam("spiffs_path", true)) {
-            spiffsStr = request->getParam("spiffs_path", true)->value();
+            hasSpiffs = copyRequestParamValue_(request, "spiffs_path", true, spiffsStr, sizeof(spiffsStr), "");
         } else if (request->hasParam("cfgdocs_path", true)) {
-            spiffsStr = request->getParam("cfgdocs_path", true)->value();
+            hasSpiffs = copyRequestParamValue_(request, "cfgdocs_path", true, spiffsStr, sizeof(spiffsStr), "");
         }
 
         char err[96] = {0};
         if (!fwUpdateSvc_->setConfig(fwUpdateSvc_->ctx,
-                                     hostStr.c_str(),
-                                     flowStr.c_str(),
-                                     supStr.c_str(),
-                                     nxStr.c_str(),
-                                     spiffsStr.c_str(),
+                                     hasHost ? hostStr : nullptr,
+                                     hasFlow ? flowStr : nullptr,
+                                     hasSupervisor ? supStr : nullptr,
+                                     hasNextion ? nxStr : nullptr,
+                                     hasSpiffs ? spiffsStr : nullptr,
                                      err,
                                      sizeof(err))) {
+            sanitizeJsonString_(err);
+            char out[288] = {0};
+            const int n = snprintf(out,
+                                   sizeof(out),
+                                   "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.set_config\",\"msg\":\"%s\"}}",
+                                   err[0] ? err : "failed");
             request->send(409,
                           "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.set_config\"}}");
+                          (n > 0 && (size_t)n < sizeof(out))
+                              ? out
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.set_config\"}}");
             return;
         }
 
@@ -1224,23 +1449,20 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        const String enabledStr = request->hasParam("enabled", true)
-                                      ? request->getParam("enabled", true)->value()
-                                      : String("1");
+        char enabledStr[8] = {0};
+        char ssid[96] = {0};
+        char pass[96] = {0};
+        copyRequestParamValue_(request, "enabled", true, enabledStr, sizeof(enabledStr), "1");
         const bool enabled = parseBoolParam_(enabledStr, true);
-        const String ssid = request->hasParam("ssid", true)
-                                ? request->getParam("ssid", true)->value()
-                                : String();
-        const String pass = request->hasParam("pass", true)
-                                ? request->getParam("pass", true)->value()
-                                : String();
+        copyRequestParamValue_(request, "ssid", true, ssid, sizeof(ssid), "");
+        copyRequestParamValue_(request, "pass", true, pass, sizeof(pass), "");
 
         StaticJsonDocument<320> patch;
         JsonObject root = patch.to<JsonObject>();
         JsonObject wifi = root.createNestedObject("wifi");
         wifi["enabled"] = enabled;
-        wifi["ssid"] = ssid.c_str();
-        wifi["pass"] = pass.c_str();
+        wifi["ssid"] = ssid;
+        wifi["pass"] = pass;
 
         char patchJson[320] = {0};
         if (serializeJson(patch, patchJson, sizeof(patchJson)) == 0) {
@@ -1275,8 +1497,8 @@ void WebInterfaceModule::startServer_()
             JsonObject flowRoot = flowPatchDoc.to<JsonObject>();
             JsonObject flowWifi = flowRoot.createNestedObject("wifi");
             flowWifi["enabled"] = enabled;
-            flowWifi["ssid"] = ssid.c_str();
-            flowWifi["pass"] = pass.c_str();
+            flowWifi["ssid"] = ssid;
+            flowWifi["pass"] = pass;
 
             char flowPatchJson[320] = {0};
             const size_t flowPatchLen = serializeJson(flowPatchDoc, flowPatchJson, sizeof(flowPatchJson));
@@ -1346,22 +1568,13 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String forceStr = request->hasParam("force", true)
-                              ? request->getParam("force", true)->value()
-                              : String("1");
+        char forceStr[8] = {0};
+        copyRequestParamValue_(request, "force", true, forceStr, sizeof(forceStr), "1");
         const bool force = parseBoolParam_(forceStr, true);
         if (!wifiSvc_->requestScan(wifiSvc_->ctx, force)) {
             request->send(500, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.scan.start\"}}");
             return;
-        }
-
-        if (wifiSvc_->scanStatusJson) {
-            char out[Limits::Wifi::Buffers::ScanStatusJson] = {0};
-            if (wifiSvc_->scanStatusJson(wifiSvc_->ctx, out, sizeof(out))) {
-                request->send(202, "application/json", out);
-                return;
-            }
         }
 
         request->send(202, "application/json", "{\"ok\":true,\"accepted\":true}");
@@ -1386,117 +1599,7 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        char domainBuf[640] = {0};
-        StaticJsonDocument<768> domainDoc;
-        StaticJsonDocument<1024> compactDoc;
-        compactDoc["ok"] = true;
-
-        bool anyDomainOk = false;
-        auto loadDomain = [&](FlowStatusDomain domain) -> JsonObjectConst {
-            memset(domainBuf, 0, sizeof(domainBuf));
-            if (!flowCfgSvc_->runtimeStatusDomainJson(flowCfgSvc_->ctx, domain, domainBuf, sizeof(domainBuf))) {
-                domainDoc.clear();
-                return JsonObjectConst();
-            }
-            domainDoc.clear();
-            const DeserializationError err = deserializeJson(domainDoc, domainBuf);
-            if (err || !domainDoc.is<JsonObjectConst>()) {
-                domainDoc.clear();
-                return JsonObjectConst();
-            }
-            JsonObjectConst root = domainDoc.as<JsonObjectConst>();
-            if (!(root["ok"] | false)) {
-                domainDoc.clear();
-                return JsonObjectConst();
-            }
-            anyDomainOk = true;
-            return root;
-        };
-
-        {
-            JsonObjectConst root = loadDomain(FlowStatusDomain::System);
-            if (!root.isNull()) {
-                compactDoc["fw"] = String(root["fw"] | "");
-                compactDoc["upms"] = root["upms"] | 0U;
-                JsonObject heapOut = compactDoc.createNestedObject("heap");
-                JsonObjectConst heapIn = root["heap"];
-                heapOut["free"] = heapIn["free"] | 0U;
-                heapOut["min_free"] = heapIn["min_free"] | 0U;
-            }
-        }
-
-        {
-            JsonObjectConst root = loadDomain(FlowStatusDomain::Wifi);
-            if (!root.isNull()) {
-                JsonObject wifiOut = compactDoc.createNestedObject("wifi");
-                JsonObjectConst wifiIn = root["wifi"];
-                wifiOut["rdy"] = wifiIn["rdy"] | false;
-                wifiOut["ip"] = String(wifiIn["ip"] | "");
-                wifiOut["hrss"] = wifiIn["hrss"] | false;
-                wifiOut["rssi"] = wifiIn["rssi"] | -127;
-            }
-        }
-
-        {
-            JsonObjectConst root = loadDomain(FlowStatusDomain::Mqtt);
-            if (!root.isNull()) {
-                JsonObject mqttOut = compactDoc.createNestedObject("mqtt");
-                JsonObjectConst mqttIn = root["mqtt"];
-                mqttOut["rdy"] = mqttIn["rdy"] | false;
-                mqttOut["srv"] = String(mqttIn["srv"] | "");
-                mqttOut["rxdrp"] = mqttIn["rxdrp"] | 0U;
-                mqttOut["prsf"] = mqttIn["prsf"] | 0U;
-                mqttOut["hndf"] = mqttIn["hndf"] | 0U;
-                mqttOut["ovr"] = mqttIn["ovr"] | 0U;
-            }
-        }
-
-        {
-            JsonObjectConst root = loadDomain(FlowStatusDomain::Pool);
-            if (!root.isNull()) {
-                JsonObject poolOut = compactDoc.createNestedObject("pool");
-                JsonObjectConst poolIn = root["pool"];
-                poolOut["has"] = poolIn["has"] | false;
-                poolOut["auto"] = poolIn["auto"] | false;
-                poolOut["wint"] = poolIn["wint"] | false;
-                poolOut["wat"] = poolIn["wat"];
-                poolOut["air"] = poolIn["air"];
-                poolOut["ph"] = poolIn["ph"];
-                poolOut["orp"] = poolIn["orp"];
-                poolOut["fil"] = poolIn["fil"];
-                poolOut["php"] = poolIn["php"];
-                poolOut["clp"] = poolIn["clp"];
-                poolOut["rbt"] = poolIn["rbt"];
-            }
-        }
-
-        {
-            JsonObjectConst root = loadDomain(FlowStatusDomain::I2c);
-            if (!root.isNull()) {
-                JsonObject i2cOut = compactDoc.createNestedObject("i2c");
-                JsonObjectConst i2cIn = root["i2c"];
-                i2cOut["lnk"] = i2cIn["lnk"] | false;
-                i2cOut["seen"] = i2cIn["seen"] | false;
-                i2cOut["req"] = i2cIn["req"] | 0U;
-                i2cOut["breq"] = i2cIn["breq"] | 0U;
-                i2cOut["ago"] = i2cIn["ago"] | 0U;
-            }
-        }
-
-        if (!anyDomainOk) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.status\"}}");
-            return;
-        }
-
-        char compactOut[1024] = {0};
-        const size_t compactLen = serializeJson(compactDoc, compactOut, sizeof(compactOut));
-        if (compactLen == 0 || compactLen >= sizeof(compactOut)) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.status.pack\"}}");
-            return;
-        }
-        request->send(200, "application/json", compactOut);
+        (void)sendFlowStatusCompactResponse_(request, flowCfgSvc_);
     });
 
     server_.on("/api/flow/status/domain", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -1523,10 +1626,10 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"flow.status.domain\"}}");
             return;
         }
-        const AsyncWebParameter* domainParam = request->getParam("d");
-
         FlowStatusDomain domain = FlowStatusDomain::System;
-        if (!parseFlowStatusDomainParam_(domainParam->value(), domain)) {
+        char domainStr[16] = {0};
+        copyRequestParamValue_(request, "d", false, domainStr, sizeof(domainStr), "");
+        if (!parseFlowStatusDomainParam_(domainStr, domain)) {
             request->send(400, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"BadDomain\",\"where\":\"flow.status.domain\"}}");
             return;
@@ -1549,11 +1652,15 @@ void WebInterfaceModule::startServer_()
     server_.on("/api/runtime/manifest", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/runtime/manifest");
         SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
         AsyncWebServerResponse* response =
-            beginSpiffsAssetResponse(request, "/webinterface/runtimeui.json", "application/json", true, nullptr, &forensicMeta);
+            beginSpiffsAssetResponse(request, "/webinterface/runtimeui.json", "application/json", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.manifest\"}}");
+            request->send(503,
+                          "application/json",
+                          heapRejected
+                              ? "{\"ok\":false,\"err\":{\"code\":\"Busy\",\"where\":\"runtime.manifest\"}}"
+                              : "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.manifest\"}}");
             return;
         }
         sendPreparedAssetResponse(request, response, &forensicMeta);
@@ -1584,8 +1691,9 @@ void WebInterfaceModule::startServer_()
 
         RuntimeUiId ids[kMaxRuntimeHttpIds] = {};
         size_t idCount = 0U;
-        const AsyncWebParameter* idsParam = request->getParam("ids");
-        if (!idsParam || !parseRuntimeUiIdsCsv_(idsParam->value().c_str(), ids, kMaxRuntimeHttpIds, idCount)) {
+        char idsCsv[768] = {0};
+        const bool hasIds = copyRequestParamValue_(request, "ids", false, idsCsv, sizeof(idsCsv), "");
+        if (!hasIds || !parseRuntimeUiIdsCsv_(idsCsv, ids, kMaxRuntimeHttpIds, idCount)) {
             request->send(400, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
             return;
@@ -1602,10 +1710,14 @@ void WebInterfaceModule::startServer_()
                                      "/api/runtime/values",
                                      kHttpLatencyFlowCfgInfoMs,
                                      kHttpLatencyFlowCfgWarnMs);
+            if (request->_tempObject == reinterpret_cast<void*>(1)) {
+                request->_tempObject = nullptr;
+                return;
+            }
             if (!flowCfgSvc_ && services_) {
                 flowCfgSvc_ = services_->get<FlowCfgRemoteService>(ServiceId::FlowCfg);
             }
-            if (!request->_tempObject) {
+            if (!request->_tempObject || request->_tempObject != runtimeValuesBodyScratch_) {
                 request->send(400, "application/json",
                               "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.body\"}}");
                 return;
@@ -1616,7 +1728,7 @@ void WebInterfaceModule::startServer_()
 
             StaticJsonDocument<2048> reqDoc;
             const DeserializationError reqErr = deserializeJson(reqDoc, body);
-            free(body);
+            releaseRuntimeValuesBodyScratch_();
             if (reqErr) {
                 request->send(400, "application/json",
                               "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.json\"}}");
@@ -1648,23 +1760,24 @@ void WebInterfaceModule::startServer_()
             sendRuntimeUiValuesResponse_(request, flowCfgSvc_, ids, idCount);
         },
         nullptr,
-        [](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-            static constexpr size_t kMaxBodyBytes = 2048U;
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
             if (index == 0U) {
-                if (total == 0U || total > kMaxBodyBytes) {
+                if (total == 0U || total > kRuntimeValuesBodyMax) {
+                    request->_tempObject = reinterpret_cast<void*>(1);
                     request->send(413, "application/json",
                                   "{\"ok\":false,\"err\":{\"code\":\"ArgsTooLarge\",\"where\":\"runtime.values.body\"}}");
                     return;
                 }
-                char* body = static_cast<char*>(malloc(total + 1U));
-                if (!body) {
-                    request->send(500, "application/json",
-                                  "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"runtime.values.alloc\"}}");
+                if (!acquireRuntimeValuesBodyScratch_()) {
+                    request->_tempObject = reinterpret_cast<void*>(1);
+                    request->send(503, "application/json",
+                                  "{\"ok\":false,\"err\":{\"code\":\"Busy\",\"where\":\"runtime.values.body\"}}");
                     return;
                 }
-                request->_tempObject = body;
+                request->_tempObject = runtimeValuesBodyScratch_;
             }
 
+            if (request->_tempObject == reinterpret_cast<void*>(1)) return;
             char* body = static_cast<char*>(request->_tempObject);
             if (!body) return;
             memcpy(body + index, data, len);
@@ -1702,6 +1815,7 @@ void WebInterfaceModule::startServer_()
             }
             return;
         }
+
         request->send(200, "application/json", out);
     });
 
@@ -1724,11 +1838,12 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        const String prefix = request->hasParam("prefix") ? request->getParam("prefix")->value() : "";
+        char prefix[128] = {0};
+        copyRequestParamValue_(request, "prefix", false, prefix, sizeof(prefix), "");
         char out[Limits::Mqtt::Buffers::Ack] = {0};
-        if (!flowCfgSvc_->listChildrenJson(flowCfgSvc_->ctx, prefix.c_str(), out, sizeof(out))) {
+        if (!flowCfgSvc_->listChildrenJson(flowCfgSvc_->ctx, prefix, out, sizeof(out))) {
             if (out[0] != '\0') {
-                LOGW("flowcfg.children failed prefix=%s details=%s", prefix.c_str(), out);
+                LOGW("flowcfg.children failed prefix=%s details=%s", prefix, out);
                 request->send(500, "application/json", out);
             } else {
                 request->send(500, "application/json",
@@ -1763,38 +1878,36 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String moduleStr = request->getParam("name")->value();
-        if (moduleStr.length() == 0) {
+        char moduleStr[64] = {0};
+        copyRequestParamValue_(request, "name", false, moduleStr, sizeof(moduleStr), "");
+        if (moduleStr[0] == '\0') {
             request->send(400, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"InvalidArg\",\"where\":\"flowcfg.module.name\"}}");
             return;
         }
 
         char moduleName[64] = {0};
-        snprintf(moduleName, sizeof(moduleName), "%s", moduleStr.c_str());
+        snprintf(moduleName, sizeof(moduleName), "%s", moduleStr);
         sanitizeJsonString_(moduleName);
 
         bool truncated = false;
         char moduleJson[Limits::Mqtt::Buffers::StateCfg] = {0};
-        if (!flowCfgSvc_->getModuleJson(flowCfgSvc_->ctx, moduleStr.c_str(), moduleJson, sizeof(moduleJson), &truncated)) {
+        if (!flowCfgSvc_->getModuleJson(flowCfgSvc_->ctx, moduleStr, moduleJson, sizeof(moduleJson), &truncated)) {
             request->send(500, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flowcfg.module.get\"}}");
             return;
         }
 
-        char out[Limits::Mqtt::Buffers::StateCfg + 128] = {0};
-        const int n = snprintf(out,
-                               sizeof(out),
-                               "{\"ok\":true,\"module\":\"%s\",\"truncated\":%s,\"data\":%s}",
-                               moduleName,
-                               truncated ? "true" : "false",
-                               moduleJson);
-        if (n <= 0 || (size_t)n >= sizeof(out)) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flowcfg.module.pack\"}}");
-            return;
-        }
-        request->send(200, "application/json", out);
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        addNoCacheHeaders_(response);
+        response->print("{\"ok\":true,\"module\":");
+        printJsonEscaped_(*response, moduleName);
+        response->print(",\"truncated\":");
+        response->print(truncated ? "true" : "false");
+        response->print(",\"data\":");
+        response->print(moduleJson);
+        response->print('}');
+        request->send(response);
     });
 
     server_.on("/api/flowcfg/apply", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -1821,9 +1934,10 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String patchStr = request->getParam("patch", true)->value();
+        char patchStr[Limits::Mqtt::Buffers::StateCfg] = {0};
+        copyRequestParamValue_(request, "patch", true, patchStr, sizeof(patchStr), "");
         char ack[Limits::Mqtt::Buffers::Ack] = {0};
-        if (!flowCfgSvc_->applyPatchJson(flowCfgSvc_->ctx, patchStr.c_str(), ack, sizeof(ack))) {
+        if (!flowCfgSvc_->applyPatchJson(flowCfgSvc_->ctx, patchStr, ack, sizeof(ack))) {
             if (ack[0] != '\0') {
                 request->send(flowCfgApplyHttpStatus_(ack), "application/json", ack);
             } else {
@@ -1847,21 +1961,18 @@ void WebInterfaceModule::startServer_()
         const char* modules[kMaxModules] = {0};
         const uint8_t moduleCount = cfgStore_->listModules(modules, kMaxModules);
 
-        StaticJsonDocument<2048> doc;
-        doc["ok"] = true;
-        JsonArray arr = doc.createNestedArray("modules");
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        addNoCacheHeaders_(response);
+        response->print("{\"ok\":true,\"modules\":[");
+        bool first = true;
         for (uint8_t i = 0; i < moduleCount; ++i) {
             if (!modules[i] || modules[i][0] == '\0') continue;
-            arr.add(modules[i]);
+            if (!first) response->print(',');
+            printJsonEscaped_(*response, modules[i]);
+            first = false;
         }
-
-        char out[2048] = {0};
-        if (serializeJson(doc, out, sizeof(out)) == 0) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"supervisorcfg.modules\"}}");
-            return;
-        }
-        request->send(200, "application/json", out);
+        response->print("]}");
+        request->send(response);
     });
 
     server_.on("/api/supervisorcfg/module", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -1877,38 +1988,36 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String moduleStr = request->getParam("name")->value();
-        if (moduleStr.length() == 0) {
+        char moduleStr[64] = {0};
+        copyRequestParamValue_(request, "name", false, moduleStr, sizeof(moduleStr), "");
+        if (moduleStr[0] == '\0') {
             request->send(400, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"InvalidArg\",\"where\":\"supervisorcfg.module.name\"}}");
             return;
         }
 
         char moduleName[64] = {0};
-        snprintf(moduleName, sizeof(moduleName), "%s", moduleStr.c_str());
+        snprintf(moduleName, sizeof(moduleName), "%s", moduleStr);
         sanitizeJsonString_(moduleName);
 
         bool truncated = false;
         char moduleJson[Limits::Mqtt::Buffers::StateCfg] = {0};
-        if (!cfgStore_->toJsonModule(moduleStr.c_str(), moduleJson, sizeof(moduleJson), &truncated)) {
+        if (!cfgStore_->toJsonModule(moduleStr, moduleJson, sizeof(moduleJson), &truncated)) {
             request->send(404, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotFound\",\"where\":\"supervisorcfg.module.get\"}}");
             return;
         }
 
-        char out[Limits::Mqtt::Buffers::StateCfg + 128] = {0};
-        const int n = snprintf(out,
-                               sizeof(out),
-                               "{\"ok\":true,\"module\":\"%s\",\"truncated\":%s,\"data\":%s}",
-                               moduleName,
-                               truncated ? "true" : "false",
-                               moduleJson);
-        if (n <= 0 || (size_t)n >= sizeof(out)) {
-            request->send(500, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"supervisorcfg.module.pack\"}}");
-            return;
-        }
-        request->send(200, "application/json", out);
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        addNoCacheHeaders_(response);
+        response->print("{\"ok\":true,\"module\":");
+        printJsonEscaped_(*response, moduleName);
+        response->print(",\"truncated\":");
+        response->print(truncated ? "true" : "false");
+        response->print(",\"data\":");
+        response->print(moduleJson);
+        response->print('}');
+        request->send(response);
     });
 
     server_.on("/api/supervisorcfg/apply", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -1924,8 +2033,9 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        String patchStr = request->getParam("patch", true)->value();
-        if (!cfgStore_->applyJson(patchStr.c_str())) {
+        char patchStr[Limits::Mqtt::Buffers::StateCfg] = {0};
+        copyRequestParamValue_(request, "patch", true, patchStr, sizeof(patchStr), "");
+        if (!cfgStore_->applyJson(patchStr)) {
             request->send(500, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"supervisorcfg.apply.exec\"}}");
             return;
@@ -1947,14 +2057,14 @@ void WebInterfaceModule::startServer_()
         char reply[196] = {0};
         const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "system.reboot", "{}", nullptr, reply, sizeof(reply));
         if (!ok) {
-            const String body = (reply[0] != '\0')
-                                    ? String(reply)
-                                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.reboot\"}}");
-            request->send(500, "application/json", body);
+            request->send(500,
+                          "application/json",
+                          (reply[0] != '\0')
+                              ? reply
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.reboot\"}}");
             return;
         }
-        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
-        request->send(200, "application/json", body);
+        request->send(200, "application/json", (reply[0] != '\0') ? reply : "{\"ok\":true}");
     });
 
     server_.on("/api/system/factory-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -1971,15 +2081,14 @@ void WebInterfaceModule::startServer_()
         char reply[220] = {0};
         const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "system.factory_reset", "{}", nullptr, reply, sizeof(reply));
         if (!ok) {
-            const String body =
-                (reply[0] != '\0')
-                    ? String(reply)
-                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.factory_reset\"}}");
-            request->send(500, "application/json", body);
+            request->send(500,
+                          "application/json",
+                          (reply[0] != '\0')
+                              ? reply
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.factory_reset\"}}");
             return;
         }
-        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
-        request->send(200, "application/json", body);
+        request->send(200, "application/json", (reply[0] != '\0') ? reply : "{\"ok\":true}");
     });
 
     server_.on("/api/flow/system/reboot", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -1996,15 +2105,14 @@ void WebInterfaceModule::startServer_()
         char reply[220] = {0};
         const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "flow.system.reboot", "{}", nullptr, reply, sizeof(reply));
         if (!ok) {
-            const String body =
-                (reply[0] != '\0')
-                    ? String(reply)
-                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.system.reboot\"}}");
-            request->send(500, "application/json", body);
+            request->send(500,
+                          "application/json",
+                          (reply[0] != '\0')
+                              ? reply
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.system.reboot\"}}");
             return;
         }
-        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
-        request->send(200, "application/json", body);
+        request->send(200, "application/json", (reply[0] != '\0') ? reply : "{\"ok\":true}");
     });
 
     server_.on("/api/flow/system/factory-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -2021,15 +2129,14 @@ void WebInterfaceModule::startServer_()
         char reply[220] = {0};
         const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "flow.system.factory_reset", "{}", nullptr, reply, sizeof(reply));
         if (!ok) {
-            const String body =
-                (reply[0] != '\0')
-                    ? String(reply)
-                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.system.factory_reset\"}}");
-            request->send(500, "application/json", body);
+            request->send(500,
+                          "application/json",
+                          (reply[0] != '\0')
+                              ? reply
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"flow.system.factory_reset\"}}");
             return;
         }
-        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
-        request->send(200, "application/json", body);
+        request->send(200, "application/json", (reply[0] != '\0') ? reply : "{\"ok\":true}");
     });
 
     server_.on("/fwupdate/flowio", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -2107,18 +2214,23 @@ void WebInterfaceModule::handleUpdateRequest_(AsyncWebServerRequest* request, Fi
         return;
     }
 
-    const AsyncWebParameter* pUrl = request->hasParam("url", true) ? request->getParam("url", true) : nullptr;
-    String urlStr;
-    if (pUrl) {
-        urlStr = pUrl->value();
-    }
-    const char* url = (urlStr.length() > 0) ? urlStr.c_str() : nullptr;
+    char urlBuf[224] = {0};
+    copyRequestParamValue_(request, "url", true, urlBuf, sizeof(urlBuf), "");
+    const char* url = (urlBuf[0] != '\0') ? urlBuf : nullptr;
 
     char err[144] = {0};
     if (!fwUpdateSvc_->start(fwUpdateSvc_->ctx, target, url, err, sizeof(err))) {
+        sanitizeJsonString_(err);
+        char out[336] = {0};
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.start\",\"msg\":\"%s\"}}",
+                               err[0] ? err : "failed");
         request->send(409,
                       "application/json",
-                      "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.start\"}}");
+                      (n > 0 && (size_t)n < sizeof(out))
+                          ? out
+                          : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.start\"}}");
         return;
     }
 
