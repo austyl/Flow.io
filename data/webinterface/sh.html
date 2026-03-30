@@ -1,0 +1,281 @@
+  <div id="overlay" class="overlay"></div>
+  <div class="app">
+    <aside id="drawer" class="drawer collapsed">
+      <div class="drawer-header">
+        <button id="menuToggle" class="menu-btn" data-menu-toggle aria-label="Toggle menu">≡</button>
+        <div class="drawer-user" aria-label="Flow.IO">
+          <span class="brand-wordmark" aria-hidden="true">
+            <span class="brand-flow">Flow</span><span class="brand-io">.IO</span>
+          </span>
+        </div>
+      </div>
+      <nav class="menu-group">
+        <button class="menu-item active" data-page="page-pool-measures"><span class="ico icon-measures" aria-hidden="true"></span><span class="label">Mesures</span></button>
+        <button class="menu-item" data-page="page-terminal"><span class="ico icon-terminal" aria-hidden="true"></span><span class="label">Journaux</span></button>
+        <button class="menu-item" data-page="page-system"><span class="ico icon-system" aria-hidden="true"></span><span class="label">Mise à jour</span></button>
+        <button class="menu-item" data-page="page-control"><span class="ico icon-flowcfg" aria-hidden="true"></span><span class="label">Config Flow.IO</span></button>
+        <button class="menu-item" data-page="page-local-config"><span class="ico icon-supervisorcfg" aria-hidden="true"></span><span class="label">Config Superviseur</span></button>
+      </nav>
+      <div class="drawer-footer">
+        <div class="app-footer-copy">
+          <span class="app-meta">-</span>
+          <div id="appRuntimeMeta" class="app-runtime-meta" aria-label="Memoire Supervisor">
+            <span id="appHeapSummary" class="app-runtime-line">Heap: - / -</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="mobile-topbar">
+        <button class="menu-btn" data-menu-toggle aria-label="Open menu">≡</button>
+        <div class="mobile-title" aria-label="Flow.IO">
+          <span class="mobile-wordmark" aria-hidden="true">
+            <span class="brand-flow">Flow</span><span class="brand-io">.IO</span>
+          </span>
+        </div>
+      </div>
+      <section id="page-pool-measures" class="page active">
+        <div class="topbar">
+          <h1>Mesures</h1>
+          <div class="topbar-actions">
+            <button id="poolMeasuresRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir les mesures actives" title="Rafraîchir les mesures actives"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+          </div>
+        </div>
+        <div class="control-shell">
+          <div class="control-section-title">Domaines</div>
+          <div id="poolMeasuresDomains" class="control-sections" aria-label="Domaines de mesures"></div>
+          <div class="control-divider measure-domain-divider"></div>
+          <div class="control-section-title">Mesures</div>
+          <div class="measure-results-shell">
+            <div id="poolMeasuresStatus" class="config-status measure-status">en attente...</div>
+            <div id="poolMeasuresGrid" class="status-grid measure-status-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-terminal" class="page">
+        <div class="topbar">
+          <h1>Journaux</h1>
+          <div class="topbar-actions">
+            <select id="logSourceSelect" class="log-source-select" aria-label="Source des journaux" title="Source des journaux affichés">
+              <option value="flow">Flow.IO (distant)</option>
+              <option value="supervisor">Supervisor (local)</option>
+            </select>
+            <span id="wsStatus" class="status-chip">inactif</span>
+            <label class="autoscroll-chip" for="toggleAutoscroll" title="Défilement automatique des journaux">
+              <span class="autoscroll-label">Scroll</span>
+              <span class="md3-switch md3-switch-compact">
+                <input id="toggleAutoscroll" type="checkbox" checked aria-label="Activer le défilement automatique des journaux" />
+                <span class="md3-track"></span>
+                <span class="md3-thumb"></span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="card">
+          <div id="term" class="terminal"></div>
+          <div class="term-toolbar">
+            <input id="line" placeholder="Envoyer une ligne vers l'UART" />
+            <button id="send" class="btn-tonal">Envoyer</button>
+            <button id="clear">Effacer</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-system" class="page">
+        <div class="topbar">
+          <h1>Mise à jour</h1>
+        </div>
+        <div class="system-groups">
+          <div class="card">
+            <div class="config-section">
+              <div class="config-section-head wifi-section-head">
+                <h2>WiFi</h2>
+                <div class="wifi-section-toggle">
+                  <span>Activer</span>
+                  <label class="md3-switch">
+                    <input id="wifiEnabled" type="checkbox" checked />
+                    <span class="md3-track"></span>
+                    <span class="md3-thumb"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="wifiSsid">SSID</label>
+                  <input id="wifiSsid" placeholder="Nom du réseau WiFi" />
+                </div>
+                <div class="field">
+                  <label for="wifiSsidList">Réseaux détectés</label>
+                  <div class="field-inline-select-action">
+                    <select id="wifiSsidList">
+                      <option value="">Scan requis...</option>
+                    </select>
+                    <button id="scanWifi" class="btn-tonal btn-icon-only btn-refresh-icon field-inline-refresh" aria-label="Scanner les réseaux" title="Scanner les réseaux"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label for="wifiPass">Mot de passe</label>
+                  <div class="password-wrap">
+                    <input id="wifiPass" type="password" placeholder="Mot de passe WiFi" />
+                    <button id="toggleWifiPass" class="password-toggle" type="button" aria-label="Afficher le mot de passe WiFi" aria-pressed="false">Voir</button>
+                  </div>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button id="applyWifiCfg" class="btn-primary">Appliquer WiFi</button>
+              </div>
+              <div id="wifiConfigStatus" class="config-status">Configuration WiFi prête.</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="config-section">
+              <h2>Mise à jour Firmware</h2>
+              <div class="form-grid upgrade-form-grid">
+                <div class="field full">
+                  <label for="updateHost">Serveur HTTP (nom d'hôte ou IP, protocole optionnel)</label>
+                  <div class="field-inline-entry">
+                    <input id="updateHost" placeholder="ex. 192.168.1.20 ou http://192.168.1.20" />
+                    <button id="applyUpdateHost" type="button" class="control-field-apply" aria-label="Appliquer le serveur HTTP" title="Aucun changement a appliquer">✓</button>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label for="flowPath">Chemin image Flow.IO</label>
+                  <div class="field-upgrade-row">
+                    <div class="field-inline-entry">
+                      <input id="flowPath" placeholder="/build/FlowIO.bin" />
+                      <button id="applyFlowPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Flow.IO" title="Aucun changement a appliquer">✓</button>
+                    </div>
+                    <button id="upFlow" class="btn-primary">Go</button>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label for="nextionPath">Chemin image Nextion</label>
+                  <div class="field-upgrade-row">
+                    <div class="field-inline-entry">
+                      <input id="nextionPath" placeholder="/build/Nextion.tft" />
+                      <button id="applyNextionPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Nextion" title="Aucun changement a appliquer">✓</button>
+                    </div>
+                    <button id="upNextion" class="btn-primary">Go</button>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label for="supervisorPath">Chemin image Supervisor</label>
+                  <div class="field-upgrade-row">
+                    <div class="field-inline-entry">
+                      <input id="supervisorPath" placeholder="/build/Supervisor/firmware.bin" />
+                      <button id="applySupervisorPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Supervisor" title="Aucun changement a appliquer">✓</button>
+                    </div>
+                    <button id="upSupervisor" class="btn-primary">Go</button>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label for="spiffsPath">Chemin image assets Supervisor (spiffs)</label>
+                  <div class="field-upgrade-row">
+                    <div class="field-inline-entry">
+                      <input id="spiffsPath" placeholder="/build/Supervisor/spiffs.bin" />
+                      <button id="applySpiffsPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin SPIFFS" title="Aucun changement a appliquer">✓</button>
+                    </div>
+                    <button id="upSpiffs" class="btn-primary">Go</button>
+                  </div>
+                </div>
+              </div>
+              <div class="upgrade-journey" aria-label="Progression mise à jour firmware">
+                <div class="ug-header">
+                  <span id="upgradeJourneyLabel" class="ug-label">Upgrade firmware</span>
+                  <span id="upgradePct" class="ug-pct">0%</span>
+                </div>
+                <div class="bar-shell">
+                  <div id="upgradeProgressBar" class="bar-fill" style="width:0%">
+                    <div class="bar-shimmer"></div>
+                    <div id="upgradeProgressDot" class="bar-dot"></div>
+                  </div>
+                </div>
+                <div id="upgradeSteps" class="steps"></div>
+                <div class="upgrade-footer">
+                  <span id="upgradeFooterStatus" class="status-txt"><span class="sdot"></span>Prêt</span>
+                  <span id="upgradeEta" class="eta-txt">En attente</span>
+                </div>
+              </div>
+              <div class="btn-row upgrade-secondary-actions">
+              </div>
+            </div>
+          </div>
+
+          <div class="system-actions">
+            <div class="system-action">
+              <h3>Redémarrer le Superviseur</h3>
+              <p>Redémarre uniquement le Superviseur pour relancer les services sans modifier la configuration.</p>
+              <div class="btn-row system-action-actions">
+                <button id="rebootSupervisor" class="btn-tonal system-reboot-btn">Redémarrer</button>
+              </div>
+            </div>
+            <div class="system-action">
+              <h3>Redémarrer Flow.IO</h3>
+              <p>Redémarre Flow.IO proprement via le lien I2C.</p>
+              <div class="btn-row system-action-actions">
+                <button id="rebootFlow" class="btn-tonal system-reboot-btn">Redémarrer</button>
+              </div>
+            </div>
+            <div class="system-action">
+              <h3>Réinitialisation</h3>
+              <p>Efface la configuration de Flow.IO puis redémarre l’équipement.</p>
+              <div class="btn-row system-action-actions">
+                <button id="flowFactoryReset" class="btn-primary">Réinitialiser</button>
+              </div>
+            </div>
+          </div>
+          <div id="systemStatusText" class="config-status">Aucune action système en cours.</div>
+        </div>
+      </section>
+
+      <section id="page-control" class="page">
+        <div class="topbar">
+          <h1 id="flowCfgTitle" class="control-title-breadcrumb" aria-label="Configuration">
+            <button type="button" class="control-title-root-btn active" aria-label="Racine configuration" disabled><span class="crumb-root-icon icon-flowcfg" aria-hidden="true"></span></button>
+          </h1>
+          <button id="flowCfgRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir la configuration" title="Rafraîchir la configuration"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+        </div>
+        <div class="card control-card">
+          <div class="control-shell">
+            <div class="control-section-title">Sections</div>
+            <div id="flowCfgSections" class="control-sections"></div>
+            <div class="control-divider"></div>
+            <div class="control-section-title">Variables</div>
+            <div id="flowCfgFields" class="control-fields"></div>
+            <div id="flowCfgStatus" class="config-status">Configuration distante prête.</div>
+            <div class="control-actions">
+              <button id="flowCfgApply" class="btn-primary">Appliquer</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-local-config" class="page">
+        <div class="topbar">
+          <h1>Configuration locale Superviseur</h1>
+          <button id="supCfgRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir la configuration locale" title="Rafraîchir la configuration locale"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+        </div>
+        <div class="card control-card">
+          <div class="control-shell">
+            <div class="control-section-title">Module</div>
+            <div class="form-grid">
+              <div class="field full">
+                <label for="supCfgModuleSelect">Branche de configuration locale</label>
+                <select id="supCfgModuleSelect"></select>
+              </div>
+            </div>
+            <div class="control-divider"></div>
+            <div class="control-section-title">Variables</div>
+            <div id="supCfgFields" class="control-fields"></div>
+            <div id="supCfgStatus" class="config-status">Configuration locale prête.</div>
+            <div class="control-actions">
+              <button id="supCfgApply" class="btn-primary">Appliquer localement</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>

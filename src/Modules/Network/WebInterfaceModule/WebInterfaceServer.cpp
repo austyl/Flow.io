@@ -396,25 +396,31 @@ void addNoCacheHeaders_(AsyncWebServerResponse* response)
     response->addHeader("Expires", "0");
 }
 
-void addShortLivedAssetCacheHeaders_(AsyncWebServerResponse* response)
-{
-    if (!response) return;
-    response->addHeader("Cache-Control", "public, max-age=3600");
-}
-
 void addVersionedAssetCacheHeaders_(AsyncWebServerResponse* response)
 {
     if (!response) return;
     response->addHeader("Cache-Control", "public, max-age=31536000, immutable");
 }
 
+bool isCurrentWebAssetVersionRequest_(AsyncWebServerRequest* request)
+{
+    if (!request || !request->hasParam("v")) return false;
+    const AsyncWebParameter* versionParam = request->getParam("v");
+    if (!versionParam) return false;
+    const char* currentVersion = webAssetVersion_();
+    if (!currentVersion || currentVersion[0] == '\0') return false;
+    const String requestedVersion = versionParam->value();
+    return requestedVersion.length() == strlen(currentVersion) &&
+           strcmp(requestedVersion.c_str(), currentVersion) == 0;
+}
+
 void addCacheAwareAssetHeaders_(AsyncWebServerRequest* request, AsyncWebServerResponse* response)
 {
     if (!request || !response) return;
-    if (request->hasParam("v")) {
+    if (isCurrentWebAssetVersionRequest_(request)) {
         addVersionedAssetCacheHeaders_(response);
     } else {
-        addShortLivedAssetCacheHeaders_(response);
+        addNoCacheHeaders_(response);
     }
 }
 
@@ -1088,6 +1094,17 @@ void WebInterfaceModule::startServer_()
         bool heapRejected = false;
         AsyncWebServerResponse* response =
             beginSpiffsAssetResponse(request, "/webinterface/app.css", "text/css", true, nullptr, &forensicMeta, &heapRejected);
+        if (!response) {
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
+            return;
+        }
+        sendPreparedAssetResponse(request, response, &forensicMeta);
+    });
+    server_.on("/webinterface/sh.html", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
+        SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
+        AsyncWebServerResponse* response =
+            beginSpiffsAssetResponse(request, "/webinterface/sh.html", "text/html", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
             request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
             return;

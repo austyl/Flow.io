@@ -72,9 +72,13 @@
 
     supervisorFirmwareVersion = resolveSupervisorFirmwareVersion();
 
-    function versionedWebAssetUrl(path) {
+    function assetUrl(path) {
       if (!webAssetVersion) return path;
       return path + '?v=' + encodeURIComponent(webAssetVersion);
+    }
+
+    function iconAssetUrl(iconName) {
+      return assetUrl('/webinterface/i/' + iconName + '.svg');
     }
 
     function getStorageValue(storage, key) {
@@ -238,8 +242,8 @@
       return navigationType() === 'reload';
     }
 
-    function setDeferredVisualAssetUrl(varName, path) {
-      document.documentElement.style.setProperty(varName, "url('" + versionedWebAssetUrl(path) + "')");
+    function setDeferredVisualAssetUrl(varName, url) {
+      document.documentElement.style.setProperty(varName, "url('" + url + "')");
     }
 
     function activateMenuAssets(deferred, stepDelayMs) {
@@ -249,15 +253,16 @@
       const steps = [];
       if (!hideMenuSvg) {
         steps.push(
-          ['--menu-icon-measures-url', '/webinterface/i/m.svg'],
-          ['--menu-icon-terminal-url', '/webinterface/i/t.svg'],
-          ['--menu-icon-system-url', '/webinterface/i/s.svg'],
-          ['--menu-icon-flowcfg-url', '/webinterface/i/d.svg'],
-          ['--menu-icon-supervisorcfg-url', '/webinterface/i/e.svg']
+          ['--menu-icon-measures-url', iconAssetUrl('m')],
+          ['--menu-icon-terminal-url', iconAssetUrl('t')],
+          ['--menu-icon-system-url', iconAssetUrl('s')],
+          ['--menu-icon-flowcfg-url', iconAssetUrl('d')],
+          ['--menu-icon-supervisorcfg-url', iconAssetUrl('e')]
         );
       }
       steps.push(
-        ['--ui-refresh-icon-url', '/webinterface/i/r.svg']
+        ['--ui-refresh-icon-url', iconAssetUrl('r')],
+        ['--ui-crumb-arrow-icon-url', iconAssetUrl('u')]
       );
       if (!deferred) {
         steps.forEach((entry) => {
@@ -2559,7 +2564,7 @@
       }
 
       runtimeManifestDomainLoadPromise = (async () => {
-        const response = await fetch(versionedWebAssetUrl('/webinterface/runtimeui.json'), {
+        const response = await fetch(assetUrl('/webinterface/runtimeui.json'), {
           cache: forceRefresh ? 'no-store' : 'default'
         });
         if (!response.ok) throw new Error('manifeste runtime indisponible');
@@ -3461,7 +3466,7 @@
     async function chargerFlowCfgDocs() {
       flowCfgDocsLoaded = true;
       try {
-        const res = await fetch(versionedWebAssetUrl('/webinterface/cfgdocs.fr.json'));
+        const res = await fetch(assetUrl('/webinterface/cfgdocs.fr.json'));
         const data = await res.json();
         if (!res.ok || !data || typeof data !== 'object') {
           throw new Error('invalid docs payload');
@@ -3472,7 +3477,7 @@
           : ((data._meta && typeof data._meta === 'object') ? data._meta : {});
         cfgDocSources = [{ docs: docs, meta: meta }];
         try {
-          const modsRes = await fetch(versionedWebAssetUrl('/webinterface/cfgmods.fr.json'));
+          const modsRes = await fetch(assetUrl('/webinterface/cfgmods.fr.json'));
           const modsData = await modsRes.json();
           if (modsRes.ok && modsData && typeof modsData === 'object') {
             const modsDocs = (modsData.docs && typeof modsData.docs === 'object') ? modsData.docs : {};
