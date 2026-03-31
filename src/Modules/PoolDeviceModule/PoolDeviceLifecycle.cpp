@@ -340,19 +340,19 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[PoolBinding::kDeviceSlotPhPump].used) {
             const HANumberEntry n3{
-                "pooldev", "pd1_max_upt", "Max uptime pH Pump",
+                "pooldev", "pd1_max_upt", "Securite temps max pH",
                 "cfg/pdm/pd1", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
                 MqttTopics::SuffixCfgSet, "{\\\"pdm/pd1\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
-                0.0f, 1440.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
+                1.0f, 120.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n3);
         }
         if (slots_[PoolBinding::kDeviceSlotChlorinePump].used) {
             const HANumberEntry n4{
-                "pooldev", "pd2_max_upt", "Max uptime Chlorine Pump",
+                "pooldev", "pd2_max_upt", "Securite temps max ORP",
                 "cfg/pdm/pd2", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
                 MqttTopics::SuffixCfgSet, "{\\\"pdm/pd2\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
-                0.0f, 1440.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
+                1.0f, 120.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n4);
         }

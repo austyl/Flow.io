@@ -1064,11 +1064,28 @@ void WebInterfaceModule::startServer_()
     };
 
     server_.on("/assets/favicon.png", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        if (!spiffsReady_ || !SPIFFS.exists("/assets/Logos_Favicon.png")) {
-            request->send(404, "text/plain", "Not found");
+        char redirectPath[96] = {0};
+        const int n = snprintf(redirectPath,
+                               sizeof(redirectPath),
+                               "/webinterface/i/f.svg?v=%s",
+                               webAssetVersion_());
+        if (n <= 0 || (size_t)n >= sizeof(redirectPath)) {
+            request->send(500, "text/plain", "Failed");
             return;
         }
-        request->send(SPIFFS, "/assets/Logos_Favicon.png", "image/png");
+        request->redirect(redirectPath);
+    });
+    server_.on("/favicon.ico", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        char redirectPath[96] = {0};
+        const int n = snprintf(redirectPath,
+                               sizeof(redirectPath),
+                               "/webinterface/i/f.svg?v=%s",
+                               webAssetVersion_());
+        if (n <= 0 || (size_t)n >= sizeof(redirectPath)) {
+            request->send(500, "text/plain", "Failed");
+            return;
+        }
+        request->redirect(redirectPath);
     });
     auto webInterfaceLandingUrl = [this]() -> const char* {
         NetworkAccessMode mode = NetworkAccessMode::None;
@@ -1153,6 +1170,7 @@ void WebInterfaceModule::startServer_()
     registerWebSvgRoute("/webinterface/i/e.svg");
     registerWebSvgRoute("/webinterface/i/r.svg");
     registerWebSvgRoute("/webinterface/i/u.svg");
+    registerWebSvgRoute("/webinterface/i/f.svg");
     server_.on("/webinterface/cfgdocs.fr.json", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         SpiffsAssetForensicMeta forensicMeta{};
         bool heapRejected = false;

@@ -246,6 +246,47 @@
       document.documentElement.style.setProperty(varName, "url('" + url + "')");
     }
 
+    function setDeferredFaviconUrl(url) {
+      if (!url) return;
+      const resolvedUrl = url.indexOf('?') >= 0 ? (url + '&slot=favicon') : (url + '?slot=favicon');
+      let link = document.getElementById('appFavicon');
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'appFavicon';
+        document.head.appendChild(link);
+      }
+      link.setAttribute('data-flow-favicon', '1');
+      link.rel = 'icon';
+      link.type = 'image/svg+xml';
+      link.sizes = 'any';
+      if (link.href !== resolvedUrl) {
+        link.href = resolvedUrl;
+      }
+
+      let shortcutLink = document.getElementById('appFaviconShortcut');
+      if (!shortcutLink) {
+        shortcutLink = document.createElement('link');
+        shortcutLink.id = 'appFaviconShortcut';
+        document.head.appendChild(shortcutLink);
+      }
+      shortcutLink.setAttribute('data-flow-favicon', '1');
+      shortcutLink.rel = 'shortcut icon';
+      shortcutLink.type = 'image/svg+xml';
+      shortcutLink.sizes = 'any';
+      if (shortcutLink.href !== resolvedUrl) {
+        shortcutLink.href = resolvedUrl;
+      }
+    }
+
+    function applyDeferredVisualAsset(entry) {
+      if (!entry || !entry[0]) return;
+      if (entry[0] === 'favicon') {
+        setDeferredFaviconUrl(entry[1]);
+        return;
+      }
+      setDeferredVisualAssetUrl(entry[0], entry[1]);
+    }
+
     function activateMenuAssets(deferred, stepDelayMs) {
       if (menuAssetsActivated) return;
       menuAssetsActivated = true;
@@ -255,25 +296,25 @@
         steps.push(
           ['--menu-icon-measures-url', iconAssetUrl('m')],
           ['--menu-icon-terminal-url', iconAssetUrl('t')],
-          ['--menu-icon-system-url', iconAssetUrl('s')],
-          ['--menu-icon-flowcfg-url', iconAssetUrl('d')],
-          ['--menu-icon-supervisorcfg-url', iconAssetUrl('e')]
+          ['--menu-icon-system-url', iconAssetUrl('d')],
+          ['--menu-icon-flowcfg-url', iconAssetUrl('s')]
         );
       }
       steps.push(
         ['--ui-refresh-icon-url', iconAssetUrl('r')],
-        ['--ui-crumb-arrow-icon-url', iconAssetUrl('u')]
+        ['--ui-crumb-arrow-icon-url', iconAssetUrl('u')],
+        ['favicon', iconAssetUrl('f')]
       );
       if (!deferred) {
         steps.forEach((entry) => {
-          setDeferredVisualAssetUrl(entry[0], entry[1]);
+          applyDeferredVisualAsset(entry);
         });
         markDeferredVisualAssetsWarm();
         return;
       }
       steps.forEach((entry, index) => {
         setTimeout(() => {
-          setDeferredVisualAssetUrl(entry[0], entry[1]);
+          applyDeferredVisualAsset(entry);
           if (index === steps.length - 1) {
             markDeferredVisualAssetsWarm();
           }
@@ -505,11 +546,16 @@
         stopFlowStatusLiveTimer();
       }
       if (pageId === 'page-system') {
-        schedulePageTask(pageId, pageToken, deferredHeavyMs, () => onConfigPageShown());
         schedulePageTask(pageId,
                          pageToken,
                          deferredHeavyMs > 0 ? (deferredHeavyMs + 180) : 0,
                          () => onUpgradePageShown());
+      }
+      if (pageId === 'page-wifi') {
+        schedulePageTask(pageId,
+                         pageToken,
+                         deferredHeavyMs > 0 ? (deferredHeavyMs + 180) : 0,
+                         () => onWifiPageShown());
       }
       if (pageId === 'page-control') {
         schedulePageTask(pageId,
@@ -518,12 +564,6 @@
                          () => onControlPageShown());
       } else {
         stopFlowCfgRetry();
-      }
-      if (pageId === 'page-local-config') {
-        schedulePageTask(pageId,
-                         pageToken,
-                         deferredHeavyMs > 0 ? (deferredHeavyMs + 220) : 0,
-                         () => onLocalConfigPageShown());
       }
       if (pageId !== 'page-system') {
         stopUpgradeStatusPolling();
@@ -623,32 +663,38 @@
     const poolMeasuresDomains = document.getElementById('poolMeasuresDomains');
     const poolMeasuresStatus = document.getElementById('poolMeasuresStatus');
     const poolMeasuresGrid = document.getElementById('poolMeasuresGrid');
-    const flowCfgTitle = document.getElementById('flowCfgTitle');
     const flowCfgRefreshBtn = document.getElementById('flowCfgRefresh');
     const flowCfgApplyBtn = document.getElementById('flowCfgApply');
-    const flowCfgSections = document.getElementById('flowCfgSections');
+    const flowCfgTree = document.getElementById('flowCfgTree');
+    const flowCfgPathLabel = document.getElementById('flowCfgCurrentPath');
+    const flowCfgPathMeta = document.getElementById('flowCfgPathMeta');
     const flowCfgFields = document.getElementById('flowCfgFields');
     const flowCfgStatus = document.getElementById('flowCfgStatus');
-    const supCfgModuleSelect = document.getElementById('supCfgModuleSelect');
-    const supCfgRefreshBtn = document.getElementById('supCfgRefresh');
-    const supCfgApplyBtn = document.getElementById('supCfgApply');
-    const supCfgFields = document.getElementById('supCfgFields');
-    const supCfgStatus = document.getElementById('supCfgStatus');
+    const flowCfgTreePane = flowCfgTree ? flowCfgTree.closest('.cfg-pane') : null;
+    const flowCfgDetailPane = flowCfgFields ? flowCfgFields.closest('.cfg-pane') : null;
     let flowCfgCurrentModule = '';
     let flowCfgCurrentData = {};
     let flowCfgChildrenCache = {};
     let flowCfgPath = [];
+    let flowCfgExpandedNodes = new Set();
+    let flowCfgRootExpanded = true;
+    let cfgTreeSelectedSource = 'flow';
     let cfgDocSources = [];
     let flowCfgDocsLoaded = false;
-    let flowCfgLoadingDepth = 0;
+    let flowCfgTreeLoadingDepth = 0;
+    let flowCfgDetailLoadingDepth = 0;
     let flowCfgLoadPromise = null;
     let flowCfgRetryTimer = null;
     let upgradeCfgLoadedOnce = false;
     let wifiConfigLoadedOnce = false;
     let flowCfgLoadedOnce = false;
-    let supCfgLoadedOnce = false;
     let supCfgCurrentModule = '';
     let supCfgCurrentData = {};
+    let supCfgTreePath = '';
+    let supCfgTreeModules = [];
+    let supCfgTreeIndex = null;
+    let supCfgExpandedNodes = new Set();
+    let supCfgRootExpanded = true;
     let wifiScanAutoRequested = false;
     let flowStatusReqSeq = 0;
     const fieldApplyCheckIcon = '✓';
@@ -670,6 +716,7 @@
       system: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 },
       wifi: { active: false, loading: false, entries: [], values: [], error: '', requestSeq: 0 }
     };
+    const poolMeasureDomainAnimations = {};
     const upgradeReconnectFetchTimeoutMs = 1400;
     const upgradeConfigFieldDefs = [
       { key: 'update_host', input: updateHost, button: applyUpdateHostBtn, successMessage: 'Serveur HTTP enregistré.' },
@@ -860,8 +907,7 @@
     logSource = logSourceSelect ? logSourceSelect.value : 'flow';
     updateTerminalInputState();
     setWsStatusText('inactif');
-    flowCfgApplyBtn.disabled = true;
-    supCfgApplyBtn.disabled = true;
+    if (flowCfgApplyBtn) flowCfgApplyBtn.disabled = true;
 
     function setUpgradeProgress(value) {
       const p = Math.max(0, Math.min(100, Number(value) || 0));
@@ -1453,7 +1499,7 @@
       }
     }
 
-    async function onConfigPageShown() {
+    async function onWifiPageShown() {
       if (!wifiConfigLoadedOnce) {
         wifiConfigLoadedOnce = true;
         await loadWifiConfig();
@@ -1468,18 +1514,6 @@
 
     async function onControlPageShown() {
       await ensureFlowCfgLoaded(false);
-    }
-
-    async function onLocalConfigPageShown() {
-      if (!flowCfgDocsLoaded) {
-        await chargerFlowCfgDocs();
-      }
-      if (!supCfgLoadedOnce) {
-        supCfgLoadedOnce = true;
-        await chargerSupervisorCfgModules(false);
-        return;
-      }
-      await chargerSupervisorCfgModules(true);
     }
 
     function fmtFlowStatusVal(v) {
@@ -2886,16 +2920,84 @@
       poolMeasuresDomains.innerHTML = '';
       runtimeMeasureDomainKeys.forEach((domainKey) => {
         const state = poolMeasureDomainState[domainKey];
+        const animation = takePoolMeasureDomainAnimation(domainKey);
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'control-chip' + (state.active ? ' active' : '') + (state.loading ? ' is-loading' : '');
-        button.textContent = formatRuntimeDomainLabel(domainKey);
+        button.className = 'measure-domain-chip'
+          + (state.active ? ' active' : '')
+          + (state.loading ? ' is-loading' : '')
+          + (animation ? ' is-pulsing' : '')
+          + (animation && animation.activating ? ' is-activating' : '');
         button.setAttribute('aria-pressed', state.active ? 'true' : 'false');
-        button.addEventListener('click', async () => {
+        button.setAttribute('aria-label', (state.active ? 'Masquer ' : 'Afficher ') + formatRuntimeDomainLabel(domainKey));
+        if (animation) {
+          button.style.setProperty('--measure-ripple-x', animation.x);
+          button.style.setProperty('--measure-ripple-y', animation.y);
+        }
+
+        const check = document.createElement('span');
+        check.className = 'measure-domain-chip-check';
+        check.setAttribute('aria-hidden', 'true');
+        check.textContent = '✓';
+        button.appendChild(check);
+
+        const label = document.createElement('span');
+        label.className = 'measure-domain-chip-label';
+        label.textContent = formatRuntimeDomainLabel(domainKey);
+        button.appendChild(label);
+
+        button.addEventListener('pointerdown', () => {
+          button.classList.add('is-pressing');
+        });
+        ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach((eventName) => {
+          button.addEventListener(eventName, () => {
+            button.classList.remove('is-pressing');
+          });
+        });
+        button.addEventListener('click', async (event) => {
+          primePoolMeasureDomainAnimation(domainKey, event, !state.active);
           await togglePoolMeasureDomain(domainKey);
         });
         poolMeasuresDomains.appendChild(button);
       });
+    }
+
+    function primePoolMeasureDomainAnimation(domainKey, event, activating) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      if (!cleanDomain) return;
+      let x = '50%';
+      let y = '50%';
+      const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        const clientX = typeof event.clientX === 'number' ? event.clientX : rect.left + (rect.width / 2);
+        const clientY = typeof event.clientY === 'number' ? event.clientY : rect.top + (rect.height / 2);
+        const ratioX = Math.max(0, Math.min(100, ((clientX - rect.left) / Math.max(rect.width, 1)) * 100));
+        const ratioY = Math.max(0, Math.min(100, ((clientY - rect.top) / Math.max(rect.height, 1)) * 100));
+        x = ratioX.toFixed(1) + '%';
+        y = ratioY.toFixed(1) + '%';
+      }
+      poolMeasureDomainAnimations[cleanDomain] = {
+        until: Date.now() + 720,
+        activating: !!activating,
+        rendered: false,
+        x,
+        y
+      };
+    }
+
+    function takePoolMeasureDomainAnimation(domainKey) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      if (!cleanDomain) return null;
+      const animation = poolMeasureDomainAnimations[cleanDomain];
+      if (!animation) return null;
+      if (animation.until <= Date.now()) {
+        delete poolMeasureDomainAnimations[cleanDomain];
+        return null;
+      }
+      if (animation.rendered) return null;
+      animation.rendered = true;
+      return animation;
     }
 
     function renderPoolMeasuresGrid() {
@@ -3232,15 +3334,16 @@
 
     function flowCfgTitreDepuisChemin(pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
-      if (!cleanPath) return 'Configuration';
-      return 'Configuration > ' + cleanPath.split('/').join(' > ');
+      if (!cleanPath) return 'Racine';
+      return cleanPath.split('/').join(' / ');
     }
 
-    function flowCfgRootIconMarkup() {
-      return '<span class="crumb-root-icon icon-flowcfg" aria-hidden="true"></span>';
+    function flowCfgCacheKey(prefix) {
+      const p = nettoyerNomFlowCfg(prefix);
+      return p.length > 0 ? p : '__root__';
     }
 
-    function flowCfgCachedChildren(prefix) {
+    function flowCfgFilteredChildren(prefix) {
       const p = nettoyerNomFlowCfg(prefix);
       const key = flowCfgCacheKey(p);
       const node = flowCfgChildrenCache[key];
@@ -3250,153 +3353,388 @@
         .slice();
     }
 
-    function closeFlowCfgCrumbMenus(except) {
-      const wrappers = flowCfgTitle.querySelectorAll('.control-crumb.open');
-      wrappers.forEach((wrapper) => {
-        if (except && wrapper === except) return;
-        wrapper.classList.remove('open');
-      });
-    }
-
-    function renderFlowCfgTitle(pathValue) {
+    function flowCfgExpandAncestors(pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
-      const segs = cleanPath.length > 0 ? cleanPath.split('/') : [];
-      flowCfgTitle.innerHTML = '';
-      flowCfgTitle.setAttribute('aria-label', flowCfgTitreDepuisChemin(cleanPath));
-
-      const rootBtn = document.createElement('button');
-      rootBtn.type = 'button';
-      rootBtn.className = 'control-title-root-btn' + (segs.length === 0 ? ' active' : '');
-      rootBtn.setAttribute('aria-label', 'Racine configuration');
-      rootBtn.innerHTML = flowCfgRootIconMarkup();
-      if (segs.length === 0) {
-        rootBtn.disabled = true;
-      } else {
-        rootBtn.addEventListener('click', async () => {
-          closeFlowCfgCrumbMenus();
-          flowCfgPath = [];
-          await renderFlowCfgNavigator(false);
-        });
-      }
-      flowCfgTitle.appendChild(rootBtn);
-
-      if (segs.length === 0) {
-        return;
-      }
-
-      const rootSep = document.createElement('span');
-      rootSep.className = 'control-title-sep';
-      rootSep.textContent = '/';
-      flowCfgTitle.appendChild(rootSep);
-
+      if (!cleanPath) return;
+      const segs = cleanPath.split('/');
+      let prefix = '';
       for (let i = 0; i < segs.length; ++i) {
-        if (i > 0) {
-          const sep = document.createElement('span');
-          sep.className = 'control-title-sep';
-          sep.textContent = '/';
-          flowCfgTitle.appendChild(sep);
-        }
-
-        const crumb = document.createElement('span');
-        crumb.className = 'control-crumb';
-        const depth = i + 1;
-        const isActive = depth === segs.length;
-
-        const labelBtn = document.createElement('button');
-        labelBtn.type = 'button';
-        labelBtn.className = 'control-title-crumb-btn' + (isActive ? ' active' : '');
-        labelBtn.textContent = segs[i];
-        if (isActive) {
-          labelBtn.disabled = true;
-        } else {
-          labelBtn.addEventListener('click', async () => {
-            closeFlowCfgCrumbMenus();
-            flowCfgPath = segs.slice(0, depth);
-            await renderFlowCfgNavigator(false);
-          });
-        }
-        crumb.appendChild(labelBtn);
-
-        const parentPrefix = i === 0 ? '' : segs.slice(0, i).join('/');
-        const siblings = flowCfgCachedChildren(parentPrefix);
-        const menuChoices = siblings.length > 0 ? siblings : [segs[i]];
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.type = 'button';
-        toggleBtn.className = 'control-crumb-toggle';
-        toggleBtn.setAttribute('aria-label', 'Choisir une branche au niveau ' + (i + 1));
-        toggleBtn.innerHTML = '<span class="control-crumb-arrows" aria-hidden="true"></span>';
-        toggleBtn.addEventListener('click', (event) => {
-          event.stopPropagation();
-          const willOpen = !crumb.classList.contains('open');
-          closeFlowCfgCrumbMenus(crumb);
-          crumb.classList.toggle('open', willOpen);
-        });
-        crumb.appendChild(toggleBtn);
-
-        const menu = document.createElement('div');
-        menu.className = 'control-crumb-menu';
-        const sortedChoices = Array.from(new Set(menuChoices)).sort((a, b) => a.localeCompare(b));
-        for (const choice of sortedChoices) {
-          const item = document.createElement('button');
-          item.type = 'button';
-          item.className = 'control-crumb-menu-item' + (choice === segs[i] ? ' active' : '');
-          item.textContent = choice;
-          item.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            closeFlowCfgCrumbMenus();
-            flowCfgPath = segs.slice(0, i).concat([choice]);
-            await renderFlowCfgNavigator(false);
-          });
-          menu.appendChild(item);
-        }
-        crumb.appendChild(menu);
-        flowCfgTitle.appendChild(crumb);
+        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
+        flowCfgExpandedNodes.add(prefix);
       }
     }
 
-    function renderFlowCfgSections(node, currentPath) {
-      flowCfgSections.innerHTML = '';
-      const cleanPath = nettoyerNomFlowCfg(currentPath);
-      const children = (node && Array.isArray(node.children))
-        ? node.children.filter((name) => !isConfigPathHidden(cleanPath ? (cleanPath + '/' + name) : name))
-        : [];
-      if (children.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'control-chip-empty';
-        empty.textContent = 'Aucune sous-section.';
-        flowCfgSections.appendChild(empty);
+    function supCfgTreeExpandAncestors(pathValue) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      if (!cleanPath) return;
+      const segs = cleanPath.split('/');
+      let prefix = '';
+      for (let i = 0; i < segs.length; ++i) {
+        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
+        supCfgExpandedNodes.add(prefix);
+      }
+    }
+
+    function buildSupervisorCfgTreeIndex(modules) {
+      const exact = new Set();
+      const childrenMap = Object.create(null);
+      const ensureChildren = (prefix) => {
+        const key = prefix || '__root__';
+        if (!childrenMap[key]) childrenMap[key] = new Set();
+        return childrenMap[key];
+      };
+
+      ensureChildren('');
+      (modules || []).forEach((moduleName) => {
+        const clean = nettoyerNomFlowCfg(moduleName);
+        if (!clean || isConfigPathHidden(clean)) return;
+        exact.add(clean);
+        const segs = clean.split('/');
+        let prefix = '';
+        for (let i = 0; i < segs.length; ++i) {
+          const parent = prefix;
+          ensureChildren(parent).add(segs[i]);
+          prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
+          ensureChildren(prefix);
+        }
+      });
+
+      return { exact: exact, childrenMap: childrenMap };
+    }
+
+    function supCfgFilteredChildren(prefix) {
+      const clean = nettoyerNomFlowCfg(prefix);
+      if (!supCfgTreeIndex || !supCfgTreeIndex.childrenMap) return [];
+      const key = clean || '__root__';
+      const children = supCfgTreeIndex.childrenMap[key];
+      if (!children) return [];
+      return Array.from(children)
+        .filter((name) => !isConfigPathHidden(clean ? (clean + '/' + name) : name))
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    function supCfgNodeForPath(pathValue) {
+      const clean = nettoyerNomFlowCfg(pathValue);
+      return {
+        prefix: clean,
+        hasExact: !!(supCfgTreeIndex && supCfgTreeIndex.exact && supCfgTreeIndex.exact.has(clean)),
+        children: supCfgFilteredChildren(clean)
+      };
+    }
+
+    async function ensureSupervisorCfgTreeLoaded(forceReload) {
+      if (!forceReload && supCfgTreeIndex) return;
+      const res = await fetch('/api/supervisorcfg/modules', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.modules)) {
+        throw new Error('liste modules supervisor indisponible');
+      }
+      supCfgTreeModules = data.modules
+        .filter((name) => typeof name === 'string' && name.length > 0)
+        .map((name) => nettoyerNomFlowCfg(name))
+        .filter((name) => name.length > 0)
+        .sort((a, b) => a.localeCompare(b));
+      supCfgTreeIndex = buildSupervisorCfgTreeIndex(supCfgTreeModules);
+    }
+
+    function currentCfgTreePath(source) {
+      return source === 'supervisor' ? nettoyerNomFlowCfg(supCfgTreePath) : cheminFlowCfgCourant();
+    }
+
+    function renderFlowCfgCurrentPath(source, pathValue, node) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      const childCount = source === 'supervisor'
+        ? supCfgFilteredChildren(cleanPath).length
+        : flowCfgFilteredChildren(cleanPath).length;
+      const level = cleanPath ? cleanPath.split('/').length : 0;
+      const hasExact = !!(node && node.hasExact);
+      const sourceLabel = source === 'supervisor' ? 'Config Store Supervisor' : 'Config Store Flow.IO';
+
+      flowCfgPathLabel.textContent = cleanPath ? (sourceLabel + ' / ' + flowCfgTitreDepuisChemin(cleanPath)) : sourceLabel;
+      flowCfgPathLabel.setAttribute('aria-label', cleanPath ? ('Branche ' + cleanPath) : sourceLabel);
+      flowCfgApplyBtn.textContent = source === 'supervisor' ? 'Appliquer localement' : 'Appliquer';
+
+      if (!cleanPath) {
+        flowCfgPathMeta.textContent = childCount > 0
+          ? (childCount + ' branche(s) disponible(s) dans ' + sourceLabel + '.')
+          : ('Aucune branche disponible dans ' + sourceLabel + '.');
         return;
       }
 
-      for (const child of children) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'control-chip';
-        button.textContent = child;
-        button.addEventListener('click', async () => {
-          const nextPath = currentPath ? (currentPath + '/' + child) : child;
-          flowCfgPath = nextPath.split('/');
-          await renderFlowCfgNavigator(false);
+      const details = [];
+      details.push('Niveau ' + level);
+      if (hasExact) {
+        details.push('variables configurables');
+      }
+      if (childCount > 0) {
+        details.push(childCount + ' sous-branche(s)');
+      }
+      if (details.length === 0) {
+        details.push('branche vide');
+      }
+      flowCfgPathMeta.textContent = details.join(' | ');
+    }
+
+    function buildFlowCfgTreeItem(source, pathValue) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      const segs = cleanPath.split('/');
+      const label = segs[segs.length - 1] || cleanPath;
+      const cachedNode = source === 'supervisor'
+        ? supCfgNodeForPath(cleanPath)
+        : (flowCfgChildrenCache[flowCfgCacheKey(cleanPath)] || null);
+      const children = source === 'supervisor'
+        ? supCfgFilteredChildren(cleanPath)
+        : flowCfgFilteredChildren(cleanPath);
+      const isExpanded = source === 'supervisor'
+        ? supCfgExpandedNodes.has(cleanPath)
+        : flowCfgExpandedNodes.has(cleanPath);
+      const isSelected = source === cfgTreeSelectedSource && cleanPath === currentCfgTreePath(source);
+      const hasKnownChildren = children.length > 0;
+      const canExpand = source === 'supervisor' ? hasKnownChildren : (!cachedNode || hasKnownChildren);
+
+      const item = document.createElement('li');
+      item.className = 'cfg-tree-item';
+      item.setAttribute('role', 'treeitem');
+      item.setAttribute('aria-expanded', canExpand ? String(isExpanded) : 'false');
+
+      const row = document.createElement('div');
+      row.className = 'cfg-tree-row' + (canExpand ? '' : ' is-leaf');
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'cfg-tree-toggle' + (isExpanded ? ' is-expanded' : '') + (canExpand ? '' : ' is-leaf');
+      toggle.setAttribute('aria-label', canExpand ? ('Afficher ' + label) : (label + ' sans sous-branche'));
+      toggle.textContent = canExpand ? (isExpanded ? '-' : '+') : '';
+      toggle.disabled = !canExpand;
+      if (canExpand) {
+        toggle.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          await toggleFlowCfgBranch(source, cleanPath);
         });
-        flowCfgSections.appendChild(button);
+      }
+      row.appendChild(toggle);
+
+      const nodeBtn = document.createElement('button');
+      nodeBtn.type = 'button';
+      nodeBtn.className = 'cfg-tree-node'
+        + (isSelected ? ' is-selected' : '')
+        + (cachedNode && cachedNode.hasExact ? ' is-exact' : '');
+      nodeBtn.setAttribute('aria-current', isSelected ? 'true' : 'false');
+      nodeBtn.addEventListener('click', async () => {
+        if (canExpand && isExpanded) {
+          await toggleFlowCfgBranch(source, cleanPath);
+          return;
+        }
+        await selectFlowCfgPath(source, cleanPath, false);
+      });
+
+      const nodeLabel = document.createElement('span');
+      nodeLabel.className = 'cfg-tree-node-label';
+      nodeLabel.textContent = label;
+      nodeBtn.appendChild(nodeLabel);
+      row.appendChild(nodeBtn);
+      item.appendChild(row);
+
+      if (isExpanded && hasKnownChildren) {
+        const group = document.createElement('ul');
+        group.className = 'cfg-tree-group is-nested';
+        group.setAttribute('role', 'group');
+        children.forEach((child) => {
+          const childPath = cleanPath ? (cleanPath + '/' + child) : child;
+          group.appendChild(buildFlowCfgTreeItem(source, childPath));
+        });
+        item.appendChild(group);
+      }
+
+      return item;
+    }
+
+    function buildCfgTreeRootItem(source, label, expanded, children) {
+      const item = document.createElement('li');
+      item.className = 'cfg-tree-item cfg-tree-item-root';
+      item.setAttribute('role', 'treeitem');
+      item.setAttribute('aria-expanded', children.length > 0 ? String(expanded) : 'false');
+
+      const row = document.createElement('div');
+      row.className = 'cfg-tree-row cfg-tree-root-row';
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'cfg-tree-toggle' + (expanded ? ' is-expanded' : '') + (children.length > 0 ? '' : ' is-leaf');
+      toggle.textContent = children.length > 0 ? (expanded ? '-' : '+') : '';
+      toggle.disabled = children.length === 0;
+      toggle.setAttribute('aria-label', expanded ? ('Replier ' + label) : ('Afficher ' + label));
+      toggle.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (source === 'flow') flowCfgRootExpanded = !flowCfgRootExpanded;
+        else supCfgRootExpanded = !supCfgRootExpanded;
+        renderFlowCfgTree();
+      });
+      row.appendChild(toggle);
+
+      const labelBtn = document.createElement('button');
+      labelBtn.type = 'button';
+      labelBtn.className = 'cfg-tree-root-label' + ((cfgTreeSelectedSource === source && !currentCfgTreePath(source)) ? ' is-selected' : '');
+      labelBtn.textContent = label;
+      labelBtn.addEventListener('click', async () => {
+        await selectFlowCfgPath(source, '', false);
+      });
+      row.appendChild(labelBtn);
+      item.appendChild(row);
+
+      if (expanded && children.length > 0) {
+        const group = document.createElement('ul');
+        group.className = 'cfg-tree-group cfg-tree-group-root';
+        group.setAttribute('role', 'group');
+        children.forEach((child) => {
+          group.appendChild(buildFlowCfgTreeItem(source, child));
+        });
+        item.appendChild(group);
+      }
+
+      return item;
+    }
+
+    function renderFlowCfgTree() {
+      const savedScrollTop = flowCfgTree.scrollTop;
+      flowCfgTree.innerHTML = '';
+      const flowChildren = flowCfgFilteredChildren('');
+      const supervisorChildren = supCfgFilteredChildren('');
+
+      const roots = document.createElement('ul');
+      roots.className = 'cfg-tree-group';
+      roots.setAttribute('role', 'tree');
+      roots.appendChild(buildCfgTreeRootItem('flow', 'Config Store Flow.IO', flowCfgRootExpanded, flowChildren));
+      roots.appendChild(buildCfgTreeRootItem('supervisor', 'Config Store Supervisor', supCfgRootExpanded, supervisorChildren));
+      flowCfgTree.appendChild(roots);
+      flowCfgTree.scrollTop = savedScrollTop;
+    }
+
+    function renderFlowCfgTreeSkeleton() {
+      const savedScrollTop = flowCfgTree.scrollTop;
+      flowCfgTree.innerHTML = '';
+      const skeleton = document.createElement('div');
+      skeleton.className = 'cfg-tree-skeleton';
+      [100, 88, 92, 78, 84].forEach((width, index) => {
+        const line = document.createElement('div');
+        line.className = 'skeleton-line cfg-tree-skeleton-line' + (index > 1 ? ' is-indented' : '');
+        line.style.width = width + '%';
+        skeleton.appendChild(line);
+      });
+      flowCfgTree.appendChild(skeleton);
+      flowCfgTree.scrollTop = savedScrollTop;
+    }
+
+    function restoreFlowCfgTreeScroll(scrollTop) {
+      if (!flowCfgTree || !Number.isFinite(scrollTop)) return;
+      flowCfgTree.scrollTop = scrollTop;
+      requestAnimationFrame(() => {
+        if (!flowCfgTree) return;
+        flowCfgTree.scrollTop = scrollTop;
+      });
+    }
+
+    async function ensureFlowCfgPathLoaded(pathValue, forceReload) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      await chargerFlowCfgChildren('', !!forceReload);
+      if (!cleanPath) return flowCfgChildrenCache[flowCfgCacheKey('')];
+
+      const segs = cleanPath.split('/');
+      let prefix = '';
+      let node = null;
+      for (let i = 0; i < segs.length; ++i) {
+        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
+        node = await chargerFlowCfgChildren(prefix, !!forceReload);
+      }
+      return node;
+    }
+
+    async function toggleFlowCfgBranch(source, pathValue) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      const expandedSet = source === 'supervisor' ? supCfgExpandedNodes : flowCfgExpandedNodes;
+      if (!cleanPath) return;
+      if (expandedSet.has(cleanPath)) {
+        expandedSet.delete(cleanPath);
+        renderFlowCfgTree();
+        return;
+      }
+      try {
+        flowCfgStatus.textContent = 'Chargement des sous-branches...';
+        if (source === 'supervisor') {
+          await ensureSupervisorCfgTreeLoaded(false);
+        } else {
+          await chargerFlowCfgChildren(cleanPath, false);
+        }
+        expandedSet.add(cleanPath);
+        renderFlowCfgTree();
+        flowCfgStatus.textContent = 'Sous-branches chargees.';
+      } catch (err) {
+        flowCfgStatus.textContent = 'Chargement des sous-branches echoue: ' + err;
       }
     }
 
-    function flowCfgCacheKey(prefix) {
-      const p = nettoyerNomFlowCfg(prefix);
-      return p.length > 0 ? p : '__root__';
-    }
+    async function selectFlowCfgPath(source, pathValue, forceReload) {
+      const preservedTreeScrollTop = flowCfgTree ? flowCfgTree.scrollTop : 0;
+      beginFlowCfgLoading('Chargement de la configuration distante...', { tree: false, detail: true });
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      try {
+        let node = null;
+        cfgTreeSelectedSource = source === 'supervisor' ? 'supervisor' : 'flow';
+        if (cfgTreeSelectedSource === 'supervisor') {
+          await ensureSupervisorCfgTreeLoaded(!!forceReload);
+          supCfgTreePath = cleanPath;
+          supCfgRootExpanded = true;
+          supCfgTreeExpandAncestors(cleanPath);
+          node = supCfgNodeForPath(cleanPath);
+          if (cleanPath && supCfgFilteredChildren(cleanPath).length > 0) {
+            supCfgExpandedNodes.add(cleanPath);
+          }
+        } else {
+          node = await ensureFlowCfgPathLoaded(cleanPath, !!forceReload);
+          flowCfgPath = cleanPath ? cleanPath.split('/') : [];
+          flowCfgRootExpanded = true;
+          flowCfgExpandAncestors(cleanPath);
+          if (cleanPath && flowCfgFilteredChildren(cleanPath).length > 0) {
+            flowCfgExpandedNodes.add(cleanPath);
+          }
+        }
 
-    function renderFlowCfgSectionsSkeleton() {
-      flowCfgSections.innerHTML = '';
-      const widths = [16, 22, 14, 20, 18];
-      widths.forEach((w) => {
-        const chip = document.createElement('span');
-        chip.className = 'control-chip control-chip-skeleton';
-        chip.style.width = w + '%';
-        flowCfgSections.appendChild(chip);
-      });
+        renderFlowCfgCurrentPath(cfgTreeSelectedSource, cleanPath, node);
+        renderFlowCfgTree();
+        restoreFlowCfgTreeScroll(preservedTreeScrollTop);
+
+        if (!cleanPath) {
+          resetPrimaryCfgEditor((cfgTreeSelectedSource === 'supervisor' ? supCfgFilteredChildren('') : flowCfgFilteredChildren('')).length > 0
+            ? 'Sélectionnez une branche dans l\'arborescence.'
+            : 'Aucune branche disponible.');
+          return;
+        }
+
+        if (node && node.hasExact) {
+          if (cfgTreeSelectedSource === 'supervisor') {
+            await chargerPrimarySupervisorCfgModule(cleanPath);
+          } else {
+            await chargerFlowCfgModule(cleanPath);
+          }
+          return;
+        }
+
+        const childCount = cfgTreeSelectedSource === 'supervisor'
+          ? supCfgFilteredChildren(cleanPath).length
+          : flowCfgFilteredChildren(cleanPath).length;
+        if (childCount > 0) {
+          resetPrimaryCfgEditor('Branche ouverte. Sélectionnez une sous-branche ou un noeud configurable.');
+        } else {
+          resetPrimaryCfgEditor('Aucune variable configurable dans cette branche.');
+        }
+      } catch (err) {
+        renderFlowCfgCurrentPath(cfgTreeSelectedSource, cleanPath, null);
+        renderFlowCfgTree();
+        restoreFlowCfgTreeScroll(preservedTreeScrollTop);
+        resetPrimaryCfgEditor('Chargement branche échoué: ' + err);
+      } finally {
+        endFlowCfgLoading({ tree: false, detail: true });
+      }
     }
 
     function renderFlowCfgFieldsSkeleton() {
@@ -3424,26 +3762,52 @@
       }
     }
 
-    function beginFlowCfgLoading(statusText) {
-      flowCfgLoadingDepth += 1;
-      if (flowCfgLoadingDepth === 1) {
-        flowCfgTitle.classList.add('is-loading');
+    function beginFlowCfgLoading(statusText, options) {
+      const opts = options || {};
+      const loadTree = opts.tree !== false;
+      const loadDetail = opts.detail !== false;
+
+      if (loadTree) {
+        flowCfgTreeLoadingDepth += 1;
+        if (flowCfgTreeLoadingDepth === 1) {
+          if (flowCfgTreePane) flowCfgTreePane.classList.add('is-loading');
+          renderFlowCfgTreeSkeleton();
+        }
+      }
+      if (loadDetail) {
+        flowCfgDetailLoadingDepth += 1;
+        if (flowCfgDetailLoadingDepth === 1) {
+          if (flowCfgDetailPane) flowCfgDetailPane.classList.add('is-loading');
+          renderFlowCfgFieldsSkeleton();
+          flowCfgApplyBtn.disabled = true;
+        }
+      }
+      if (loadTree || loadDetail) {
         flowCfgRefreshBtn.disabled = true;
-        flowCfgApplyBtn.disabled = true;
-        renderFlowCfgSectionsSkeleton();
-        renderFlowCfgFieldsSkeleton();
       }
       if (statusText) {
         flowCfgStatus.textContent = statusText;
       }
     }
 
-    function endFlowCfgLoading() {
-      if (flowCfgLoadingDepth > 0) {
-        flowCfgLoadingDepth -= 1;
+    function endFlowCfgLoading(options) {
+      const opts = options || {};
+      const loadTree = opts.tree !== false;
+      const loadDetail = opts.detail !== false;
+
+      if (loadTree && flowCfgTreeLoadingDepth > 0) {
+        flowCfgTreeLoadingDepth -= 1;
+        if (flowCfgTreeLoadingDepth === 0) {
+          if (flowCfgTreePane) flowCfgTreePane.classList.remove('is-loading');
+        }
       }
-      if (flowCfgLoadingDepth === 0) {
-        flowCfgTitle.classList.remove('is-loading');
+      if (loadDetail && flowCfgDetailLoadingDepth > 0) {
+        flowCfgDetailLoadingDepth -= 1;
+        if (flowCfgDetailLoadingDepth === 0) {
+          if (flowCfgDetailPane) flowCfgDetailPane.classList.remove('is-loading');
+        }
+      }
+      if (flowCfgTreeLoadingDepth === 0 && flowCfgDetailLoadingDepth === 0) {
         flowCfgRefreshBtn.disabled = false;
       }
     }
@@ -3652,15 +4016,19 @@
       return node;
     }
 
-    function resetFlowCfgEditor(message) {
-      flowCfgCurrentModule = '';
-      flowCfgCurrentData = {};
+    function resetPrimaryCfgEditor(message) {
       flowCfgFields.innerHTML = '';
       flowCfgApplyBtn.hidden = false;
       flowCfgApplyBtn.disabled = true;
       if (message) {
         flowCfgStatus.textContent = message;
       }
+    }
+
+    function resetFlowCfgEditor(message) {
+      flowCfgCurrentModule = '';
+      flowCfgCurrentData = {};
+      resetPrimaryCfgEditor(message);
     }
 
     function storeConfigFieldInitialValue(el, value) {
@@ -3724,11 +4092,14 @@
       return JSON.stringify(patch);
     }
 
-    function renderConfigFields(containerEl, moduleName, dataObj) {
+    function renderConfigFields(containerEl, moduleName, dataObj, options) {
+      const opts = options || {};
       containerEl.innerHTML = '';
       const data = (dataObj && typeof dataObj === 'object') ? dataObj : {};
-      const perFieldApply = (containerEl === flowCfgFields) && flowCfgApplyPerFieldEnabled(moduleName);
-      if (containerEl === flowCfgFields) {
+      const perFieldApply = !!opts.perFieldApply;
+      const controlsPrimaryPane = !!opts.controlsPrimaryPane;
+      const onApplyField = typeof opts.onApplyField === 'function' ? opts.onApplyField : null;
+      if (controlsPrimaryPane) {
         flowCfgApplyBtn.hidden = perFieldApply;
       }
       const keys = Object.keys(data).sort();
@@ -3862,7 +4233,9 @@
           applyBtn.title = 'Aucun changement a appliquer';
           applyBtn.setAttribute('aria-label', applyBtn.title);
           applyBtn.addEventListener('click', async () => {
-            await appliquerFlowCfgField(inputEl, applyBtn);
+            if (onApplyField) {
+              await onApplyField(inputEl, applyBtn);
+            }
           });
 
           const syncApplyState = () => updateControlFieldApplyState(inputEl, applyBtn);
@@ -3878,11 +4251,18 @@
     }
 
     function renderFlowCfgFields(dataObj) {
-      renderConfigFields(flowCfgFields, flowCfgCurrentModule, dataObj);
+      renderConfigFields(flowCfgFields, flowCfgCurrentModule, dataObj, {
+        controlsPrimaryPane: true,
+        perFieldApply: flowCfgApplyPerFieldEnabled(flowCfgCurrentModule),
+        onApplyField: appliquerFlowCfgField
+      });
     }
 
-    function renderSupervisorCfgFields(dataObj) {
-      renderConfigFields(supCfgFields, supCfgCurrentModule, dataObj);
+    function renderPrimarySupervisorCfgFields(dataObj) {
+      renderConfigFields(flowCfgFields, supCfgCurrentModule, dataObj, {
+        controlsPrimaryPane: true,
+        perFieldApply: false
+      });
     }
 
     function buildPatchJsonFromFields(fieldsContainer, moduleName) {
@@ -3920,16 +4300,18 @@
       return buildPatchJsonFromFields(flowCfgFields, flowCfgCurrentModule);
     }
 
-    function buildSupervisorCfgPatchJson() {
-      return buildPatchJsonFromFields(supCfgFields, supCfgCurrentModule);
+    function buildPrimaryCfgPatchJson() {
+      if (cfgTreeSelectedSource === 'supervisor') {
+        return buildPatchJsonFromFields(flowCfgFields, supCfgCurrentModule);
+      }
+      return buildPatchJsonFromFields(flowCfgFields, flowCfgCurrentModule);
     }
 
     async function chargerFlowCfgModule(moduleName) {
-      beginFlowCfgLoading('Chargement de la branche distante...');
+      beginFlowCfgLoading('Chargement de la branche distante...', { tree: false, detail: true });
       const m = nettoyerNomFlowCfg(moduleName);
       try {
         if (!m) {
-          renderFlowCfgTitle(cheminFlowCfgCourant());
           resetFlowCfgEditor('Aucune branche sélectionnée.');
           return;
         }
@@ -3943,61 +4325,66 @@
         }
         flowCfgCurrentModule = m;
         flowCfgCurrentData = data.data;
-        renderFlowCfgTitle(m);
         renderFlowCfgFields(flowCfgCurrentData);
         flowCfgApplyBtn.disabled = flowCfgApplyBtn.hidden;
         flowCfgStatus.textContent = data.truncated
           ? 'Branche chargée (tronquée, buffer distant atteint).'
           : 'Branche chargée.';
       } catch (err) {
-        renderFlowCfgTitle(cheminFlowCfgCourant());
         resetFlowCfgEditor('Chargement branche échoué: ' + err);
       } finally {
-        endFlowCfgLoading();
+        endFlowCfgLoading({ tree: false, detail: true });
       }
     }
 
-    async function renderFlowCfgNavigator(forceReloadCurrent) {
-      beginFlowCfgLoading('Chargement de la configuration distante...');
+    async function chargerPrimarySupervisorCfgModule(moduleName) {
+      beginFlowCfgLoading('Chargement de la branche supervisor...', { tree: false, detail: true });
+      const m = nettoyerNomFlowCfg(moduleName);
       try {
-        const currentPath = cheminFlowCfgCourant();
-        const node = await chargerFlowCfgChildren(currentPath, !!forceReloadCurrent);
-        renderFlowCfgTitle(currentPath);
-        renderFlowCfgSections(node, currentPath);
-        if (node.hasExact) {
-          await chargerFlowCfgModule(currentPath);
+        if (!m) {
+          supCfgCurrentModule = '';
+          supCfgCurrentData = {};
+          resetPrimaryCfgEditor('Aucune branche supervisor sélectionnée.');
           return;
         }
-        if (node.children.length > 0) {
-          resetFlowCfgEditor('Sélectionnez une section.');
-        } else {
-          resetFlowCfgEditor('Aucune sous-branche disponible.');
+        const res = await fetch('/api/supervisorcfg/module?name=' + encodeURIComponent(m), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data || data.ok !== true || typeof data.data !== 'object') {
+          throw new Error('lecture module supervisor impossible');
         }
+        supCfgCurrentModule = m;
+        supCfgCurrentData = data.data;
+        renderPrimarySupervisorCfgFields(supCfgCurrentData);
+        flowCfgApplyBtn.disabled = false;
+        flowCfgStatus.textContent = data.truncated
+          ? 'Branche supervisor chargée (tronquée, buffer atteint).'
+          : 'Branche supervisor chargée.';
+      } catch (err) {
+        supCfgCurrentModule = '';
+        supCfgCurrentData = {};
+        resetPrimaryCfgEditor('Chargement branche supervisor échoué: ' + err);
       } finally {
-        endFlowCfgLoading();
+        endFlowCfgLoading({ tree: false, detail: true });
       }
     }
 
     async function chargerFlowCfgModules(forceReload) {
       const force = !!forceReload;
-      beginFlowCfgLoading('Chargement de la configuration distante...');
       try {
         if (force) {
           flowCfgChildrenCache = {};
+          flowCfgExpandedNodes = new Set();
+          supCfgTreeIndex = null;
+          supCfgExpandedNodes = new Set();
         }
-        try {
-          await chargerFlowCfgChildren(cheminFlowCfgCourant(), force);
-        } catch (err) {
-          flowCfgPath = [];
-          await chargerFlowCfgChildren('', force);
-        }
-        await renderFlowCfgNavigator(force);
+        await ensureFlowCfgPathLoaded('', force);
+        await ensureSupervisorCfgTreeLoaded(force);
+        const currentPath = nettoyerNomFlowCfg(currentCfgTreePath(cfgTreeSelectedSource));
+        await selectFlowCfgPath(cfgTreeSelectedSource, currentPath, force);
         return true;
       } catch (err) {
         flowCfgStatus.textContent = 'Chargement des branches échoué: ' + err;
         return false;
-      } finally {
-        endFlowCfgLoading();
       }
     }
 
@@ -4127,100 +4514,29 @@
       }
     }
 
-    function resetSupervisorCfgEditor(message) {
-      supCfgCurrentModule = '';
-      supCfgCurrentData = {};
-      supCfgFields.innerHTML = '';
-      supCfgApplyBtn.disabled = true;
-      if (message) {
-        supCfgStatus.textContent = message;
-      }
-    }
-
-    async function chargerSupervisorCfgModule(moduleName) {
-      const m = nettoyerNomFlowCfg(moduleName);
-      if (!m) {
-        resetSupervisorCfgEditor('Aucune branche locale sélectionnée.');
+    async function appliquerPrimaryCfg() {
+      if (cfgTreeSelectedSource === 'supervisor') {
+        try {
+          const patch = buildPrimaryCfgPatchJson();
+          const body = new URLSearchParams();
+          body.set('patch', patch);
+          const res = await fetch('/api/supervisorcfg/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: body.toString()
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data || data.ok !== true) {
+            throw new Error('apply refusé');
+          }
+          flowCfgStatus.textContent = 'Configuration supervisor appliquée.';
+          await chargerPrimarySupervisorCfgModule(supCfgCurrentModule);
+        } catch (err) {
+          flowCfgStatus.textContent = 'Application cfg supervisor échouée: ' + err;
+        }
         return;
       }
-      try {
-        const res = await fetch('/api/supervisorcfg/module?name=' + encodeURIComponent(m), { cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok || !data || data.ok !== true || typeof data.data !== 'object') {
-          throw new Error('lecture module impossible');
-        }
-        supCfgCurrentModule = m;
-        supCfgCurrentData = data.data;
-        renderSupervisorCfgFields(supCfgCurrentData);
-        supCfgApplyBtn.disabled = false;
-        supCfgStatus.textContent = data.truncated
-          ? 'Branche locale chargée (tronquée, buffer atteint).'
-          : 'Branche locale chargée.';
-      } catch (err) {
-        resetSupervisorCfgEditor('Chargement branche locale échoué: ' + err);
-      }
-    }
-
-    async function chargerSupervisorCfgModules(keepCurrentSelection) {
-      try {
-        const res = await fetch('/api/supervisorcfg/modules', { cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok || !data || data.ok !== true || !Array.isArray(data.modules)) {
-          throw new Error('liste modules indisponible');
-        }
-
-        const modules = data.modules
-          .filter((name) => typeof name === 'string' && name.length > 0)
-          .map((name) => nettoyerNomFlowCfg(name))
-          .filter((name) => name.length > 0)
-          .filter((name) => !isConfigPathHidden(name))
-          .sort((a, b) => a.localeCompare(b));
-
-        supCfgModuleSelect.innerHTML = '';
-        if (modules.length === 0) {
-          const empty = document.createElement('option');
-          empty.value = '';
-          empty.textContent = 'Aucune branche locale';
-          supCfgModuleSelect.appendChild(empty);
-          resetSupervisorCfgEditor('Aucune branche locale disponible.');
-          return;
-        }
-
-        modules.forEach((name) => {
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          supCfgModuleSelect.appendChild(opt);
-        });
-
-        const current = keepCurrentSelection ? nettoyerNomFlowCfg(supCfgCurrentModule) : '';
-        const selected = modules.includes(current) ? current : modules[0];
-        supCfgModuleSelect.value = selected;
-        await chargerSupervisorCfgModule(selected);
-      } catch (err) {
-        resetSupervisorCfgEditor('Chargement des branches locales échoué: ' + err);
-      }
-    }
-
-    async function appliquerSupervisorCfg() {
-      try {
-        const patch = buildSupervisorCfgPatchJson();
-        const body = new URLSearchParams();
-        body.set('patch', patch);
-        const res = await fetch('/api/supervisorcfg/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-          body: body.toString()
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data || data.ok !== true) {
-          throw new Error('apply refusé');
-        }
-        supCfgStatus.textContent = 'Configuration locale appliquée.';
-        await chargerSupervisorCfgModule(supCfgCurrentModule);
-      } catch (err) {
-        supCfgStatus.textContent = 'Application cfg locale échouée: ' + err;
-      }
+      await appliquerFlowCfg();
     }
 
     async function callSystemAction(target, action) {
@@ -4386,26 +4702,10 @@
 
     function initConfigBindings() {
       bindClickAction(flowCfgRefreshBtn, () => ensureFlowCfgLoaded(true));
-      bindClickAction(flowCfgApplyBtn, () => appliquerFlowCfg());
-      bindClickAction(supCfgRefreshBtn, () => chargerSupervisorCfgModules(true));
-      supCfgModuleSelect.addEventListener('change', async () => {
-        const selected = nettoyerNomFlowCfg(supCfgModuleSelect.value);
-        await chargerSupervisorCfgModule(selected);
-      });
-      bindClickAction(supCfgApplyBtn, () => appliquerSupervisorCfg());
+      bindClickAction(flowCfgApplyBtn, () => appliquerPrimaryCfg());
     }
 
     function initGlobalUiBindings() {
-      document.addEventListener('click', (event) => {
-        if (!flowCfgTitle.contains(event.target)) {
-          closeFlowCfgCrumbMenus();
-        }
-      });
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-          closeFlowCfgCrumbMenus();
-        }
-      });
       document.addEventListener('visibilitychange', () => {
         const activePageId = getActivePageId();
         const onUpgradePage = activePageId === 'page-system';

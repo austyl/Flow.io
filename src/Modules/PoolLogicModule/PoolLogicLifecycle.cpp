@@ -338,7 +338,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             MqttTopics::SuffixCfgSet,
             "{\\\"poollogic/delay\\\":{\\\"dly_pid_min\\\":{{ value | int(0) }}}}",
             0.0f,
-            180.0f,
+            30.0f,
             1.0f,
             "slider",
             "config",

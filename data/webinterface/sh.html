@@ -13,8 +13,7 @@
         <button class="menu-item active" data-page="page-pool-measures"><span class="ico icon-measures" aria-hidden="true"></span><span class="label">Mesures</span></button>
         <button class="menu-item" data-page="page-terminal"><span class="ico icon-terminal" aria-hidden="true"></span><span class="label">Journaux</span></button>
         <button class="menu-item" data-page="page-system"><span class="ico icon-system" aria-hidden="true"></span><span class="label">Mise à jour</span></button>
-        <button class="menu-item" data-page="page-control"><span class="ico icon-flowcfg" aria-hidden="true"></span><span class="label">Config Flow.IO</span></button>
-        <button class="menu-item" data-page="page-local-config"><span class="ico icon-supervisorcfg" aria-hidden="true"></span><span class="label">Config Superviseur</span></button>
+        <button class="menu-item" data-page="page-control"><span class="ico icon-flowcfg" aria-hidden="true"></span><span class="label">Configuration</span></button>
       </nav>
       <div class="drawer-footer">
         <div class="app-footer-copy">
@@ -44,7 +43,7 @@
         </div>
         <div class="control-shell">
           <div class="control-section-title">Domaines</div>
-          <div id="poolMeasuresDomains" class="control-sections" aria-label="Domaines de mesures"></div>
+          <div id="poolMeasuresDomains" class="control-sections measure-domain-chips" aria-label="Domaines de mesures"></div>
           <div class="control-divider measure-domain-divider"></div>
           <div class="control-section-title">Mesures</div>
           <div class="measure-results-shell">
@@ -88,48 +87,6 @@
           <h1>Mise à jour</h1>
         </div>
         <div class="system-groups">
-          <div class="card">
-            <div class="config-section">
-              <div class="config-section-head wifi-section-head">
-                <h2>WiFi</h2>
-                <div class="wifi-section-toggle">
-                  <span>Activer</span>
-                  <label class="md3-switch">
-                    <input id="wifiEnabled" type="checkbox" checked />
-                    <span class="md3-track"></span>
-                    <span class="md3-thumb"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="form-grid">
-                <div class="field">
-                  <label for="wifiSsid">SSID</label>
-                  <input id="wifiSsid" placeholder="Nom du réseau WiFi" />
-                </div>
-                <div class="field">
-                  <label for="wifiSsidList">Réseaux détectés</label>
-                  <div class="field-inline-select-action">
-                    <select id="wifiSsidList">
-                      <option value="">Scan requis...</option>
-                    </select>
-                    <button id="scanWifi" class="btn-tonal btn-icon-only btn-refresh-icon field-inline-refresh" aria-label="Scanner les réseaux" title="Scanner les réseaux"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
-                  </div>
-                </div>
-                <div class="field full">
-                  <label for="wifiPass">Mot de passe</label>
-                  <div class="password-wrap">
-                    <input id="wifiPass" type="password" placeholder="Mot de passe WiFi" />
-                    <button id="toggleWifiPass" class="password-toggle" type="button" aria-label="Afficher le mot de passe WiFi" aria-pressed="false">Voir</button>
-                  </div>
-                </div>
-              </div>
-              <div class="btn-row">
-                <button id="applyWifiCfg" class="btn-primary">Appliquer WiFi</button>
-              </div>
-              <div id="wifiConfigStatus" class="config-status">Configuration WiFi prête.</div>
-            </div>
-          </div>
-
           <div class="card">
             <div class="config-section">
               <h2>Mise à jour Firmware</h2>
@@ -231,48 +188,82 @@
         </div>
       </section>
 
-      <section id="page-control" class="page">
+      <section id="page-wifi" class="page">
         <div class="topbar">
-          <h1 id="flowCfgTitle" class="control-title-breadcrumb" aria-label="Configuration">
-            <button type="button" class="control-title-root-btn active" aria-label="Racine configuration" disabled><span class="crumb-root-icon icon-flowcfg" aria-hidden="true"></span></button>
-          </h1>
-          <button id="flowCfgRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir la configuration" title="Rafraîchir la configuration"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+          <h1>Configuration WiFi</h1>
         </div>
-        <div class="card control-card">
-          <div class="control-shell">
-            <div class="control-section-title">Sections</div>
-            <div id="flowCfgSections" class="control-sections"></div>
-            <div class="control-divider"></div>
-            <div class="control-section-title">Variables</div>
-            <div id="flowCfgFields" class="control-fields"></div>
-            <div id="flowCfgStatus" class="config-status">Configuration distante prête.</div>
-            <div class="control-actions">
-              <button id="flowCfgApply" class="btn-primary">Appliquer</button>
+        <div class="card">
+          <div class="config-section">
+            <div class="config-section-head wifi-section-head">
+              <h2>WiFi</h2>
+              <div class="wifi-section-toggle">
+                <span>Activer</span>
+                <label class="md3-switch">
+                  <input id="wifiEnabled" type="checkbox" checked />
+                  <span class="md3-track"></span>
+                  <span class="md3-thumb"></span>
+                </label>
+              </div>
             </div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="wifiSsid">SSID</label>
+                <input id="wifiSsid" placeholder="Nom du réseau WiFi" />
+              </div>
+              <div class="field">
+                <label for="wifiSsidList">Réseaux détectés</label>
+                <div class="field-inline-select-action">
+                  <select id="wifiSsidList">
+                    <option value="">Scan requis...</option>
+                  </select>
+                  <button id="scanWifi" class="btn-tonal btn-icon-only btn-refresh-icon field-inline-refresh" aria-label="Scanner les réseaux" title="Scanner les réseaux"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+                </div>
+              </div>
+              <div class="field full">
+                <label for="wifiPass">Mot de passe</label>
+                <div class="password-wrap">
+                  <input id="wifiPass" type="password" placeholder="Mot de passe WiFi" />
+                  <button id="toggleWifiPass" class="password-toggle" type="button" aria-label="Afficher le mot de passe WiFi" aria-pressed="false">Voir</button>
+                </div>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button id="applyWifiCfg" class="btn-primary">Appliquer WiFi</button>
+            </div>
+            <div id="wifiConfigStatus" class="config-status">Configuration WiFi prête.</div>
           </div>
         </div>
       </section>
 
-      <section id="page-local-config" class="page">
+      <section id="page-control" class="page">
         <div class="topbar">
-          <h1>Configuration locale Superviseur</h1>
-          <button id="supCfgRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir la configuration locale" title="Rafraîchir la configuration locale"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
+          <div class="control-topbar-heading">
+            <h1 id="flowCfgTitle">Configuration</h1>
+          </div>
+          <button id="flowCfgRefresh" class="btn-tonal btn-icon-only btn-refresh-icon" aria-label="Rafraîchir la configuration" title="Rafraîchir la configuration"><span class="refresh-icon-glyph" aria-hidden="true"></span></button>
         </div>
         <div class="card control-card">
-          <div class="control-shell">
-            <div class="control-section-title">Module</div>
-            <div class="form-grid">
-              <div class="field full">
-                <label for="supCfgModuleSelect">Branche de configuration locale</label>
-                <select id="supCfgModuleSelect"></select>
-              </div>
-            </div>
-            <div class="control-divider"></div>
-            <div class="control-section-title">Variables</div>
-            <div id="supCfgFields" class="control-fields"></div>
-            <div id="supCfgStatus" class="config-status">Configuration locale prête.</div>
-            <div class="control-actions">
-              <button id="supCfgApply" class="btn-primary">Appliquer localement</button>
+          <div class="control-shell control-shell-tree">
+            <div class="control-layout">
+              <aside class="cfg-pane cfg-tree-pane">
+                <div id="flowCfgTree" class="cfg-tree" role="tree" aria-label="Arbre de configuration Flow.IO"></div>
+              </aside>
+              <section class="cfg-pane cfg-detail-pane">
+                <div class="control-section-title">Branche</div>
+                <div class="control-detail-header">
+                  <div class="control-current-path-wrap">
+                    <div id="flowCfgCurrentPath" class="control-current-path">Racine</div>
+                    <div id="flowCfgPathMeta" class="control-current-caption">Sélectionnez une branche dans l'arborescence.</div>
+                  </div>
+                </div>
+                <div class="control-divider"></div>
+                <div class="control-section-title">Variables</div>
+                <div id="flowCfgFields" class="control-fields"></div>
+                <div id="flowCfgStatus" class="config-status">Configuration distante prête.</div>
+                <div class="control-actions">
+                  <button id="flowCfgApply" class="btn-primary">Appliquer</button>
+                </div>
+              </section>
             </div>
           </div>
         </div>
