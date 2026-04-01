@@ -19,10 +19,10 @@ namespace {
 
 using Profiles::FlowIO::ModuleInstances;
 namespace FlowIoLayout = Profiles::FlowIO::IoLayout;
-static constexpr uint32_t kWaterCounterDebounceUs = 100000U;  // Accept at most 1 pulse every 100 ms.
+static constexpr uint32_t kWaterCounterDebounceUs = 500000U;  // Accept at most 1 pulse every 500 ms.
+static constexpr uint8_t kFlowIoAnalogHaSlots = 15;
 
 struct FlowIoAnalogHaSpec {
-    uint8_t analogIdx = 0;
     const char* objectSuffix = nullptr;
     const char* name = nullptr;
     const char* icon = nullptr;
@@ -36,13 +36,22 @@ struct FlowIoDigitalHaSpec {
     const char* icon = nullptr;
 };
 
-constexpr FlowIoAnalogHaSpec kAnalogHaSpecs[] = {
-    {0, "io_orp", "ORP", "mdi:flash", "mV"},
-    {1, "io_ph", "pH", "mdi:ph", ""},
-    {2, "io_psi", "PSI", "mdi:gauge", "PSI"},
-    {3, "io_spare", "Spare", "mdi:sine-wave", nullptr},
-    {4, "io_wat_tmp", "Water Temperature", "mdi:water-thermometer", "\xC2\xB0""C"},
-    {5, "io_air_tmp", "Air Temperature", "mdi:thermometer", "\xC2\xB0""C"},
+constexpr FlowIoAnalogHaSpec kAnalogHaSpecs[kFlowIoAnalogHaSlots] = {
+    {"io_orp", "ORP", "mdi:flash", "mV"},
+    {"io_ph", "pH", "mdi:ph", ""},
+    {"io_psi", "PSI", "mdi:gauge", "PSI"},
+    {"io_spare", "Spare", "mdi:sine-wave", nullptr},
+    {"io_wat_tmp", "Water Temperature", "mdi:water-thermometer", "\xC2\xB0""C"},
+    {"io_air_tmp", "Air Temperature", "mdi:thermometer", "\xC2\xB0""C"},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {nullptr, nullptr, "mdi:sine-wave", nullptr},
 };
 
 constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
@@ -53,15 +62,16 @@ constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
 };
 
 struct FlowIoDiscoveryHeap {
-    char analogValueTpl[sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])][128]{};
+    char analogObjectSuffix[kFlowIoAnalogHaSlots][24]{};
+    char analogFallbackName[kFlowIoAnalogHaSlots][24]{};
+    char analogValueTpl[kFlowIoAnalogHaSlots][128]{};
+    char analogStateSuffix[kFlowIoAnalogHaSlots][24]{};
+    char digitalStateSuffix[sizeof(kDigitalHaSpecs) / sizeof(kDigitalHaSpecs[0])][24]{};
+    char switchStateSuffix[PoolBinding::kDeviceBindingCount][24]{};
     char switchPayloadOn[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
     char switchPayloadOff[PoolBinding::kDeviceBindingCount][Limits::IoHaSwitchPayloadBuf]{};
 };
 
-// Small discovery state suffixes stay static; large templates/payloads move to boot heap.
-char gAnalogStateSuffix[sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])][24]{};
-char gDigitalStateSuffix[sizeof(kDigitalHaSpecs) / sizeof(kDigitalHaSpecs[0])][24]{};
-char gSwitchStateSuffix[PoolBinding::kDeviceBindingCount][24]{};
 FlowIoDiscoveryHeap* gDiscoveryHeap = nullptr;
 
 bool ensureDiscoveryHeap()
@@ -123,14 +133,6 @@ void onIoBoolValue(void* ctx, bool value)
     setIoEndpointBool(*modules.ioDataStore, idx, value, millis());
 }
 
-void onIoIntValue(void* ctx, int32_t value)
-{
-    ModuleInstances& modules = Profiles::FlowIO::moduleInstances();
-    if (!modules.ioDataStore) return;
-    const uint8_t idx = (uint8_t)(uintptr_t)ctx;
-    setIoEndpointInt(*modules.ioDataStore, idx, value, millis());
-}
-
 void applyAnalogDefaultsForRole(DomainRole role, IOAnalogDefinition& def)
 {
     const FlowIoLayout::AnalogRoleDefault* spec = FlowIoLayout::analogDefaultForRole(role);
@@ -169,22 +171,57 @@ void syncAnalogSensors(ModuleInstances& modules)
     requireSetup(ensureDiscoveryHeap(), "ha discovery heap");
     static constexpr const char* kAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
 
-    for (uint8_t i = 0; i < (uint8_t)(sizeof(kAnalogHaSpecs) / sizeof(kAnalogHaSpecs[0])); ++i) {
+    for (uint8_t i = 0; i < kFlowIoAnalogHaSlots; ++i) {
+        if (!modules.ioModule.analogSlotUsed(i)) continue;
         const FlowIoAnalogHaSpec& spec = kAnalogHaSpecs[i];
-        if (!modules.ioModule.analogSlotUsed(spec.analogIdx)) continue;
 
         buildAnalogValueTemplate(
             modules.ioModule,
-            spec.analogIdx,
+            i,
             gDiscoveryHeap->analogValueTpl[i],
             sizeof(gDiscoveryHeap->analogValueTpl[i])
         );
-        snprintf(gAnalogStateSuffix[i], sizeof(gAnalogStateSuffix[i]), "rt/io/input/a%u", (unsigned)spec.analogIdx);
+        snprintf(
+            gDiscoveryHeap->analogStateSuffix[i],
+            sizeof(gDiscoveryHeap->analogStateSuffix[i]),
+            "rt/io/input/a%02u",
+            (unsigned)i
+        );
+        if (spec.objectSuffix) {
+            snprintf(
+                gDiscoveryHeap->analogObjectSuffix[i],
+                sizeof(gDiscoveryHeap->analogObjectSuffix[i]),
+                "%s",
+                spec.objectSuffix
+            );
+        } else {
+            snprintf(
+                gDiscoveryHeap->analogObjectSuffix[i],
+                sizeof(gDiscoveryHeap->analogObjectSuffix[i]),
+                "io_a%02u",
+                (unsigned)i
+            );
+        }
+        snprintf(
+            gDiscoveryHeap->analogFallbackName[i],
+            sizeof(gDiscoveryHeap->analogFallbackName[i]),
+            "A%02u",
+            (unsigned)i
+        );
+        char endpointId[8] = {0};
+        snprintf(endpointId, sizeof(endpointId), "a%02u", (unsigned)i);
+        const char* label = spec.name;
+        if (!label || label[0] == '\0') {
+            label = modules.ioModule.endpointLabel(endpointId);
+        }
+        if (!label || label[0] == '\0') {
+            label = gDiscoveryHeap->analogFallbackName[i];
+        }
         const HASensorEntry entry{
             "io",
-            spec.objectSuffix,
-            spec.name,
-            gAnalogStateSuffix[i],
+            gDiscoveryHeap->analogObjectSuffix[i],
+            label,
+            gDiscoveryHeap->analogStateSuffix[i],
             gDiscoveryHeap->analogValueTpl[i],
             nullptr,
             spec.icon,
@@ -199,26 +236,32 @@ void syncAnalogSensors(ModuleInstances& modules)
 void syncDigitalInputBinarySensors(ModuleInstances& modules)
 {
     if (!modules.haService || !modules.haService->addBinarySensor || !modules.haService->addSensor) return;
+    requireSetup(ensureDiscoveryHeap(), "ha discovery heap");
     static constexpr const char* kBoolTpl = "{{ 'True' if value_json.value else 'False' }}";
     static constexpr const char* kAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
-    static constexpr const char* kCountTpl =
-        "{% if value_json.value is number %}{{ value_json.value | int }}{% else %}unavailable{% endif %}";
+    static constexpr const char* kNumericTpl =
+        "{% if value_json.value is number %}{{ value_json.value | float }}{% else %}unavailable{% endif %}";
 
     for (uint8_t i = 0; i < (uint8_t)(sizeof(kDigitalHaSpecs) / sizeof(kDigitalHaSpecs[0])); ++i) {
         const FlowIoDigitalHaSpec& spec = kDigitalHaSpecs[i];
         if (!modules.ioModule.digitalInputSlotUsed(spec.logicalIdx)) continue;
 
-        snprintf(gDigitalStateSuffix[i], sizeof(gDigitalStateSuffix[i]), "rt/io/input/i%u", (unsigned)spec.logicalIdx);
-        if (modules.ioModule.digitalInputValueType(spec.logicalIdx) == IO_VAL_INT32) {
+        snprintf(
+            gDiscoveryHeap->digitalStateSuffix[i],
+            sizeof(gDiscoveryHeap->digitalStateSuffix[i]),
+            "rt/io/input/i%02u",
+            (unsigned)spec.logicalIdx
+        );
+        if (modules.ioModule.digitalInputValueType(spec.logicalIdx) != IO_VAL_BOOL) {
             const HASensorEntry entry{
                 "io",
                 spec.objectSuffix,
                 spec.name,
-                gDigitalStateSuffix[i],
-                kCountTpl,
+                gDiscoveryHeap->digitalStateSuffix[i],
+                kNumericTpl,
                 nullptr,
                 spec.icon,
-                "pulses",
+                nullptr,
                 false,
                 kAvailabilityTpl
             };
@@ -230,7 +273,7 @@ void syncDigitalInputBinarySensors(ModuleInstances& modules)
             "io",
             spec.objectSuffix,
             spec.name,
-            gDigitalStateSuffix[i],
+            gDiscoveryHeap->digitalStateSuffix[i],
             kBoolTpl,
             nullptr,
             nullptr,
@@ -252,7 +295,12 @@ void syncSwitches(ModuleInstances& modules)
         const uint8_t logical = (uint8_t)(binding.ioId - IO_ID_DO_BASE);
         if (!modules.ioModule.digitalOutputSlotUsed(logical)) continue;
 
-        snprintf(gSwitchStateSuffix[i], sizeof(gSwitchStateSuffix[i]), "rt/io/output/d%u", (unsigned)logical);
+        snprintf(
+            gDiscoveryHeap->switchStateSuffix[i],
+            sizeof(gDiscoveryHeap->switchStateSuffix[i]),
+            "rt/io/output/d%u",
+            (unsigned)logical
+        );
         bool payloadOk = true;
 
         if (binding.slot == PoolBinding::kDeviceSlotFiltrationPump) {
@@ -294,7 +342,7 @@ void syncSwitches(ModuleInstances& modules)
             "io",
             binding.objectSuffix,
             binding.name,
-            gSwitchStateSuffix[i],
+            gDiscoveryHeap->switchStateSuffix[i],
             "{% if value_json.value %}ON{% else %}OFF{% endif %}",
             MqttTopics::SuffixCmd,
             gDiscoveryHeap->switchPayloadOn[i],
@@ -335,8 +383,6 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
             applyDigitalDefaultsForRole(preset.role, def);
             def.onValueChanged = onIoBoolValue;
             def.onValueCtx = (void*)(uintptr_t)compat->runtimeIndex;
-            def.onCounterChanged = onIoIntValue;
-            def.onCounterCtx = (void*)(uintptr_t)compat->runtimeIndex;
             requireSetup(modules.ioModule.defineDigitalInput(def), "define digital input");
             continue;
         }

@@ -688,11 +688,12 @@
     let upgradeCfgLoadedOnce = false;
     let wifiConfigLoadedOnce = false;
     let flowCfgLoadedOnce = false;
+    let cfgTreeAliases = [];
+    let cfgTreeVirtualBranches = [];
     let supCfgCurrentModule = '';
     let supCfgCurrentData = {};
     let supCfgTreePath = '';
-    let supCfgTreeModules = [];
-    let supCfgTreeIndex = null;
+    let supCfgChildrenCache = {};
     let supCfgExpandedNodes = new Set();
     let supCfgRootExpanded = true;
     let wifiScanAutoRequested = false;
@@ -2698,6 +2699,10 @@
       return data.values;
     }
 
+    function runtimeMeasureDisplayLabel(entry) {
+      return entry.label || entry.key || String(entry.id);
+    }
+
     function formatRuntimeMeasureValue(entry, runtimeValue) {
       if (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable') {
         return 'Indisponible';
@@ -2775,7 +2780,7 @@
         : runtimeValue.value;
 
       return buildFlowArcGauge({
-        label: String(entry.label || entry.key || entry.id || 'Mesure'),
+        label: String(runtimeMeasureDisplayLabel(entry) || 'Mesure'),
         value: value,
         min: min,
         max: max,
@@ -2798,7 +2803,7 @@
         : (typeof runtimeValue.value === 'boolean' ? runtimeValue.value : null);
 
       return buildFlowReadonlyStateTile(
-        String(entry.label || entry.key || entry.id || 'Etat'),
+        String(runtimeMeasureDisplayLabel(entry) || 'Etat'),
         value,
         {
           activeText: displayConfig.activeText,
@@ -2880,7 +2885,7 @@
           }
           if (display === 'horiz-gauge') {
             horizGaugeRows.push([
-              entry.label || entry.key || String(entry.id),
+              runtimeMeasureDisplayLabel(entry),
               buildRuntimeMeasureHorizGaugeNode(entry, runtimeValue)
             ]);
             return;
@@ -2890,7 +2895,7 @@
             return;
           }
           valueRows.push([
-            entry.label || entry.key || String(entry.id),
+            runtimeMeasureDisplayLabel(entry),
             formatRuntimeMeasureValue(entry, runtimeValue)
           ]);
         });
@@ -3343,109 +3348,213 @@
       return flowCfgPath.length > 0 ? flowCfgPath.join('/') : '';
     }
 
+    function cfgPathHasPrefix(pathValue, prefix) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      const cleanPrefix = nettoyerNomFlowCfg(prefix);
+      if (!cleanPrefix) return true;
+      return cleanPath === cleanPrefix || cleanPath.startsWith(cleanPrefix + '/');
+    }
+
+    function cfgDocPathCandidates(pathValue) {
+      const cleanDisplay = nettoyerNomFlowCfg(pathValue);
+      const candidates = [];
+      const pushCandidate = (candidate) => {
+        const cleanCandidate = nettoyerNomFlowCfg(candidate);
+        if (!cleanCandidate) return;
+        if (candidates.indexOf(cleanCandidate) >= 0) return;
+        candidates.push(cleanCandidate);
+      };
+
+      let mappedStore = null;
+      for (const alias of cfgTreeAliases) {
+        if (!cfgPathHasPrefix(cleanDisplay, alias.display)) continue;
+        if (!mappedStore || alias.display.length > mappedStore.display.length) {
+          mappedStore = alias;
+        }
+      }
+
+      if (mappedStore) {
+        pushCandidate(mappedStore.store + cleanDisplay.slice(mappedStore.display.length));
+      }
+
+      pushCandidate(cleanDisplay);
+      return candidates;
+    }
+
+    function cfgStorePathFromDisplayPath(pathValue) {
+      const cleanDisplay = nettoyerNomFlowCfg(pathValue);
+      if (!cleanDisplay) return '';
+      for (const branch of cfgTreeVirtualBranches) {
+        if (branch.display === cleanDisplay) return null;
+      }
+      const candidates = cfgDocPathCandidates(cleanDisplay);
+      return candidates.length > 0 ? candidates[0] : cleanDisplay;
+    }
+
+    function cfgDisplayPathFromStorePath(pathValue) {
+      const cleanStore = nettoyerNomFlowCfg(pathValue);
+      if (!cleanStore) return '';
+      let bestAlias = null;
+      for (const alias of cfgTreeAliases) {
+        if (!cfgPathHasPrefix(cleanStore, alias.store)) continue;
+        if (!bestAlias || alias.store.length > bestAlias.store.length) {
+          bestAlias = alias;
+        }
+      }
+      if (!bestAlias) return cleanStore;
+      return bestAlias.display + cleanStore.slice(bestAlias.store.length);
+    }
+
+    function cfgVirtualChildrenForDisplayPath(pathValue) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      for (const branch of cfgTreeVirtualBranches) {
+        if (branch.display === cleanPath) {
+          return branch.children.slice().sort((a, b) => a.localeCompare(b));
+        }
+      }
+      return null;
+    }
+
+    function cfgChildTokenForDisplayPath(parentPath, childPath) {
+      const cleanParent = nettoyerNomFlowCfg(parentPath);
+      const cleanChild = nettoyerNomFlowCfg(childPath);
+      if (!cleanChild) return '';
+      if (!cleanParent) {
+        const rootSegments = cleanChild.split('/');
+        return rootSegments.length > 0 ? rootSegments[0] : '';
+      }
+      if (!cfgPathHasPrefix(cleanChild, cleanParent) || cleanChild === cleanParent) {
+        return '';
+      }
+      const suffix = cleanChild.slice(cleanParent.length + 1);
+      const slashIndex = suffix.indexOf('/');
+      return slashIndex >= 0 ? suffix.slice(0, slashIndex) : suffix;
+    }
+
+    function cfgPathLabel(pathValue) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      if (!cleanPath) return 'Racine';
+      const meta = configPathMeta(cleanPath);
+      if (meta && typeof meta.label === 'string' && meta.label.length > 0) {
+        return meta.label;
+      }
+      const segs = cleanPath.split('/');
+      return segs[segs.length - 1] || cleanPath;
+    }
+
     function flowCfgTitreDepuisChemin(pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
       if (!cleanPath) return 'Racine';
-      return cleanPath.split('/').join(' / ');
+      const segs = cleanPath.split('/');
+      let prefix = '';
+      return segs.map((seg) => {
+        prefix = prefix ? (prefix + '/' + seg) : seg;
+        return cfgPathLabel(prefix);
+      }).join(' / ');
     }
 
-    function flowCfgCacheKey(prefix) {
+    function cfgCacheKey(prefix) {
       const p = nettoyerNomFlowCfg(prefix);
       return p.length > 0 ? p : '__root__';
     }
 
-    function flowCfgFilteredChildren(prefix) {
+    function cfgChildrenCacheForSource(source) {
+      return source === 'supervisor' ? supCfgChildrenCache : flowCfgChildrenCache;
+    }
+
+    function cfgFilteredChildren(source, prefix) {
       const p = nettoyerNomFlowCfg(prefix);
-      const key = flowCfgCacheKey(p);
-      const node = flowCfgChildrenCache[key];
+      const node = cfgChildrenCacheForSource(source)[cfgCacheKey(p)];
       if (!node || !Array.isArray(node.children)) return [];
       return node.children
         .filter((name) => !isConfigPathHidden(p ? (p + '/' + name) : name))
         .slice();
     }
 
-    function flowCfgExpandAncestors(pathValue) {
+    function cfgExpandAncestors(source, pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
       if (!cleanPath) return;
+      const expandedSet = source === 'supervisor' ? supCfgExpandedNodes : flowCfgExpandedNodes;
       const segs = cleanPath.split('/');
       let prefix = '';
       for (let i = 0; i < segs.length; ++i) {
         prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
-        flowCfgExpandedNodes.add(prefix);
+        expandedSet.add(prefix);
       }
     }
 
-    function supCfgTreeExpandAncestors(pathValue) {
+    function cfgNodeForPath(source, pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
-      if (!cleanPath) return;
-      const segs = cleanPath.split('/');
-      let prefix = '';
-      for (let i = 0; i < segs.length; ++i) {
-        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
-        supCfgExpandedNodes.add(prefix);
+      return cfgChildrenCacheForSource(source)[cfgCacheKey(cleanPath)] || null;
+    }
+
+    async function chargerCfgChildren(source, prefix, forceReload) {
+      const p = nettoyerNomFlowCfg(prefix);
+      const cache = cfgChildrenCacheForSource(source);
+      const key = cfgCacheKey(p);
+      if (!forceReload && cache[key]) {
+        return cache[key];
       }
-    }
 
-    function buildSupervisorCfgTreeIndex(modules) {
-      const exact = new Set();
-      const childrenMap = Object.create(null);
-      const ensureChildren = (prefix) => {
-        const key = prefix || '__root__';
-        if (!childrenMap[key]) childrenMap[key] = new Set();
-        return childrenMap[key];
-      };
+      const virtualChildren = cfgVirtualChildrenForDisplayPath(p);
+      if (virtualChildren) {
+        const node = {
+          prefix: p,
+          hasExact: false,
+          children: virtualChildren.filter((name) => !isConfigPathHidden(p ? (p + '/' + name) : name))
+        };
+        cache[key] = node;
+        return node;
+      }
 
-      ensureChildren('');
-      (modules || []).forEach((moduleName) => {
-        const clean = nettoyerNomFlowCfg(moduleName);
-        if (!clean || isConfigPathHidden(clean)) return;
-        exact.add(clean);
-        const segs = clean.split('/');
-        let prefix = '';
-        for (let i = 0; i < segs.length; ++i) {
-          const parent = prefix;
-          ensureChildren(parent).add(segs[i]);
-          prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
-          ensureChildren(prefix);
-        }
-      });
-
-      return { exact: exact, childrenMap: childrenMap };
-    }
-
-    function supCfgFilteredChildren(prefix) {
-      const clean = nettoyerNomFlowCfg(prefix);
-      if (!supCfgTreeIndex || !supCfgTreeIndex.childrenMap) return [];
-      const key = clean || '__root__';
-      const children = supCfgTreeIndex.childrenMap[key];
-      if (!children) return [];
-      return Array.from(children)
-        .filter((name) => !isConfigPathHidden(clean ? (clean + '/' + name) : name))
-        .sort((a, b) => a.localeCompare(b));
-    }
-
-    function supCfgNodeForPath(pathValue) {
-      const clean = nettoyerNomFlowCfg(pathValue);
-      return {
-        prefix: clean,
-        hasExact: !!(supCfgTreeIndex && supCfgTreeIndex.exact && supCfgTreeIndex.exact.has(clean)),
-        children: supCfgFilteredChildren(clean)
-      };
-    }
-
-    async function ensureSupervisorCfgTreeLoaded(forceReload) {
-      if (!forceReload && supCfgTreeIndex) return;
-      const res = await fetch('/api/supervisorcfg/modules', { cache: 'no-store' });
+      const storePrefix = cfgStorePathFromDisplayPath(p);
+      const baseUrl = source === 'supervisor' ? '/api/supervisorcfg/children' : '/api/flowcfg/children';
+      const url = storePrefix && storePrefix.length > 0
+        ? (baseUrl + '?prefix=' + encodeURIComponent(storePrefix))
+        : baseUrl;
+      const fetchFn = source === 'supervisor' ? fetch : fetchFlowRemoteQueued;
+      const res = await fetchFn(url, { cache: 'no-store' });
       const data = await res.json();
-      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.modules)) {
-        throw new Error('liste modules supervisor indisponible');
+      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.children)) {
+        throw new Error(source === 'supervisor'
+          ? 'liste enfants supervisor indisponible'
+          : 'liste enfants indisponible');
       }
-      supCfgTreeModules = data.modules
+
+      const children = data.children
         .filter((name) => typeof name === 'string' && name.length > 0)
         .map((name) => nettoyerNomFlowCfg(name))
         .filter((name) => name.length > 0)
-        .sort((a, b) => a.localeCompare(b));
-      supCfgTreeIndex = buildSupervisorCfgTreeIndex(supCfgTreeModules);
+        .map((child) => {
+          const storeChildPath = storePrefix ? (storePrefix + '/' + child) : child;
+          return cfgDisplayPathFromStorePath(storeChildPath);
+        })
+        .map((displayChildPath) => cfgChildTokenForDisplayPath(p, displayChildPath))
+        .filter((name) => name.length > 0)
+        .filter((name) => !isConfigPathHidden(p ? (p + '/' + name) : name));
+
+      const node = {
+        prefix: p,
+        hasExact: !!data.has_exact,
+        children: Array.from(new Set(children)).sort((a, b) => a.localeCompare(b))
+      };
+      cache[key] = node;
+      return node;
+    }
+
+    async function ensureCfgPathLoaded(source, pathValue, forceReload) {
+      const cleanPath = nettoyerNomFlowCfg(pathValue);
+      await chargerCfgChildren(source, '', !!forceReload);
+      if (!cleanPath) return cfgNodeForPath(source, '');
+
+      const segs = cleanPath.split('/');
+      let prefix = '';
+      let node = null;
+      for (let i = 0; i < segs.length; ++i) {
+        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
+        node = await chargerCfgChildren(source, prefix, !!forceReload);
+      }
+      return node;
     }
 
     function currentCfgTreePath(source) {
@@ -3454,9 +3563,7 @@
 
     function renderFlowCfgCurrentPath(source, pathValue, node) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
-      const childCount = source === 'supervisor'
-        ? supCfgFilteredChildren(cleanPath).length
-        : flowCfgFilteredChildren(cleanPath).length;
+      const childCount = cfgFilteredChildren(source, cleanPath).length;
       const level = cleanPath ? cleanPath.split('/').length : 0;
       const hasExact = !!(node && node.hasExact);
       const sourceLabel = source === 'supervisor' ? 'Config Store Supervisor' : 'Config Store Flow.IO';
@@ -3488,20 +3595,13 @@
 
     function buildFlowCfgTreeItem(source, pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
-      const segs = cleanPath.split('/');
-      const label = segs[segs.length - 1] || cleanPath;
-      const cachedNode = source === 'supervisor'
-        ? supCfgNodeForPath(cleanPath)
-        : (flowCfgChildrenCache[flowCfgCacheKey(cleanPath)] || null);
-      const children = source === 'supervisor'
-        ? supCfgFilteredChildren(cleanPath)
-        : flowCfgFilteredChildren(cleanPath);
-      const isExpanded = source === 'supervisor'
-        ? supCfgExpandedNodes.has(cleanPath)
-        : flowCfgExpandedNodes.has(cleanPath);
+      const label = cfgPathLabel(cleanPath);
+      const cachedNode = cfgNodeForPath(source, cleanPath);
+      const children = cfgFilteredChildren(source, cleanPath);
+      const isExpanded = source === 'supervisor' ? supCfgExpandedNodes.has(cleanPath) : flowCfgExpandedNodes.has(cleanPath);
       const isSelected = source === cfgTreeSelectedSource && cleanPath === currentCfgTreePath(source);
       const hasKnownChildren = children.length > 0;
-      const canExpand = source === 'supervisor' ? hasKnownChildren : (!cachedNode || hasKnownChildren);
+      const canExpand = !cachedNode || hasKnownChildren;
 
       const item = document.createElement('li');
       item.className = 'cfg-tree-item';
@@ -3619,8 +3719,8 @@
     function renderFlowCfgTree() {
       const savedScrollTop = flowCfgTree.scrollTop;
       flowCfgTree.innerHTML = '';
-      const flowChildren = flowCfgFilteredChildren('');
-      const supervisorChildren = supCfgFilteredChildren('');
+      const flowChildren = cfgFilteredChildren('flow', '');
+      const supervisorChildren = cfgFilteredChildren('supervisor', '');
 
       const roots = document.createElement('ul');
       roots.className = 'cfg-tree-group';
@@ -3655,21 +3755,6 @@
       });
     }
 
-    async function ensureFlowCfgPathLoaded(pathValue, forceReload) {
-      const cleanPath = nettoyerNomFlowCfg(pathValue);
-      await chargerFlowCfgChildren('', !!forceReload);
-      if (!cleanPath) return flowCfgChildrenCache[flowCfgCacheKey('')];
-
-      const segs = cleanPath.split('/');
-      let prefix = '';
-      let node = null;
-      for (let i = 0; i < segs.length; ++i) {
-        prefix = prefix ? (prefix + '/' + segs[i]) : segs[i];
-        node = await chargerFlowCfgChildren(prefix, !!forceReload);
-      }
-      return node;
-    }
-
     async function toggleFlowCfgBranch(source, pathValue) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
       const expandedSet = source === 'supervisor' ? supCfgExpandedNodes : flowCfgExpandedNodes;
@@ -3681,11 +3766,7 @@
       }
       try {
         flowCfgStatus.textContent = 'Chargement des sous-branches...';
-        if (source === 'supervisor') {
-          await ensureSupervisorCfgTreeLoaded(false);
-        } else {
-          await chargerFlowCfgChildren(cleanPath, false);
-        }
+        await chargerCfgChildren(source, cleanPath, false);
         expandedSet.add(cleanPath);
         renderFlowCfgTree();
         flowCfgStatus.textContent = 'Sous-branches chargees.';
@@ -3700,22 +3781,22 @@
       const cleanPath = nettoyerNomFlowCfg(pathValue);
       try {
         let node = null;
+        const storePath = cfgStorePathFromDisplayPath(cleanPath);
         cfgTreeSelectedSource = source === 'supervisor' ? 'supervisor' : 'flow';
         if (cfgTreeSelectedSource === 'supervisor') {
-          await ensureSupervisorCfgTreeLoaded(!!forceReload);
+          node = await ensureCfgPathLoaded('supervisor', cleanPath, !!forceReload);
           supCfgTreePath = cleanPath;
           supCfgRootExpanded = true;
-          supCfgTreeExpandAncestors(cleanPath);
-          node = supCfgNodeForPath(cleanPath);
-          if (cleanPath && supCfgFilteredChildren(cleanPath).length > 0) {
+          cfgExpandAncestors('supervisor', cleanPath);
+          if (cleanPath && cfgFilteredChildren('supervisor', cleanPath).length > 0) {
             supCfgExpandedNodes.add(cleanPath);
           }
         } else {
-          node = await ensureFlowCfgPathLoaded(cleanPath, !!forceReload);
+          node = await ensureCfgPathLoaded('flow', cleanPath, !!forceReload);
           flowCfgPath = cleanPath ? cleanPath.split('/') : [];
           flowCfgRootExpanded = true;
-          flowCfgExpandAncestors(cleanPath);
-          if (cleanPath && flowCfgFilteredChildren(cleanPath).length > 0) {
+          cfgExpandAncestors('flow', cleanPath);
+          if (cleanPath && cfgFilteredChildren('flow', cleanPath).length > 0) {
             flowCfgExpandedNodes.add(cleanPath);
           }
         }
@@ -3725,7 +3806,7 @@
         restoreFlowCfgTreeScroll(preservedTreeScrollTop);
 
         if (!cleanPath) {
-          resetPrimaryCfgEditor((cfgTreeSelectedSource === 'supervisor' ? supCfgFilteredChildren('') : flowCfgFilteredChildren('')).length > 0
+          resetPrimaryCfgEditor(cfgFilteredChildren(cfgTreeSelectedSource, '').length > 0
             ? 'Sélectionnez une branche dans l\'arborescence.'
             : 'Aucune branche disponible.');
           return;
@@ -3733,16 +3814,14 @@
 
         if (node && node.hasExact) {
           if (cfgTreeSelectedSource === 'supervisor') {
-            await chargerPrimarySupervisorCfgModule(cleanPath);
+            await chargerPrimarySupervisorCfgModule(storePath || cleanPath);
           } else {
-            await chargerFlowCfgModule(cleanPath);
+            await chargerFlowCfgModule(storePath || cleanPath);
           }
           return;
         }
 
-        const childCount = cfgTreeSelectedSource === 'supervisor'
-          ? supCfgFilteredChildren(cleanPath).length
-          : flowCfgFilteredChildren(cleanPath).length;
+        const childCount = cfgFilteredChildren(cfgTreeSelectedSource, cleanPath).length;
         if (childCount > 0) {
           resetPrimaryCfgEditor('Branche ouverte. Sélectionnez une sous-branche ou un noeud configurable.');
         } else {
@@ -3874,8 +3953,11 @@
         } catch (err) {
           // Ignore optional manual cfgmods file failures.
         }
+        chargerCfgTreeMetaDepuisDocs();
       } catch (err) {
         cfgDocSources = [];
+        cfgTreeAliases = [];
+        cfgTreeVirtualBranches = [];
       }
     }
 
@@ -3886,6 +3968,47 @@
         ? source.meta
         : ((source._meta && typeof source._meta === 'object') ? source._meta : {});
       return { docs: docs, meta: meta };
+    }
+
+    function chargerCfgTreeMetaDepuisDocs() {
+      const aliases = [];
+      const virtualBranches = [];
+      const seenAliasKeys = new Set();
+      const seenBranchKeys = new Set();
+
+      for (const src of cfgDocSources) {
+        const normalized = normalizeDocSource(src);
+        if (!normalized || !normalized.meta) continue;
+
+        const aliasEntries = Array.isArray(normalized.meta.cfg_tree_aliases)
+          ? normalized.meta.cfg_tree_aliases
+          : [];
+        aliasEntries.forEach((entry) => {
+          const display = nettoyerNomFlowCfg(entry && entry.display);
+          const store = nettoyerNomFlowCfg(entry && entry.store);
+          if (!display || !store) return;
+          const key = display + '->' + store;
+          if (seenAliasKeys.has(key)) return;
+          seenAliasKeys.add(key);
+          aliases.push({ display: display, store: store });
+        });
+
+        const branchEntries = Array.isArray(normalized.meta.cfg_tree_virtual_branches)
+          ? normalized.meta.cfg_tree_virtual_branches
+          : [];
+        branchEntries.forEach((entry) => {
+          const display = nettoyerNomFlowCfg(entry && entry.display);
+          if (!display || seenBranchKeys.has(display)) return;
+          const children = Array.isArray(entry && entry.children)
+            ? entry.children.map((child) => nettoyerNomFlowCfg(child)).filter((child) => child.length > 0)
+            : [];
+          seenBranchKeys.add(display);
+          virtualBranches.push({ display: display, children: children });
+        });
+      }
+
+      cfgTreeAliases = aliases;
+      cfgTreeVirtualBranches = virtualBranches;
     }
 
     function resolveEnumOptions(enumSetName, sources) {
@@ -3945,9 +4068,9 @@
     }
 
     function configDocFor(moduleName, key, extraSources) {
-      const m = nettoyerNomFlowCfg(moduleName);
       const k = String(key || '').trim();
-      if (!m || !k) return null;
+      const candidates = cfgDocPathCandidates(moduleName);
+      if (candidates.length === 0 || !k) return null;
 
       const sources = [];
       if (Array.isArray(extraSources)) {
@@ -3964,22 +4087,23 @@
       let merged = null;
       for (const source of sources) {
         const docs = source.docs;
-        const full = m + '/' + k;
         const wildcard = docs['*/' + k];
         if (wildcard && typeof wildcard === 'object') {
           merged = Object.assign(merged || {}, wildcard);
         }
-        const exact = docs[full];
-        if (exact && typeof exact === 'object') {
-          merged = Object.assign(merged || {}, exact);
-        }
+        candidates.forEach((candidate) => {
+          const exact = docs[candidate + '/' + k];
+          if (exact && typeof exact === 'object') {
+            merged = Object.assign(merged || {}, exact);
+          }
+        });
       }
       return enrichResolvedDoc(merged, sources);
     }
 
     function configPathMeta(pathValue) {
-      const p = nettoyerNomFlowCfg(pathValue);
-      if (!p) return null;
+      const candidates = cfgDocPathCandidates(pathValue);
+      if (candidates.length === 0) return null;
       const sources = [];
       for (const src of cfgDocSources) {
         const normalized = normalizeDocSource(src);
@@ -3988,10 +4112,12 @@
       }
       let merged = null;
       for (const normalized of sources) {
-        const exact = normalized.docs[p];
-        if (exact && typeof exact === 'object') {
-          merged = Object.assign(merged || {}, exact);
-        }
+        candidates.forEach((candidate) => {
+          const exact = normalized.docs[candidate];
+          if (exact && typeof exact === 'object') {
+            merged = Object.assign(merged || {}, exact);
+          }
+        });
       }
       return enrichResolvedDoc(merged, sources);
     }
@@ -4004,37 +4130,6 @@
     function flowCfgApplyPerFieldEnabled(moduleName) {
       const meta = configPathMeta(moduleName);
       return !!(meta && meta.apply_per_field === true);
-    }
-
-    async function chargerFlowCfgChildren(prefix, forceReload) {
-      const p = nettoyerNomFlowCfg(prefix);
-      const key = flowCfgCacheKey(p);
-      if (!forceReload && flowCfgChildrenCache[key]) {
-        return flowCfgChildrenCache[key];
-      }
-
-      const url = p.length > 0
-        ? ('/api/flowcfg/children?prefix=' + encodeURIComponent(p))
-        : '/api/flowcfg/children';
-      const res = await fetchFlowRemoteQueued(url, { cache: 'no-store' });
-      const data = await res.json();
-      if (!res.ok || !data || data.ok !== true || !Array.isArray(data.children)) {
-        throw new Error('liste enfants indisponible');
-      }
-
-      const children = data.children
-        .filter((name) => typeof name === 'string' && name.length > 0)
-        .map((name) => nettoyerNomFlowCfg(name))
-        .filter((name) => name.length > 0)
-        .sort((a, b) => a.localeCompare(b));
-
-      const node = {
-        prefix: p,
-        hasExact: !!data.has_exact,
-        children: Array.from(new Set(children))
-      };
-      flowCfgChildrenCache[key] = node;
-      return node;
     }
 
     function resetPrimaryCfgEditor(message) {
@@ -4395,11 +4490,11 @@
         if (force) {
           flowCfgChildrenCache = {};
           flowCfgExpandedNodes = new Set();
-          supCfgTreeIndex = null;
+          supCfgChildrenCache = {};
           supCfgExpandedNodes = new Set();
         }
-        await ensureFlowCfgPathLoaded('', force);
-        await ensureSupervisorCfgTreeLoaded(force);
+        await ensureCfgPathLoaded('flow', '', force);
+        await ensureCfgPathLoaded('supervisor', '', force);
         const currentPath = nettoyerNomFlowCfg(currentCfgTreePath(cfgTreeSelectedSource));
         await selectFlowCfgPath(cfgTreeSelectedSource, currentPath, force);
         return true;

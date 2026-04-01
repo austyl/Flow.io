@@ -9,6 +9,7 @@
 #include "Domain/Pool/PoolBindings.h"
 #include "Modules/IOModule/IORuntime.h"
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,15 @@ static constexpr uint8_t kCfgBranchIoA2 = 5;
 static constexpr uint8_t kCfgBranchIoA3 = 6;
 static constexpr uint8_t kCfgBranchIoA4 = 7;
 static constexpr uint8_t kCfgBranchIoA5 = 8;
+static constexpr uint8_t kCfgBranchIoA6 = 33;
+static constexpr uint8_t kCfgBranchIoA7 = 34;
+static constexpr uint8_t kCfgBranchIoA8 = 35;
+static constexpr uint8_t kCfgBranchIoA9 = 36;
+static constexpr uint8_t kCfgBranchIoA10 = 37;
+static constexpr uint8_t kCfgBranchIoA11 = 38;
+static constexpr uint8_t kCfgBranchIoA12 = 39;
+static constexpr uint8_t kCfgBranchIoA13 = 40;
+static constexpr uint8_t kCfgBranchIoA14 = 41;
 static constexpr uint8_t kCfgBranchIoD0 = 9;
 static constexpr uint8_t kCfgBranchIoD1 = 10;
 static constexpr uint8_t kCfgBranchIoD2 = 11;
@@ -48,28 +58,30 @@ static constexpr uint8_t kCfgBranchIoSht40 = 29;
 static constexpr uint8_t kCfgBranchIoBmp280 = 30;
 static constexpr uint8_t kCfgBranchIoBme680 = 31;
 static constexpr uint8_t kCfgBranchIoIna226 = 32;
+#define FLOW_IO_ANALOG_ROUTE_ENTRY(ROUTE_ID, BRANCH_ID, SLOT_STR) \
+    {ROUTE_ID, {(uint8_t)ConfigModuleId::Io, BRANCH_ID}, "io/input/a" SLOT_STR, "io/input/a" SLOT_STR, (uint8_t)MqttPublishPriority::Normal, nullptr}
 static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::Io, kCfgBranchIo}, "io", "io", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {2, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoDebug}, "io/debug", "io/debug", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {3, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA0}, "io/input/a0", "io/input/a0", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {4, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA1}, "io/input/a1", "io/input/a1", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {5, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA2}, "io/input/a2", "io/input/a2", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {6, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA3}, "io/input/a3", "io/input/a3", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {7, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA4}, "io/input/a4", "io/input/a4", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {8, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoA5}, "io/input/a5", "io/input/a5", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {9, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD0}, "io/output/d0", "io/output/d0", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {10, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD1}, "io/output/d1", "io/output/d1", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {11, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD2}, "io/output/d2", "io/output/d2", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {12, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD3}, "io/output/d3", "io/output/d3", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {13, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD4}, "io/output/d4", "io/output/d4", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {14, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD5}, "io/output/d5", "io/output/d5", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {15, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD6}, "io/output/d6", "io/output/d6", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {16, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD7}, "io/output/d7", "io/output/d7", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {17, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI0}, "io/input/i0", "io/input/i0", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {18, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI1}, "io/input/i1", "io/input/i1", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {19, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI2}, "io/input/i2", "io/input/i2", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {20, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI3}, "io/input/i3", "io/input/i3", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {21, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI4}, "io/input/i4", "io/input/i4", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    FLOW_IO_ANALOG_ROUTE_ENTRY(3, kCfgBranchIoA0, "00"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(4, kCfgBranchIoA1, "01"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(5, kCfgBranchIoA2, "02"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(6, kCfgBranchIoA3, "03"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(7, kCfgBranchIoA4, "04"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(8, kCfgBranchIoA5, "05"),
+    {9, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD0}, "io/output/d00", "io/output/d00", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {10, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD1}, "io/output/d01", "io/output/d01", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {11, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD2}, "io/output/d02", "io/output/d02", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {12, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD3}, "io/output/d03", "io/output/d03", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {13, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD4}, "io/output/d04", "io/output/d04", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {14, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD5}, "io/output/d05", "io/output/d05", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {15, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD6}, "io/output/d06", "io/output/d06", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {16, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoD7}, "io/output/d07", "io/output/d07", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {17, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI0}, "io/input/i00", "io/input/i00", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {18, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI1}, "io/input/i01", "io/input/i01", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {19, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI2}, "io/input/i02", "io/input/i02", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {20, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI3}, "io/input/i03", "io/input/i03", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {21, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI4}, "io/input/i04", "io/input/i04", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {22, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBus}, "io/drivers/bus", "io/drivers/bus", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {23, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoDs18b20}, "io/drivers/ds18b20", "io/drivers/ds18b20", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {24, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoGpio}, "io/drivers/gpio", "io/drivers/gpio", (uint8_t)MqttPublishPriority::Normal, nullptr},
@@ -81,7 +93,17 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {30, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBmp280}, "io/drivers/bmp280", "io/drivers/bmp280", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {31, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBme680}, "io/drivers/bme680", "io/drivers/bme680", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {32, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoIna226}, "io/drivers/ina226", "io/drivers/ina226", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    FLOW_IO_ANALOG_ROUTE_ENTRY(33, kCfgBranchIoA6, "06"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(34, kCfgBranchIoA7, "07"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(35, kCfgBranchIoA8, "08"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(36, kCfgBranchIoA9, "09"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(37, kCfgBranchIoA10, "10"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(38, kCfgBranchIoA11, "11"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(39, kCfgBranchIoA12, "12"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(40, kCfgBranchIoA13, "13"),
+    FLOW_IO_ANALOG_ROUTE_ENTRY(41, kCfgBranchIoA14, "14"),
 };
+#undef FLOW_IO_ANALOG_ROUTE_ENTRY
 }
 
 static bool hasDecimalSuffixLocal(const char* p)
@@ -118,6 +140,24 @@ void IOModule::setBindingPorts(const IOBindingPortSpec* ports, uint8_t count)
 {
     bindingPorts_ = ports;
     bindingPortCount_ = count;
+}
+
+bool IOModule::ensureExtraAnalogCfgVars_()
+{
+    if (extraAnalogCfgVars_) return true;
+    void* mem = heap_caps_malloc(sizeof(ExtraAnalogConfigVars), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!mem) return false;
+    extraAnalogCfgVars_ = new (mem) ExtraAnalogConfigVars(analogCfg_);
+    return true;
+}
+
+bool IOModule::ensureAnalogPrecisionState_()
+{
+    if (analogPrecisionLast_) return true;
+    analogPrecisionLast_ = static_cast<int32_t*>(
+        heap_caps_calloc(ANALOG_CFG_SLOTS, sizeof(int32_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+    );
+    return analogPrecisionLast_ != nullptr;
 }
 
 bool IOModule::defineAnalogInput(const IOAnalogDefinition& def)
@@ -301,7 +341,13 @@ uint8_t IOModule::digitalInputValueType(uint8_t logicalIdx) const
     if (logicalIdx >= MAX_DIGITAL_INPUTS) return IO_VAL_BOOL;
     if (!findDigitalSlotByLogical_(DIGITAL_SLOT_INPUT, logicalIdx, slotIdx)) return IO_VAL_BOOL;
     const DigitalSlot& s = digitalSlots_[slotIdx];
-    return (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_INT32 : IO_VAL_BOOL;
+    return (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_FLOAT : IO_VAL_BOOL;
+}
+
+int32_t IOModule::digitalInputPrecision(uint8_t logicalIdx) const
+{
+    if (logicalIdx >= MAX_DIGITAL_INPUTS) return 0;
+    return sanitizeAnalogPrecision_(digitalInCfg_[logicalIdx].precision);
 }
 
 bool IOModule::digitalOutputSlotUsed(uint8_t logicalIdx) const
@@ -358,12 +404,23 @@ bool IOModule::buildOutputSnapshot(char* out, size_t len, uint32_t& maxTsOut) co
 
 bool IOModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const
 {
-    if (!dataStore_) return writer.writeUnavailable(makeRuntimeUiId(moduleId(), valueId));
-
     const RuntimeUiId runtimeId = makeRuntimeUiId(moduleId(), valueId);
     uint8_t runtimeIndex = 0xFF;
 
     switch (valueId) {
+        case RuntimeUiWaterCounter: {
+            IoValue value{};
+            const IoStatus st = ioReadValue_(
+                PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterCounter].ioId,
+                &value
+            );
+            if (st != IO_OK || !value.valid) {
+                return writer.writeUnavailable(runtimeId);
+            }
+            if (value.type == IO_VAL_FLOAT) return writer.writeF32(runtimeId, value.v.f);
+            if (value.type == IO_VAL_INT32) return writer.writeI32(runtimeId, value.v.i32);
+            return writer.writeUnavailable(runtimeId);
+        }
         case RuntimeUiWaterTemp:
             runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].runtimeIndex;
             break;
@@ -376,17 +433,11 @@ bool IOModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) co
         case RuntimeUiOrp:
             runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].runtimeIndex;
             break;
-        case RuntimeUiWaterCounter: {
-            runtimeIndex = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterCounter].runtimeIndex;
-            int32_t value = 0;
-            if (!ioEndpointInt(*dataStore_, runtimeIndex, value)) {
-                return writer.writeUnavailable(runtimeId);
-            }
-            return writer.writeI32(runtimeId, value);
-        }
         default:
             return false;
     }
+
+    if (!dataStore_) return writer.writeUnavailable(runtimeId);
 
     float value = 0.0f;
     if (!ioEndpointFloat(*dataStore_, runtimeIndex, value)) {
@@ -497,13 +548,13 @@ const char* IOModule::runtimeSnapshotSuffix(uint8_t idx) const
 
     static char suffix[24];
     if (routeType == ROUTE_ANALOG) {
-        snprintf(suffix, sizeof(suffix), "rt/io/input/a%u", (unsigned)slotIdx);
+        snprintf(suffix, sizeof(suffix), "rt/io/input/a%02u", (unsigned)slotIdx);
     } else {
         const DigitalSlot& s = digitalSlots_[slotIdx];
         if (routeType == ROUTE_DIGITAL_INPUT) {
-            snprintf(suffix, sizeof(suffix), "rt/io/input/i%u", (unsigned)s.logicalIdx);
+            snprintf(suffix, sizeof(suffix), "rt/io/input/i%02u", (unsigned)s.logicalIdx);
         } else {
-            snprintf(suffix, sizeof(suffix), "rt/io/output/d%u", (unsigned)s.logicalIdx);
+            snprintf(suffix, sizeof(suffix), "rt/io/output/d%02u", (unsigned)s.logicalIdx);
         }
     }
     return suffix;
@@ -796,33 +847,44 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
         IDigitalCounterDriver* counterDriver = static_cast<IDigitalCounterDriver*>(slot.provider.ctx);
         if (!counterDriver) return false;
 
-        int32_t count = 0;
-        if (!counterDriver->readCount(count)) {
+        const IODigitalInputSlotConfig* cfg = (slot.logicalIdx < MAX_DIGITAL_INPUTS) ? &digitalInCfg_[slot.logicalIdx] : nullptr;
+        const float c0 = cfg ? cfg->c0 : 1.0f;
+        const int32_t precision = sanitizeAnalogPrecision_(cfg ? cfg->precision : 0);
+
+        int32_t rawCount = 0;
+        if (!counterDriver->readCount(rawCount)) {
             if (slot.lastValid) {
-                inputEp->updateCount(slot.lastCount, false, nowMs);
+                const float invalidValue = ioRoundToPrecision(slot.counterScaledTotal, precision);
+                inputEp->updateFloat(invalidValue, false, nowMs);
                 slot.lastValid = false;
             }
             return false;
         }
 
-        const int32_t totalCount = slot.counterPersistedTotal + count;
-        (void)persistCounterTotalIfNeeded_(slot, totalCount);
+        const int32_t delta = rawCount - slot.counterLastRawCount;
+        if (delta > 0) {
+            slot.counterScaledTotal += ((float)delta * c0);
+            slot.counterLastRawCount = rawCount;
+            (void)persistCounterTotalIfNeeded_(slot, rawCount);
+        } else if (delta < 0) {
+            slot.counterLastRawCount = rawCount;
+        }
 
-        const bool changed = (!slot.lastValid) || (slot.lastCount != totalCount);
+        const float scaledValue = ioRoundToPrecision(slot.counterScaledTotal, precision);
+
+        IOEndpointValue prev{};
+        const bool hasPrev = inputEp->read(prev) && prev.valid && prev.valueType == IO_EP_VALUE_FLOAT;
+        const bool changed = (!slot.lastValid) || (delta != 0) || !hasPrev || (prev.v.f != scaledValue);
         if (changed) {
-            inputEp->updateCount(totalCount, true, nowMs);
-            slot.lastCount = totalCount;
+            inputEp->updateFloat(scaledValue, true, nowMs);
             slot.lastValid = true;
             if (dataStore_) {
                 uint8_t rtIdx = 0;
                 if (endpointIndexFromId_(slot.endpointId, rtIdx)) {
-                    (void)setIoEndpointInt(*dataStore_, rtIdx, totalCount, nowMs);
+                    (void)setIoEndpointFloat(*dataStore_, rtIdx, scaledValue, nowMs);
                 }
             }
             markIoCycleChanged_(slot.ioId);
-            if (slot.inDef.onCounterChanged) {
-                slot.inDef.onCounterChanged(slot.inDef.onCounterCtx, totalCount);
-            }
         }
         return true;
     }
@@ -884,6 +946,7 @@ void IOModule::forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs)
 
 void IOModule::refreshAnalogConfigState_()
 {
+    if (!ensureAnalogPrecisionState_()) return;
     if (!analogPrecisionLastInit_) {
         for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
             int32_t p = sanitizeAnalogPrecision_(analogCfg_[i].precision);
@@ -985,10 +1048,13 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         outMeta->kind = (s.kind == DIGITAL_SLOT_OUTPUT) ? IO_KIND_DIGITAL_OUT : IO_KIND_DIGITAL_IN;
         outMeta->valueType = (s.kind == DIGITAL_SLOT_OUTPUT)
             ? IO_VAL_BOOL
-            : ((s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_INT32 : IO_VAL_BOOL);
+            : ((s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_FLOAT : IO_VAL_BOOL);
         outMeta->backend = s.backend;
         outMeta->channel = s.channel;
         outMeta->capabilities = (s.kind == DIGITAL_SLOT_OUTPUT) ? (IO_CAP_R | IO_CAP_W) : IO_CAP_R;
+        if (s.kind == DIGITAL_SLOT_INPUT && s.inDef.mode == IO_DIGITAL_INPUT_COUNTER && s.logicalIdx < MAX_DIGITAL_INPUTS) {
+            outMeta->precision = sanitizeAnalogPrecision_(digitalInCfg_[s.logicalIdx].precision);
+        }
 
         const char* name = nullptr;
         if (s.kind == DIGITAL_SLOT_OUTPUT && s.logicalIdx < DIGITAL_CFG_SLOTS) {
@@ -1056,6 +1122,11 @@ IoStatus IOModule::ioReadValue_(IoId id, IoValue* outValue) const
         if (v.valueType == IO_EP_VALUE_INT32) {
             outValue->type = IO_VAL_INT32;
             outValue->v.i32 = v.v.i;
+            return IO_OK;
+        }
+        if (v.valueType == IO_EP_VALUE_FLOAT) {
+            outValue->type = IO_VAL_FLOAT;
+            outValue->v.f = v.v.f;
             return IO_OK;
         }
         return IO_ERR_TYPE_MISMATCH;
@@ -1365,36 +1436,31 @@ bool IOModule::resolveDsBusAddress_(OneWireBus* bus, const char* runtimeKey, uin
     return true;
 }
 
-bool IOModule::loadCounterPersistedTotal_(uint8_t logicalIdx, int32_t& totalOut) const
+bool IOModule::loadCounterPersistedTotal_(uint8_t logicalIdx, float& totalOut) const
 {
     if (!cfgStore_) return false;
 
     char key[16];
     snprintf(key, sizeof(key), NvsKeys::Io::CounterRuntimeFmt, (unsigned)logicalIdx);
     size_t len = 0U;
-    int32_t stored = 0;
-    if (!cfgStore_->readRuntimeBlob(key, &stored, sizeof(stored), &len) || len != sizeof(stored)) {
-        return false;
-    }
-    totalOut = stored;
-    return true;
+    return cfgStore_->readRuntimeBlob(key, &totalOut, sizeof(totalOut), &len) && len == sizeof(totalOut);
 }
 
-bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t totalCount)
+bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount)
 {
     static constexpr int32_t kCounterPersistPulseDelta = 32;
 
     if (!cfgStore_) return false;
     if (slot.kind != DIGITAL_SLOT_INPUT || slot.inDef.mode != IO_DIGITAL_INPUT_COUNTER) return false;
-    if (totalCount < slot.counterLastFlushedTotal) return false;
-    if ((totalCount - slot.counterLastFlushedTotal) < kCounterPersistPulseDelta) return false;
+    if (rawCount < slot.counterLastFlushedRawCount) return false;
+    if ((rawCount - slot.counterLastFlushedRawCount) < kCounterPersistPulseDelta) return false;
 
     char key[16];
     snprintf(key, sizeof(key), NvsKeys::Io::CounterRuntimeFmt, (unsigned)slot.logicalIdx);
-    if (!cfgStore_->writeRuntimeBlob(key, &totalCount, sizeof(totalCount))) {
+    if (!cfgStore_->writeRuntimeBlob(key, &slot.counterScaledTotal, sizeof(slot.counterScaledTotal))) {
         return false;
     }
-    slot.counterLastFlushedTotal = totalCount;
+    slot.counterLastFlushedRawCount = rawCount;
     return true;
 }
 
@@ -1424,7 +1490,7 @@ bool IOModule::configureRuntime_()
         analogSlots_[i].lastRounded = 0.0f;
 
         if (i < ANALOG_CFG_SLOTS) {
-            snprintf(analogSlots_[i].def.id, sizeof(analogSlots_[i].def.id), "a%u", (unsigned)i);
+            snprintf(analogSlots_[i].def.id, sizeof(analogSlots_[i].def.id), "a%02u", (unsigned)i);
             analogSlots_[i].def.bindingPort = analogCfg_[i].bindingPort;
             analogSlots_[i].def.c0 = analogCfg_[i].c0;
             analogSlots_[i].def.c1 = analogCfg_[i].c1;
@@ -1486,7 +1552,7 @@ bool IOModule::configureRuntime_()
                 s.inDef.counterDebounceUs = digitalInCfg_[cfgIdx].counterDebounceUs;
             }
 
-            snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
+            snprintf(s.endpointId, sizeof(s.endpointId), "i%02u", (unsigned)s.logicalIdx);
             uint8_t pin = 0U;
             uint8_t backend = IO_BACKEND_GPIO;
             uint8_t channel = 0U;
@@ -1513,20 +1579,29 @@ bool IOModule::configureRuntime_()
             s.provider = makeDigitalProvider(driver);
             if (!s.provider.begin()) continue;
 
-            const uint8_t valueType = (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_EP_VALUE_INT32 : IO_EP_VALUE_BOOL;
+            const uint8_t valueType = (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_EP_VALUE_FLOAT : IO_EP_VALUE_BOOL;
             s.endpoint = allocDigitalSensorEndpoint_(s.endpointId, valueType);
             if (!s.endpoint) continue;
             if (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
-                int32_t initialTotal = 0;
-                int32_t persistedTotal = 0;
-                if (loadCounterPersistedTotal_(s.logicalIdx, persistedTotal)) {
-                    s.counterPersistedTotal = persistedTotal;
-                    s.counterLastFlushedTotal = persistedTotal;
-                    initialTotal = persistedTotal;
+                int32_t initialRawCount = 0;
+                if (driver) {
+                    (void)driver->readCount(initialRawCount);
                 }
-                s.lastCount = initialTotal;
+
+                const IODigitalInputSlotConfig* cfg = (s.logicalIdx < MAX_DIGITAL_INPUTS) ? &digitalInCfg_[s.logicalIdx] : nullptr;
+                const float c0 = cfg ? cfg->c0 : 1.0f;
+                const int32_t precision = sanitizeAnalogPrecision_(cfg ? cfg->precision : 0);
+
+                float persistedTotal = 0.0f;
+                if (loadCounterPersistedTotal_(s.logicalIdx, persistedTotal)) {
+                    s.counterScaledTotal = persistedTotal;
+                }
+                s.counterScaledTotal += ((float)initialRawCount * c0);
+                s.counterLastRawCount = initialRawCount;
+                s.counterLastFlushedRawCount = 0;
                 s.lastValid = false;
-                static_cast<DigitalSensorEndpoint*>(s.endpoint)->updateCount(initialTotal, true, millis());
+                const float scaledValue = ioRoundToPrecision(s.counterScaledTotal, precision);
+                static_cast<DigitalSensorEndpoint*>(s.endpoint)->updateFloat(scaledValue, true, millis());
             }
             registry_.add(s.endpoint);
             (void)processDigitalInputDefinition_(i, millis());
@@ -1535,7 +1610,7 @@ bool IOModule::configureRuntime_()
 
         const uint8_t cfgIdx = s.logicalIdx;
         if (cfgIdx < DIGITAL_CFG_SLOTS) {
-            snprintf(s.outDef.id, sizeof(s.outDef.id), "d%u", (unsigned)cfgIdx);
+            snprintf(s.outDef.id, sizeof(s.outDef.id), "d%02u", (unsigned)cfgIdx);
             s.outDef.bindingPort = digitalCfg_[cfgIdx].bindingPort;
             s.outDef.activeHigh = digitalCfg_[cfgIdx].activeHigh;
             s.outDef.initialOn = digitalCfg_[cfgIdx].initialOn;
@@ -1545,7 +1620,7 @@ bool IOModule::configureRuntime_()
             if (p > 60000) p = 60000;
             s.outDef.pulseMs = (uint16_t)p;
         } else {
-            snprintf(s.outDef.id, sizeof(s.outDef.id), "d%u", (unsigned)s.logicalIdx);
+            snprintf(s.outDef.id, sizeof(s.outDef.id), "d%02u", (unsigned)s.logicalIdx);
         }
 
         strncpy(s.endpointId, s.outDef.id, sizeof(s.endpointId) - 1);
@@ -2058,24 +2133,47 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(traceEnabledVar_, kCfgModuleId, kCfgBranchIoDebug);
     cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchIoDebug);
 
-    cfg.registerVar(a0NameVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0BindingVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0C0Var_, kCfgModuleId, kCfgBranchIoA0);
-    cfg.registerVar(a0C1Var_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0PrecVar_, kCfgModuleId, kCfgBranchIoA0);
-    cfg.registerVar(a1NameVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1BindingVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1C0Var_, kCfgModuleId, kCfgBranchIoA1);
-    cfg.registerVar(a1C1Var_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1PrecVar_, kCfgModuleId, kCfgBranchIoA1);
-    cfg.registerVar(a2NameVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2BindingVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2C0Var_, kCfgModuleId, kCfgBranchIoA2);
-    cfg.registerVar(a2C1Var_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2PrecVar_, kCfgModuleId, kCfgBranchIoA2);
-    cfg.registerVar(a3NameVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3BindingVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3C0Var_, kCfgModuleId, kCfgBranchIoA3);
-    cfg.registerVar(a3C1Var_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3PrecVar_, kCfgModuleId, kCfgBranchIoA3);
-    cfg.registerVar(a4NameVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4BindingVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4C0Var_, kCfgModuleId, kCfgBranchIoA4);
-    cfg.registerVar(a4C1Var_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4PrecVar_, kCfgModuleId, kCfgBranchIoA4);
-    cfg.registerVar(a5NameVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5BindingVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5C0Var_, kCfgModuleId, kCfgBranchIoA5);
-    cfg.registerVar(a5C1Var_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5PrecVar_, kCfgModuleId, kCfgBranchIoA5);
+#define FLOW_IO_REGISTER_ANALOG_CFG(INDEX, BRANCH) \
+    cfg.registerVar(a##INDEX##NameVar_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(a##INDEX##BindingVar_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(a##INDEX##C0Var_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(a##INDEX##C1Var_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(a##INDEX##PrecVar_, kCfgModuleId, BRANCH);
+    FLOW_IO_REGISTER_ANALOG_CFG(0, kCfgBranchIoA0)
+    FLOW_IO_REGISTER_ANALOG_CFG(1, kCfgBranchIoA1)
+    FLOW_IO_REGISTER_ANALOG_CFG(2, kCfgBranchIoA2)
+    FLOW_IO_REGISTER_ANALOG_CFG(3, kCfgBranchIoA3)
+    FLOW_IO_REGISTER_ANALOG_CFG(4, kCfgBranchIoA4)
+    FLOW_IO_REGISTER_ANALOG_CFG(5, kCfgBranchIoA5)
+#undef FLOW_IO_REGISTER_ANALOG_CFG
 
-    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0BindingVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0EdgeModeVar_, kCfgModuleId, kCfgBranchIoI0);
-    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1BindingVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1EdgeModeVar_, kCfgModuleId, kCfgBranchIoI1);
-    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2BindingVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2EdgeModeVar_, kCfgModuleId, kCfgBranchIoI2);
-    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3BindingVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3EdgeModeVar_, kCfgModuleId, kCfgBranchIoI3);
-    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4BindingVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4EdgeModeVar_, kCfgModuleId, kCfgBranchIoI4);
+    if (ensureExtraAnalogCfgVars_()) {
+        ExtraAnalogConfigVars& extra = *extraAnalogCfgVars_;
+#define FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(INDEX, BRANCH) \
+        cfg.registerVar(extra.a##INDEX##NameVar_, kCfgModuleId, BRANCH); \
+        cfg.registerVar(extra.a##INDEX##BindingVar_, kCfgModuleId, BRANCH); \
+        cfg.registerVar(extra.a##INDEX##C0Var_, kCfgModuleId, BRANCH); \
+        cfg.registerVar(extra.a##INDEX##C1Var_, kCfgModuleId, BRANCH); \
+        cfg.registerVar(extra.a##INDEX##PrecVar_, kCfgModuleId, BRANCH);
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(6, kCfgBranchIoA6)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(7, kCfgBranchIoA7)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(8, kCfgBranchIoA8)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(9, kCfgBranchIoA9)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(10, kCfgBranchIoA10)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(11, kCfgBranchIoA11)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(12, kCfgBranchIoA12)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(13, kCfgBranchIoA13)
+        FLOW_IO_REGISTER_EXTRA_ANALOG_CFG(14, kCfgBranchIoA14)
+#undef FLOW_IO_REGISTER_EXTRA_ANALOG_CFG
+    } else {
+        LOGE("failed to allocate extra analog config vars");
+    }
+
+    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0BindingVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0EdgeModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0C0Var_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PrecVar_, kCfgModuleId, kCfgBranchIoI0);
+    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1BindingVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1EdgeModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1C0Var_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PrecVar_, kCfgModuleId, kCfgBranchIoI1);
+    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2BindingVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2EdgeModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2C0Var_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PrecVar_, kCfgModuleId, kCfgBranchIoI2);
+    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3BindingVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3EdgeModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3C0Var_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PrecVar_, kCfgModuleId, kCfgBranchIoI3);
+    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4BindingVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4EdgeModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4C0Var_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PrecVar_, kCfgModuleId, kCfgBranchIoI4);
 
     cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0BindingVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
     cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1BindingVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
@@ -2087,10 +2185,15 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7BindingVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
 
     LOGI("I/O config registered");
-    for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
-        analogPrecisionLast_[i] = sanitizeAnalogPrecision_(analogCfg_[i].precision);
+    if (ensureAnalogPrecisionState_()) {
+        for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+            analogPrecisionLast_[i] = sanitizeAnalogPrecision_(analogCfg_[i].precision);
+        }
+        analogPrecisionLastInit_ = true;
+    } else {
+        analogPrecisionLastInit_ = false;
+        LOGE("failed to allocate analog precision state");
     }
-    analogPrecisionLastInit_ = true;
     analogConfigDirtyMask_ = 0;
 
     (void)logHub_;

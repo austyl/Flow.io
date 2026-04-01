@@ -87,6 +87,7 @@ TOKEN_MAP = {
 ANALOG_KEY_RE = re.compile(r"^a(?P<idx>[0-9]+)_(?P<field>name|source|channel|binding_port|c0|c1|prec|min|max)$")
 DIGITAL_INPUT_KEY_RE = re.compile(r"^i(?P<idx>[0-9]+)_(?P<field>name|binding_port|active_high|pull_mode|edge_mode)$")
 DIGITAL_OUTPUT_KEY_RE = re.compile(r"^d(?P<idx>[0-9]+)_(?P<field>name|pin|binding_port|active_high|initial_on|momentary|pulse_ms)$")
+ANALOG_MODULE_RE = re.compile(r"^io/input/a(?P<idx>[0-9]+)$")
 PORT_ENUM_RE = re.compile(r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,\s*$", re.M)
 BINDING_ENTRY_RE = re.compile(
     r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
@@ -102,6 +103,10 @@ FLOWIO_BINDING_SET_ANALOG = "flowio_binding_port_analog"
 FLOWIO_BINDING_SET_DIGITAL_INPUT = "flowio_binding_port_digital_input"
 FLOWIO_BINDING_SET_DIGITAL_OUTPUT = "flowio_binding_port_digital_output"
 FLOWIO_EDGE_MODE_SET = "flowio_edge_mode"
+
+
+def _io_slot_token(idx: int) -> str:
+    return f"{idx:02d}"
 
 
 def _humanize_json_name(json_name: str) -> str:
@@ -411,31 +416,42 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
             return {"label": hit[0], "help": hit[1], "unit": hit[2]}
 
     if module_name.startswith("io/input/a"):
-        m = ANALOG_KEY_RE.match(json_name)
-        if m:
-            idx = m.group("idx")
-            field = m.group("field")
+        module_match = ANALOG_MODULE_RE.match(module_name)
+        idx = None
+        idx_num = None
+        field = None
+        if module_match:
+            idx = module_match.group("idx")
+            idx_num = int(idx)
+            if json_name == "binding_port":
+                field = "binding_port"
+            else:
+                m = ANALOG_KEY_RE.match(json_name)
+                if m and m.group("idx") == idx:
+                    field = m.group("field")
+        if idx is not None and idx_num is not None and field is not None:
+            label_idx = _io_slot_token(idx_num)
             labels = {
-                "name": f"Nom entrée A{idx}",
-                "source": f"Source entrée A{idx}",
-                "channel": f"Canal entrée A{idx}",
-                "binding_port": f"Port physique A{idx}",
-                "c0": f"Coefficient C0 A{idx}",
-                "c1": f"Coefficient C1 A{idx}",
-                "prec": f"Precision A{idx}",
-                "min": f"Seuil mini A{idx}",
-                "max": f"Seuil maxi A{idx}",
+                "name": f"Nom entrée A{label_idx}",
+                "source": f"Source entrée A{label_idx}",
+                "channel": f"Canal entrée A{label_idx}",
+                "binding_port": f"Port physique A{label_idx}",
+                "c0": f"Coefficient C0 A{label_idx}",
+                "c1": f"Coefficient C1 A{label_idx}",
+                "prec": f"Precision A{label_idx}",
+                "min": f"Seuil mini A{label_idx}",
+                "max": f"Seuil maxi A{label_idx}",
             }
             helps = {
-                "name": f"Nom lisible de l'entrée analogique A{idx}.",
-                "source": f"Source ADC de A{idx} (0=ADS interne, 1=ADS externe).",
-                "channel": f"Canal ADC utilisé pour A{idx}.",
-                "binding_port": f"Identifiant du port physique utilise par A{idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-                "c0": f"Coefficient C0 pour la calibration de A{idx}.",
-                "c1": f"Coefficient C1 pour la calibration de A{idx}.",
-                "prec": f"Nombre de décimales conservées pour A{idx}.",
-                "min": f"Valeur minimale valide pour A{idx} (avant invalidation).",
-                "max": f"Valeur maximale valide pour A{idx} (avant invalidation).",
+                "name": f"Nom lisible de l'entrée analogique A{label_idx}.",
+                "source": f"Source ADC de A{label_idx} (0=ADS interne, 1=ADS externe).",
+                "channel": f"Canal ADC utilisé pour A{label_idx}.",
+                "binding_port": f"Identifiant du port physique utilise par A{label_idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+                "c0": f"Coefficient C0 pour la calibration de A{label_idx}.",
+                "c1": f"Coefficient C1 pour la calibration de A{label_idx}.",
+                "prec": f"Nombre de décimales conservées pour A{label_idx}.",
+                "min": f"Valeur minimale valide pour A{label_idx} (avant invalidation).",
+                "max": f"Valeur maximale valide pour A{label_idx} (avant invalidation).",
             }
             unit = "digits" if field == "prec" else None
             return {"label": labels[field], "help": helps[field], "unit": unit}
@@ -443,7 +459,8 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
     if module_name.startswith("io/input/i"):
         m = DIGITAL_INPUT_KEY_RE.match(json_name)
         if m:
-            idx = m.group("idx")
+            idx_num = int(m.group("idx"))
+            idx = _io_slot_token(idx_num)
             field = m.group("field")
             labels = {
                 "name": f"Nom entrée I{idx}",
@@ -464,7 +481,8 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
     if module_name.startswith("io/output/d"):
         m = DIGITAL_OUTPUT_KEY_RE.match(json_name)
         if m:
-            idx = m.group("idx")
+            idx_num = int(m.group("idx"))
+            idx = _io_slot_token(idx_num)
             field = m.group("field")
             labels = {
                 "name": f"Nom sortie D{idx}",
@@ -834,6 +852,34 @@ def _build_entries(src_root: Path) -> Tuple[Dict[str, dict], dict]:
                     _upsert_entry(entries, f"{mod}/{field}", full_item, 25)
             # Always add wildcard fallback for UI lookup by key only.
             _upsert_entry(entries, f"*/{field}", dict(base_item), 15)
+
+    # Pass 3: synthesize analog input docs for macro-generated and heap-backed slots.
+    analog_fields = (
+        ("a{idx}_name", "CharArray"),
+        ("binding_port", "UInt16"),
+        ("a{idx}_c0", "Float"),
+        ("a{idx}_c1", "Float"),
+        ("a{idx}_prec", "Int32"),
+    )
+    for idx in range(15):
+        slot = _io_slot_token(idx)
+        module_name = f"io/input/a{slot}"
+        for json_tpl, type_name in analog_fields:
+            json_name = json_tpl.format(idx=slot)
+            auto_doc = _auto_doc_hint(module_name, json_name)
+            item = {
+                "module": module_name,
+                "name": json_name,
+                "type": type_name,
+                "label": auto_doc.get("label") if auto_doc else _humanize_json_name(json_name),
+                "help": auto_doc.get("help") if auto_doc else _default_help(module_name, json_name, type_name),
+                "var": f"a{slot}",
+                "source": "synthetic-analog",
+            }
+            if auto_doc and auto_doc.get("unit"):
+                item["unit"] = auto_doc["unit"]
+            _apply_doc_extras(item, module_name, json_name)
+            _upsert_entry(entries, f"{module_name}/{json_name}", item, 10)
 
     stats = {
         "decl_total": len(decls),

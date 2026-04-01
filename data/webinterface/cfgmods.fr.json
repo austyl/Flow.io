@@ -3,6 +3,14 @@
     "generated": false,
     "locale": "fr",
     "version": 1,
+    "cfg_tree_aliases": [
+      { "display": "network/wifi", "store": "wifi" },
+      { "display": "network/time", "store": "time" },
+      { "display": "network/mqtt", "store": "mqtt" }
+    ],
+    "cfg_tree_virtual_branches": [
+      { "display": "network", "children": ["wifi", "time", "mqtt"] }
+    ],
     "enum_sets": {
       "io_analog_source": [
         { "value": 0, "label": "ADS Interne" },
@@ -82,6 +90,10 @@
     }
   },
   "docs": {
+    "network": { "label": "network" },
+    "network/wifi": { "label": "wifi" },
+    "network/time": { "label": "time" },
+    "network/mqtt": { "label": "mqtt" },
     "log/levels": { "apply_per_field": true },
     "elink/client/target_addr": { "display_format": "hex" },
     "elink/server/address": { "display_format": "hex" },
@@ -92,17 +104,17 @@
     "io/drivers/ina226/address": { "display_format": "hex" },
     "io/drivers/pcf857x/address": { "display_format": "hex" },
     "io/drivers/sht40/address": { "display_format": "hex" },
-    "io/input/a0/a0_source": { "enum_set": "io_analog_source" },
-    "io/input/a1/a1_source": { "enum_set": "io_analog_source" },
-    "io/input/a2/a2_source": { "enum_set": "io_analog_source" },
-    "io/input/a3/a3_source": { "enum_set": "io_analog_source" },
-    "io/input/a4/a4_source": { "enum_set": "io_analog_source" },
-    "io/input/a5/a5_source": { "enum_set": "io_analog_source" },
-    "io/input/i0/i0_pull_mode": { "enum_set": "io_digital_pull_mode" },
-    "io/input/i1/i1_pull_mode": { "enum_set": "io_digital_pull_mode" },
-    "io/input/i2/i2_pull_mode": { "enum_set": "io_digital_pull_mode" },
-    "io/input/i3/i3_pull_mode": { "enum_set": "io_digital_pull_mode" },
-    "io/input/i4/i4_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/a00/a00_source": { "enum_set": "io_analog_source" },
+    "io/input/a01/a01_source": { "enum_set": "io_analog_source" },
+    "io/input/a02/a02_source": { "enum_set": "io_analog_source" },
+    "io/input/a03/a03_source": { "enum_set": "io_analog_source" },
+    "io/input/a04/a04_source": { "enum_set": "io_analog_source" },
+    "io/input/a05/a05_source": { "enum_set": "io_analog_source" },
+    "io/input/i00/i00_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i01/i01_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i02/i02_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i03/i03_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i04/i04_pull_mode": { "enum_set": "io_digital_pull_mode" },
     "poollogic/filtr_start_clc": { "enum_set": "hours_of_day" },
     "poollogic/filtr_start_min": { "enum_set": "hours_of_day" },
     "poollogic/filtr_stop_clc": { "enum_set": "hours_of_day" },

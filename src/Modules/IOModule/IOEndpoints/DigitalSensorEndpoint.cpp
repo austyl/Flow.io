@@ -28,6 +28,14 @@ void DigitalSensorEndpoint::update(bool on, bool valid, uint32_t timestampMs)
     value_.timestampMs = timestampMs;
 }
 
+void DigitalSensorEndpoint::updateFloat(float value, bool valid, uint32_t timestampMs)
+{
+    value_.valueType = IO_EP_VALUE_FLOAT;
+    value_.v.f = value;
+    value_.valid = valid;
+    value_.timestampMs = timestampMs;
+}
+
 void DigitalSensorEndpoint::updateCount(int32_t count, bool valid, uint32_t timestampMs)
 {
     value_.valueType = IO_EP_VALUE_INT32;

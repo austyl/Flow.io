@@ -134,6 +134,53 @@ constexpr uint32_t kHeapGuardAssetFreeBytesMajor = 15360U;
 const char* httpMethodName_(uint8_t method);
 void addNoCacheHeaders_(AsyncWebServerResponse* response);
 
+size_t tokenLenToSlash_(const char* s)
+{
+    size_t n = 0;
+    if (!s) return 0;
+    while (s[n] != '\0' && s[n] != '/') ++n;
+    return n;
+}
+
+bool childTokenForPrefix_(const char* module,
+                          const char* prefix,
+                          size_t prefixLen,
+                          const char*& childStart,
+                          size_t& childLen,
+                          bool& isExact)
+{
+    childStart = nullptr;
+    childLen = 0;
+    isExact = false;
+    if (!module || module[0] == '\0') return false;
+
+    if (prefixLen == 0) {
+        childStart = module;
+        childLen = tokenLenToSlash_(module);
+        return childLen > 0;
+    }
+
+    if (strncmp(module, prefix, prefixLen) != 0) return false;
+    const char sep = module[prefixLen];
+    if (sep == '\0') {
+        isExact = true;
+        return false;
+    }
+    if (sep != '/') return false;
+
+    childStart = module + prefixLen + 1;
+    childLen = tokenLenToSlash_(childStart);
+    return childLen > 0;
+}
+
+bool tokensEqual_(const char* a, size_t aLen, const char* b, size_t bLen)
+{
+    if (!a || !b) return false;
+    if (aLen != bLen) return false;
+    if (aLen == 0) return true;
+    return strncmp(a, b, aLen) == 0;
+}
+
 struct HeapForensicSnapshot {
     uint32_t freeBytes = 0;
     uint32_t minFreeBytes = 0;
@@ -2005,6 +2052,76 @@ void WebInterfaceModule::startServer_()
             if (!first) response->print(',');
             printJsonEscaped_(*response, modules[i]);
             first = false;
+        }
+        response->print("]}");
+        request->send(response);
+    });
+
+    server_.on("/api/supervisorcfg/children", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/supervisorcfg/children");
+        if (!cfgStore_) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"supervisorcfg.children\"}}");
+            return;
+        }
+
+        char prefix[128] = {0};
+        copyRequestParamValue_(request, "prefix", false, prefix, sizeof(prefix), "");
+
+        size_t prefixLen = strnlen(prefix, sizeof(prefix));
+        while (prefixLen > 0 && prefix[0] == '/') {
+            memmove(prefix, prefix + 1, prefixLen);
+            --prefixLen;
+        }
+        while (prefixLen > 0 && prefix[prefixLen - 1] == '/') {
+            prefix[prefixLen - 1] = '\0';
+            --prefixLen;
+        }
+
+        constexpr uint8_t kMaxModules = Limits::Config::Capacity::ModuleListMax;
+        const char* modules[kMaxModules] = {0};
+        const uint8_t moduleCount = cfgStore_->listModules(modules, kMaxModules);
+
+        const char* childStarts[kMaxModules] = {0};
+        size_t childLens[kMaxModules] = {0};
+        uint8_t childCount = 0;
+        bool hasExact = false;
+
+        for (uint8_t i = 0; i < moduleCount; ++i) {
+            const char* childStart = nullptr;
+            size_t childLen = 0;
+            bool exact = false;
+            if (!childTokenForPrefix_(modules[i], prefix, prefixLen, childStart, childLen, exact)) {
+                if (exact) hasExact = true;
+                continue;
+            }
+
+            bool duplicate = false;
+            for (uint8_t j = 0; j < childCount; ++j) {
+                if (tokensEqual_(childStart, childLen, childStarts[j], childLens[j])) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate) continue;
+
+            childStarts[childCount] = childStart;
+            childLens[childCount] = childLen;
+            ++childCount;
+        }
+
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        addNoCacheHeaders_(response);
+        response->print("{\"ok\":true,\"has_exact\":");
+        response->print(hasExact ? "true" : "false");
+        response->print(",\"children\":[");
+        for (uint8_t i = 0; i < childCount; ++i) {
+            if (i > 0) response->print(',');
+            response->print('\"');
+            for (size_t j = 0; j < childLens[i]; ++j) {
+                response->print(childStarts[i][j]);
+            }
+            response->print('\"');
         }
         response->print("]}");
         request->send(response);

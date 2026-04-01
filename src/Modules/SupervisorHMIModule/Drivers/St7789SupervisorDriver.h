@@ -98,11 +98,12 @@ struct St7789SupervisorDriverConfig {
     int8_t csPin = 15;
     int8_t dcPin = 2;
     int8_t rstPin = 4;
-    int8_t mosiPin = 19;
-    int8_t sclkPin = 18;
+    int8_t misoPin = 35;
+    int8_t mosiPin = 18;
+    int8_t sclkPin = 19;
     bool swapColorBytes = true;
     bool invertColors = false;
-    uint32_t spiHz = 40000000;
+    uint32_t spiHz = 8000000;
     uint16_t minRenderGapMs = 80;
 };
 

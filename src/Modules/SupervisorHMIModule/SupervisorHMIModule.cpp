@@ -41,6 +41,7 @@ const SupervisorBoardSpec& supervisorBoardSpec_(const BoardSpec& board)
             15,
             4,
             5,
+            35,
             19,
             18,
             true,
@@ -95,6 +96,7 @@ St7789SupervisorDriverConfig SupervisorHMIModule::makeDriverConfig_(const BoardS
     cfg.csPin = boardCfg.display.csPin;
     cfg.dcPin = boardCfg.display.dcPin;
     cfg.rstPin = boardCfg.display.rstPin;
+    cfg.misoPin = boardCfg.display.misoPin;
     cfg.mosiPin = boardCfg.display.mosiPin;
     cfg.sclkPin = boardCfg.display.sclkPin;
     cfg.swapColorBytes = boardCfg.display.swapColorBytes;
@@ -222,13 +224,15 @@ void SupervisorHMIModule::init(ConfigStore&, ServiceRegistry& services)
     setDefaultBanner_();
     refreshFlowStatusFromDataStore_();
 
-    LOGI("Supervisor HMI initialized tft_cs=%d tft_dc=%d tft_rst=%d tft_bl=%d tft_mosi=%d tft_sclk=%d rot=%d colstart=%d rowstart=%d pir=%d pir_active_high=%d wifi_reset=%d",
+    LOGI("Supervisor HMI initialized cs=%d dc=%d rst=%d bl=%d miso=%d mosi=%d sclk=%d hz=%d rot=%d col=%d row=%d pir=%d pah=%d wr=%d",
          (int)driverCfg_.csPin,
          (int)driverCfg_.dcPin,
          (int)driverCfg_.rstPin,
          (int)driverCfg_.backlightPin,
+         (int)driverCfg_.misoPin,
          (int)driverCfg_.mosiPin,
          (int)driverCfg_.sclkPin,
+         (int)driverCfg_.spiHz,
          (int)driverCfg_.rotation,
          (int)driverCfg_.colStart,
          (int)driverCfg_.rowStart,

@@ -1,0 +1,284 @@
+title: Flow.IO Alarms
+views:
+  - title: Alarmes
+    path: flowio-alarmes
+    icon: mdi:alarm-light
+    cards:
+      - type: markdown
+        content: |
+          # Flow.IO alarms
+          Une ligne par alarme, avec 3 indicateurs a droite: `active`, `ack`, `condition`.
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_psi_low_active
+            name: Low pressure
+            icon: mdi:gauge-empty
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_low_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_low_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_low_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_psi_high_active
+            name: High pressure
+            icon: mdi:gauge-full
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_high_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_high_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_psi_high_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_ph_tank_low_active
+            name: pH tank low
+            icon: mdi:flask-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_ph_tank_low_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_ph_tank_low_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_ph_tank_low_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_chlorine_tank_low_active
+            name: Chlorine tank low
+            icon: mdi:cup-water
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_chlorine_tank_low_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_chlorine_tank_low_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_chlorine_tank_low_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+
+      - type: markdown
+        content: |
+          ## Internal log alarms
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_log_warning_active
+            name: Warning log
+            icon: mdi:alert-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_warning_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_warning_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_warning_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            entity: binary_sensor.fio53_log_error_active
+            name: Error log
+            icon: mdi:alert-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_error_active
+            name: Active
+            icon: mdi:alarm-light
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_error_acked
+            name: Ack
+            icon: mdi:check-circle-outline
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info
+          - type: button
+            entity: binary_sensor.fio53_log_error_condition
+            name: Cond
+            icon: mdi:flash-alert
+            show_state: false
+            state_color: true
+            tap_action:
+              action: none
+            hold_action:
+              action: more-info

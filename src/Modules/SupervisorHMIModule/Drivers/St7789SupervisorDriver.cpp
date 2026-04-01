@@ -773,7 +773,7 @@ bool St7789SupervisorDriver::begin()
 {
     if (started_) return true;
     const bool swapBytes = cfg_.swapColorBytes;
-    spiBus_.begin(cfg_.sclkPin, -1, cfg_.mosiPin, cfg_.csPin);
+    spiBus_.begin(cfg_.sclkPin, cfg_.misoPin, cfg_.mosiPin, cfg_.csPin);
     display_.setSPISpeed(cfg_.spiHz);
     display_.init(cfg_.resX, cfg_.resY);
     display_.setColRowStart(cfg_.colStart, cfg_.rowStart);

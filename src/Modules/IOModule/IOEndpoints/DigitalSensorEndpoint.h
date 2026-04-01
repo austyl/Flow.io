@@ -18,6 +18,7 @@ public:
     bool write(const IOEndpointValue&) override { return false; }
 
     void update(bool on, bool valid, uint32_t timestampMs);
+    void updateFloat(float value, bool valid, uint32_t timestampMs);
     void updateCount(int32_t count, bool valid, uint32_t timestampMs);
 
 private:

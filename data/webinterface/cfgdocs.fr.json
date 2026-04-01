@@ -1,10 +1,10 @@
 {
   "_meta": {
     "generated": true,
-    "total": 337,
-    "decl_total": 231,
-    "decl_with_cfgdoc": 122,
-    "missing_cfgdoc_count": 109,
+    "total": 392,
+    "decl_total": 211,
+    "decl_with_cfgdoc": 116,
+    "missing_cfgdoc_count": 95,
     "manual_overrides_total": 18,
     "manual_overrides_applied": 0
   },
@@ -731,967 +731,1480 @@
       "var": "enabledVar_",
       "source": "auto-hint"
     },
-    "io/input/a0/a0_c0": {
-      "module": "io/input/a0",
-      "name": "a0_c0",
+    "io/input/a00/a00_c0": {
+      "module": "io/input/a00",
+      "name": "a00_c0",
       "type": "Float",
-      "label": "Coefficient C0 A0",
-      "help": "Coefficient C0 pour la calibration de A0.",
-      "var": "a0C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A00",
+      "help": "Coefficient C0 pour la calibration de A00.",
+      "var": "a00",
+      "source": "synthetic-analog"
     },
-    "io/input/a0/a0_c1": {
-      "module": "io/input/a0",
-      "name": "a0_c1",
+    "io/input/a00/a00_c1": {
+      "module": "io/input/a00",
+      "name": "a00_c1",
       "type": "Float",
-      "label": "Coefficient C1 A0",
-      "help": "Coefficient C1 pour la calibration de A0.",
-      "var": "a0C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A00",
+      "help": "Coefficient C1 pour la calibration de A00.",
+      "var": "a00",
+      "source": "synthetic-analog"
     },
-    "io/input/a0/a0_name": {
-      "module": "io/input/a0",
-      "name": "a0_name",
+    "io/input/a00/a00_name": {
+      "module": "io/input/a00",
+      "name": "a00_name",
       "type": "CharArray",
-      "label": "Nom entrée A0",
-      "help": "Nom lisible de l'entrée analogique A0.",
-      "var": "a0NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A00",
+      "help": "Nom lisible de l'entrée analogique A00.",
+      "var": "a00",
+      "source": "synthetic-analog"
     },
-    "io/input/a0/a0_prec": {
-      "module": "io/input/a0",
-      "name": "a0_prec",
+    "io/input/a00/a00_prec": {
+      "module": "io/input/a00",
+      "name": "a00_prec",
       "type": "Int32",
-      "label": "Precision A0",
-      "help": "Nombre de décimales conservées pour A0.",
-      "var": "a0PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A00",
+      "help": "Nombre de décimales conservées pour A00.",
+      "var": "a00",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a0/binding_port": {
-      "module": "io/input/a0",
+    "io/input/a00/binding_port": {
+      "module": "io/input/a00",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A0",
-      "help": "Identifiant du port physique utilise par l'entree analogique A0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a0BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A00",
+      "help": "Identifiant du port physique utilise par A00. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a00",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/a1/a1_c0": {
-      "module": "io/input/a1",
-      "name": "a1_c0",
+    "io/input/a01/a01_c0": {
+      "module": "io/input/a01",
+      "name": "a01_c0",
       "type": "Float",
-      "label": "Coefficient C0 A1",
-      "help": "Coefficient C0 pour la calibration de A1.",
-      "var": "a1C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A01",
+      "help": "Coefficient C0 pour la calibration de A01.",
+      "var": "a01",
+      "source": "synthetic-analog"
     },
-    "io/input/a1/a1_c1": {
-      "module": "io/input/a1",
-      "name": "a1_c1",
+    "io/input/a01/a01_c1": {
+      "module": "io/input/a01",
+      "name": "a01_c1",
       "type": "Float",
-      "label": "Coefficient C1 A1",
-      "help": "Coefficient C1 pour la calibration de A1.",
-      "var": "a1C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A01",
+      "help": "Coefficient C1 pour la calibration de A01.",
+      "var": "a01",
+      "source": "synthetic-analog"
     },
-    "io/input/a1/a1_name": {
-      "module": "io/input/a1",
-      "name": "a1_name",
+    "io/input/a01/a01_name": {
+      "module": "io/input/a01",
+      "name": "a01_name",
       "type": "CharArray",
-      "label": "Nom entrée A1",
-      "help": "Nom lisible de l'entrée analogique A1.",
-      "var": "a1NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A01",
+      "help": "Nom lisible de l'entrée analogique A01.",
+      "var": "a01",
+      "source": "synthetic-analog"
     },
-    "io/input/a1/a1_prec": {
-      "module": "io/input/a1",
-      "name": "a1_prec",
+    "io/input/a01/a01_prec": {
+      "module": "io/input/a01",
+      "name": "a01_prec",
       "type": "Int32",
-      "label": "Precision A1",
-      "help": "Nombre de décimales conservées pour A1.",
-      "var": "a1PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A01",
+      "help": "Nombre de décimales conservées pour A01.",
+      "var": "a01",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a1/binding_port": {
-      "module": "io/input/a1",
+    "io/input/a01/binding_port": {
+      "module": "io/input/a01",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A1",
-      "help": "Identifiant du port physique utilise par l'entree analogique A1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a1BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A01",
+      "help": "Identifiant du port physique utilise par A01. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a01",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/a2/a2_c0": {
-      "module": "io/input/a2",
-      "name": "a2_c0",
+    "io/input/a02/a02_c0": {
+      "module": "io/input/a02",
+      "name": "a02_c0",
       "type": "Float",
-      "label": "Coefficient C0 A2",
-      "help": "Coefficient C0 pour la calibration de A2.",
-      "var": "a2C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A02",
+      "help": "Coefficient C0 pour la calibration de A02.",
+      "var": "a02",
+      "source": "synthetic-analog"
     },
-    "io/input/a2/a2_c1": {
-      "module": "io/input/a2",
-      "name": "a2_c1",
+    "io/input/a02/a02_c1": {
+      "module": "io/input/a02",
+      "name": "a02_c1",
       "type": "Float",
-      "label": "Coefficient C1 A2",
-      "help": "Coefficient C1 pour la calibration de A2.",
-      "var": "a2C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A02",
+      "help": "Coefficient C1 pour la calibration de A02.",
+      "var": "a02",
+      "source": "synthetic-analog"
     },
-    "io/input/a2/a2_name": {
-      "module": "io/input/a2",
-      "name": "a2_name",
+    "io/input/a02/a02_name": {
+      "module": "io/input/a02",
+      "name": "a02_name",
       "type": "CharArray",
-      "label": "Nom entrée A2",
-      "help": "Nom lisible de l'entrée analogique A2.",
-      "var": "a2NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A02",
+      "help": "Nom lisible de l'entrée analogique A02.",
+      "var": "a02",
+      "source": "synthetic-analog"
     },
-    "io/input/a2/a2_prec": {
-      "module": "io/input/a2",
-      "name": "a2_prec",
+    "io/input/a02/a02_prec": {
+      "module": "io/input/a02",
+      "name": "a02_prec",
       "type": "Int32",
-      "label": "Precision A2",
-      "help": "Nombre de décimales conservées pour A2.",
-      "var": "a2PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A02",
+      "help": "Nombre de décimales conservées pour A02.",
+      "var": "a02",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a2/binding_port": {
-      "module": "io/input/a2",
+    "io/input/a02/binding_port": {
+      "module": "io/input/a02",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A2",
-      "help": "Identifiant du port physique utilise par l'entree analogique A2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a2BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A02",
+      "help": "Identifiant du port physique utilise par A02. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a02",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/a3/a3_c0": {
-      "module": "io/input/a3",
-      "name": "a3_c0",
+    "io/input/a03/a03_c0": {
+      "module": "io/input/a03",
+      "name": "a03_c0",
       "type": "Float",
-      "label": "Coefficient C0 A3",
-      "help": "Coefficient C0 pour la calibration de A3.",
-      "var": "a3C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A03",
+      "help": "Coefficient C0 pour la calibration de A03.",
+      "var": "a03",
+      "source": "synthetic-analog"
     },
-    "io/input/a3/a3_c1": {
-      "module": "io/input/a3",
-      "name": "a3_c1",
+    "io/input/a03/a03_c1": {
+      "module": "io/input/a03",
+      "name": "a03_c1",
       "type": "Float",
-      "label": "Coefficient C1 A3",
-      "help": "Coefficient C1 pour la calibration de A3.",
-      "var": "a3C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A03",
+      "help": "Coefficient C1 pour la calibration de A03.",
+      "var": "a03",
+      "source": "synthetic-analog"
     },
-    "io/input/a3/a3_name": {
-      "module": "io/input/a3",
-      "name": "a3_name",
+    "io/input/a03/a03_name": {
+      "module": "io/input/a03",
+      "name": "a03_name",
       "type": "CharArray",
-      "label": "Nom entrée A3",
-      "help": "Nom lisible de l'entrée analogique A3.",
-      "var": "a3NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A03",
+      "help": "Nom lisible de l'entrée analogique A03.",
+      "var": "a03",
+      "source": "synthetic-analog"
     },
-    "io/input/a3/a3_prec": {
-      "module": "io/input/a3",
-      "name": "a3_prec",
+    "io/input/a03/a03_prec": {
+      "module": "io/input/a03",
+      "name": "a03_prec",
       "type": "Int32",
-      "label": "Precision A3",
-      "help": "Nombre de décimales conservées pour A3.",
-      "var": "a3PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A03",
+      "help": "Nombre de décimales conservées pour A03.",
+      "var": "a03",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a3/binding_port": {
-      "module": "io/input/a3",
+    "io/input/a03/binding_port": {
+      "module": "io/input/a03",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A3",
-      "help": "Identifiant du port physique utilise par l'entree analogique A3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a3BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A03",
+      "help": "Identifiant du port physique utilise par A03. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a03",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/a4/a4_c0": {
-      "module": "io/input/a4",
-      "name": "a4_c0",
+    "io/input/a04/a04_c0": {
+      "module": "io/input/a04",
+      "name": "a04_c0",
       "type": "Float",
-      "label": "Coefficient C0 A4",
-      "help": "Coefficient C0 pour la calibration de A4.",
-      "var": "a4C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A04",
+      "help": "Coefficient C0 pour la calibration de A04.",
+      "var": "a04",
+      "source": "synthetic-analog"
     },
-    "io/input/a4/a4_c1": {
-      "module": "io/input/a4",
-      "name": "a4_c1",
+    "io/input/a04/a04_c1": {
+      "module": "io/input/a04",
+      "name": "a04_c1",
       "type": "Float",
-      "label": "Coefficient C1 A4",
-      "help": "Coefficient C1 pour la calibration de A4.",
-      "var": "a4C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A04",
+      "help": "Coefficient C1 pour la calibration de A04.",
+      "var": "a04",
+      "source": "synthetic-analog"
     },
-    "io/input/a4/a4_name": {
-      "module": "io/input/a4",
-      "name": "a4_name",
+    "io/input/a04/a04_name": {
+      "module": "io/input/a04",
+      "name": "a04_name",
       "type": "CharArray",
-      "label": "Nom entrée A4",
-      "help": "Nom lisible de l'entrée analogique A4.",
-      "var": "a4NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A04",
+      "help": "Nom lisible de l'entrée analogique A04.",
+      "var": "a04",
+      "source": "synthetic-analog"
     },
-    "io/input/a4/a4_prec": {
-      "module": "io/input/a4",
-      "name": "a4_prec",
+    "io/input/a04/a04_prec": {
+      "module": "io/input/a04",
+      "name": "a04_prec",
       "type": "Int32",
-      "label": "Precision A4",
-      "help": "Nombre de décimales conservées pour A4.",
-      "var": "a4PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A04",
+      "help": "Nombre de décimales conservées pour A04.",
+      "var": "a04",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a4/binding_port": {
-      "module": "io/input/a4",
+    "io/input/a04/binding_port": {
+      "module": "io/input/a04",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A4",
-      "help": "Identifiant du port physique utilise par l'entree analogique A4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a4BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A04",
+      "help": "Identifiant du port physique utilise par A04. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a04",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/a5/a5_c0": {
-      "module": "io/input/a5",
-      "name": "a5_c0",
+    "io/input/a05/a05_c0": {
+      "module": "io/input/a05",
+      "name": "a05_c0",
       "type": "Float",
-      "label": "Coefficient C0 A5",
-      "help": "Coefficient C0 pour la calibration de A5.",
-      "var": "a5C0Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C0 A05",
+      "help": "Coefficient C0 pour la calibration de A05.",
+      "var": "a05",
+      "source": "synthetic-analog"
     },
-    "io/input/a5/a5_c1": {
-      "module": "io/input/a5",
-      "name": "a5_c1",
+    "io/input/a05/a05_c1": {
+      "module": "io/input/a05",
+      "name": "a05_c1",
       "type": "Float",
-      "label": "Coefficient C1 A5",
-      "help": "Coefficient C1 pour la calibration de A5.",
-      "var": "a5C1Var_",
-      "source": "auto-hint"
+      "label": "Coefficient C1 A05",
+      "help": "Coefficient C1 pour la calibration de A05.",
+      "var": "a05",
+      "source": "synthetic-analog"
     },
-    "io/input/a5/a5_name": {
-      "module": "io/input/a5",
-      "name": "a5_name",
+    "io/input/a05/a05_name": {
+      "module": "io/input/a05",
+      "name": "a05_name",
       "type": "CharArray",
-      "label": "Nom entrée A5",
-      "help": "Nom lisible de l'entrée analogique A5.",
-      "var": "a5NameVar_",
-      "source": "auto-hint"
+      "label": "Nom entrée A05",
+      "help": "Nom lisible de l'entrée analogique A05.",
+      "var": "a05",
+      "source": "synthetic-analog"
     },
-    "io/input/a5/a5_prec": {
-      "module": "io/input/a5",
-      "name": "a5_prec",
+    "io/input/a05/a05_prec": {
+      "module": "io/input/a05",
+      "name": "a05_prec",
       "type": "Int32",
-      "label": "Precision A5",
-      "help": "Nombre de décimales conservées pour A5.",
-      "var": "a5PrecVar_",
-      "source": "auto-hint",
+      "label": "Precision A05",
+      "help": "Nombre de décimales conservées pour A05.",
+      "var": "a05",
+      "source": "synthetic-analog",
       "unit": "digits"
     },
-    "io/input/a5/binding_port": {
-      "module": "io/input/a5",
+    "io/input/a05/binding_port": {
+      "module": "io/input/a05",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique A5",
-      "help": "Identifiant du port physique utilise par l'entree analogique A5. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
-      "var": "a5BindingVar_",
-      "source": "cfgdoc",
+      "label": "Port physique A05",
+      "help": "Identifiant du port physique utilise par A05. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a05",
+      "source": "synthetic-analog",
       "enum_set": "flowio_binding_port_analog"
     },
-    "io/input/i0/binding_port": {
-      "module": "io/input/i0",
+    "io/input/a06/a06_c0": {
+      "module": "io/input/a06",
+      "name": "a06_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A06",
+      "help": "Coefficient C0 pour la calibration de A06.",
+      "var": "a06",
+      "source": "synthetic-analog"
+    },
+    "io/input/a06/a06_c1": {
+      "module": "io/input/a06",
+      "name": "a06_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A06",
+      "help": "Coefficient C1 pour la calibration de A06.",
+      "var": "a06",
+      "source": "synthetic-analog"
+    },
+    "io/input/a06/a06_name": {
+      "module": "io/input/a06",
+      "name": "a06_name",
+      "type": "CharArray",
+      "label": "Nom entrée A06",
+      "help": "Nom lisible de l'entrée analogique A06.",
+      "var": "a06",
+      "source": "synthetic-analog"
+    },
+    "io/input/a06/a06_prec": {
+      "module": "io/input/a06",
+      "name": "a06_prec",
+      "type": "Int32",
+      "label": "Precision A06",
+      "help": "Nombre de décimales conservées pour A06.",
+      "var": "a06",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a06/binding_port": {
+      "module": "io/input/a06",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique I0",
-      "help": "Identifiant du port physique utilise par l'entree digitale I0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique A06",
+      "help": "Identifiant du port physique utilise par A06. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a06",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a07/a07_c0": {
+      "module": "io/input/a07",
+      "name": "a07_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A07",
+      "help": "Coefficient C0 pour la calibration de A07.",
+      "var": "a07",
+      "source": "synthetic-analog"
+    },
+    "io/input/a07/a07_c1": {
+      "module": "io/input/a07",
+      "name": "a07_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A07",
+      "help": "Coefficient C1 pour la calibration de A07.",
+      "var": "a07",
+      "source": "synthetic-analog"
+    },
+    "io/input/a07/a07_name": {
+      "module": "io/input/a07",
+      "name": "a07_name",
+      "type": "CharArray",
+      "label": "Nom entrée A07",
+      "help": "Nom lisible de l'entrée analogique A07.",
+      "var": "a07",
+      "source": "synthetic-analog"
+    },
+    "io/input/a07/a07_prec": {
+      "module": "io/input/a07",
+      "name": "a07_prec",
+      "type": "Int32",
+      "label": "Precision A07",
+      "help": "Nombre de décimales conservées pour A07.",
+      "var": "a07",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a07/binding_port": {
+      "module": "io/input/a07",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A07",
+      "help": "Identifiant du port physique utilise par A07. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a07",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a08/a08_c0": {
+      "module": "io/input/a08",
+      "name": "a08_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A08",
+      "help": "Coefficient C0 pour la calibration de A08.",
+      "var": "a08",
+      "source": "synthetic-analog"
+    },
+    "io/input/a08/a08_c1": {
+      "module": "io/input/a08",
+      "name": "a08_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A08",
+      "help": "Coefficient C1 pour la calibration de A08.",
+      "var": "a08",
+      "source": "synthetic-analog"
+    },
+    "io/input/a08/a08_name": {
+      "module": "io/input/a08",
+      "name": "a08_name",
+      "type": "CharArray",
+      "label": "Nom entrée A08",
+      "help": "Nom lisible de l'entrée analogique A08.",
+      "var": "a08",
+      "source": "synthetic-analog"
+    },
+    "io/input/a08/a08_prec": {
+      "module": "io/input/a08",
+      "name": "a08_prec",
+      "type": "Int32",
+      "label": "Precision A08",
+      "help": "Nombre de décimales conservées pour A08.",
+      "var": "a08",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a08/binding_port": {
+      "module": "io/input/a08",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A08",
+      "help": "Identifiant du port physique utilise par A08. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a08",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a09/a09_c0": {
+      "module": "io/input/a09",
+      "name": "a09_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A09",
+      "help": "Coefficient C0 pour la calibration de A09.",
+      "var": "a09",
+      "source": "synthetic-analog"
+    },
+    "io/input/a09/a09_c1": {
+      "module": "io/input/a09",
+      "name": "a09_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A09",
+      "help": "Coefficient C1 pour la calibration de A09.",
+      "var": "a09",
+      "source": "synthetic-analog"
+    },
+    "io/input/a09/a09_name": {
+      "module": "io/input/a09",
+      "name": "a09_name",
+      "type": "CharArray",
+      "label": "Nom entrée A09",
+      "help": "Nom lisible de l'entrée analogique A09.",
+      "var": "a09",
+      "source": "synthetic-analog"
+    },
+    "io/input/a09/a09_prec": {
+      "module": "io/input/a09",
+      "name": "a09_prec",
+      "type": "Int32",
+      "label": "Precision A09",
+      "help": "Nombre de décimales conservées pour A09.",
+      "var": "a09",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a09/binding_port": {
+      "module": "io/input/a09",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A09",
+      "help": "Identifiant du port physique utilise par A09. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a09",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a10/a10_c0": {
+      "module": "io/input/a10",
+      "name": "a10_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A10",
+      "help": "Coefficient C0 pour la calibration de A10.",
+      "var": "a10",
+      "source": "synthetic-analog"
+    },
+    "io/input/a10/a10_c1": {
+      "module": "io/input/a10",
+      "name": "a10_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A10",
+      "help": "Coefficient C1 pour la calibration de A10.",
+      "var": "a10",
+      "source": "synthetic-analog"
+    },
+    "io/input/a10/a10_name": {
+      "module": "io/input/a10",
+      "name": "a10_name",
+      "type": "CharArray",
+      "label": "Nom entrée A10",
+      "help": "Nom lisible de l'entrée analogique A10.",
+      "var": "a10",
+      "source": "synthetic-analog"
+    },
+    "io/input/a10/a10_prec": {
+      "module": "io/input/a10",
+      "name": "a10_prec",
+      "type": "Int32",
+      "label": "Precision A10",
+      "help": "Nombre de décimales conservées pour A10.",
+      "var": "a10",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a10/binding_port": {
+      "module": "io/input/a10",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A10",
+      "help": "Identifiant du port physique utilise par A10. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a10",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a11/a11_c0": {
+      "module": "io/input/a11",
+      "name": "a11_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A11",
+      "help": "Coefficient C0 pour la calibration de A11.",
+      "var": "a11",
+      "source": "synthetic-analog"
+    },
+    "io/input/a11/a11_c1": {
+      "module": "io/input/a11",
+      "name": "a11_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A11",
+      "help": "Coefficient C1 pour la calibration de A11.",
+      "var": "a11",
+      "source": "synthetic-analog"
+    },
+    "io/input/a11/a11_name": {
+      "module": "io/input/a11",
+      "name": "a11_name",
+      "type": "CharArray",
+      "label": "Nom entrée A11",
+      "help": "Nom lisible de l'entrée analogique A11.",
+      "var": "a11",
+      "source": "synthetic-analog"
+    },
+    "io/input/a11/a11_prec": {
+      "module": "io/input/a11",
+      "name": "a11_prec",
+      "type": "Int32",
+      "label": "Precision A11",
+      "help": "Nombre de décimales conservées pour A11.",
+      "var": "a11",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a11/binding_port": {
+      "module": "io/input/a11",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A11",
+      "help": "Identifiant du port physique utilise par A11. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a11",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a12/a12_c0": {
+      "module": "io/input/a12",
+      "name": "a12_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A12",
+      "help": "Coefficient C0 pour la calibration de A12.",
+      "var": "a12",
+      "source": "synthetic-analog"
+    },
+    "io/input/a12/a12_c1": {
+      "module": "io/input/a12",
+      "name": "a12_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A12",
+      "help": "Coefficient C1 pour la calibration de A12.",
+      "var": "a12",
+      "source": "synthetic-analog"
+    },
+    "io/input/a12/a12_name": {
+      "module": "io/input/a12",
+      "name": "a12_name",
+      "type": "CharArray",
+      "label": "Nom entrée A12",
+      "help": "Nom lisible de l'entrée analogique A12.",
+      "var": "a12",
+      "source": "synthetic-analog"
+    },
+    "io/input/a12/a12_prec": {
+      "module": "io/input/a12",
+      "name": "a12_prec",
+      "type": "Int32",
+      "label": "Precision A12",
+      "help": "Nombre de décimales conservées pour A12.",
+      "var": "a12",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a12/binding_port": {
+      "module": "io/input/a12",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A12",
+      "help": "Identifiant du port physique utilise par A12. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a12",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a13/a13_c0": {
+      "module": "io/input/a13",
+      "name": "a13_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A13",
+      "help": "Coefficient C0 pour la calibration de A13.",
+      "var": "a13",
+      "source": "synthetic-analog"
+    },
+    "io/input/a13/a13_c1": {
+      "module": "io/input/a13",
+      "name": "a13_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A13",
+      "help": "Coefficient C1 pour la calibration de A13.",
+      "var": "a13",
+      "source": "synthetic-analog"
+    },
+    "io/input/a13/a13_name": {
+      "module": "io/input/a13",
+      "name": "a13_name",
+      "type": "CharArray",
+      "label": "Nom entrée A13",
+      "help": "Nom lisible de l'entrée analogique A13.",
+      "var": "a13",
+      "source": "synthetic-analog"
+    },
+    "io/input/a13/a13_prec": {
+      "module": "io/input/a13",
+      "name": "a13_prec",
+      "type": "Int32",
+      "label": "Precision A13",
+      "help": "Nombre de décimales conservées pour A13.",
+      "var": "a13",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a13/binding_port": {
+      "module": "io/input/a13",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A13",
+      "help": "Identifiant du port physique utilise par A13. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a13",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/a14/a14_c0": {
+      "module": "io/input/a14",
+      "name": "a14_c0",
+      "type": "Float",
+      "label": "Coefficient C0 A14",
+      "help": "Coefficient C0 pour la calibration de A14.",
+      "var": "a14",
+      "source": "synthetic-analog"
+    },
+    "io/input/a14/a14_c1": {
+      "module": "io/input/a14",
+      "name": "a14_c1",
+      "type": "Float",
+      "label": "Coefficient C1 A14",
+      "help": "Coefficient C1 pour la calibration de A14.",
+      "var": "a14",
+      "source": "synthetic-analog"
+    },
+    "io/input/a14/a14_name": {
+      "module": "io/input/a14",
+      "name": "a14_name",
+      "type": "CharArray",
+      "label": "Nom entrée A14",
+      "help": "Nom lisible de l'entrée analogique A14.",
+      "var": "a14",
+      "source": "synthetic-analog"
+    },
+    "io/input/a14/a14_prec": {
+      "module": "io/input/a14",
+      "name": "a14_prec",
+      "type": "Int32",
+      "label": "Precision A14",
+      "help": "Nombre de décimales conservées pour A14.",
+      "var": "a14",
+      "source": "synthetic-analog",
+      "unit": "digits"
+    },
+    "io/input/a14/binding_port": {
+      "module": "io/input/a14",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique A14",
+      "help": "Identifiant du port physique utilise par A14. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "var": "a14",
+      "source": "synthetic-analog",
+      "enum_set": "flowio_binding_port_analog"
+    },
+    "io/input/i00/binding_port": {
+      "module": "io/input/i00",
+      "name": "binding_port",
+      "type": "UInt16",
+      "label": "Port physique I00",
+      "help": "Identifiant du port physique utilise par l'entree digitale I00. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i0BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_input"
     },
-    "io/input/i0/edge_mode": {
-      "module": "io/input/i0",
+    "io/input/i00/edge_mode": {
+      "module": "io/input/i00",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Mode de front I0",
-      "help": "Front a compter pour I0 en mode compteur (0=descendant, 1=montant, 2=les deux).",
+      "label": "Mode de front I00",
+      "help": "Front a compter pour I00 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i0EdgeModeVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_edge_mode"
     },
-    "io/input/i0/i0_active_high": {
-      "module": "io/input/i0",
-      "name": "i0_active_high",
+    "io/input/i00/i00_active_high": {
+      "module": "io/input/i00",
+      "name": "i00_active_high",
       "type": "Bool",
-      "label": "Actif a 1 I0",
-      "help": "Si active, l'entrée I0 est consideree active a l'etat haut.",
+      "label": "Actif a 1 I00",
+      "help": "Si active, l'entrée I00 est consideree active a l'etat haut.",
       "var": "i0ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/input/i0/i0_name": {
-      "module": "io/input/i0",
-      "name": "i0_name",
+    "io/input/i00/i00_c0": {
+      "module": "io/input/i00",
+      "name": "i00_c0",
+      "type": "Float",
+      "label": "I00 c0",
+      "help": "Parametre 'i00_c0' pour la branche 'io/input/i00' (type Float).",
+      "var": "i0C0Var_",
+      "source": "auto"
+    },
+    "io/input/i00/i00_name": {
+      "module": "io/input/i00",
+      "name": "i00_name",
       "type": "CharArray",
-      "label": "Nom entrée I0",
-      "help": "Nom lisible de l'entrée digitale I0.",
+      "label": "Nom entrée I00",
+      "help": "Nom lisible de l'entrée digitale I00.",
       "var": "i0NameVar_",
       "source": "auto-hint"
     },
-    "io/input/i0/i0_pull_mode": {
-      "module": "io/input/i0",
-      "name": "i0_pull_mode",
+    "io/input/i00/i00_prec": {
+      "module": "io/input/i00",
+      "name": "i00_prec",
+      "type": "Int32",
+      "label": "I00 prec",
+      "help": "Parametre 'i00_prec' pour la branche 'io/input/i00' (type Int32).",
+      "var": "i0PrecVar_",
+      "source": "auto"
+    },
+    "io/input/i00/i00_pull_mode": {
+      "module": "io/input/i00",
+      "name": "i00_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I0",
-      "help": "Mode de resistance interne applique a l'entrée I0.",
+      "label": "Pull entrée I00",
+      "help": "Mode de resistance interne applique a l'entrée I00.",
       "var": "i0PullModeVar_",
       "source": "auto-hint"
     },
-    "io/input/i1/binding_port": {
-      "module": "io/input/i1",
+    "io/input/i01/binding_port": {
+      "module": "io/input/i01",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique I1",
-      "help": "Identifiant du port physique utilise par l'entree digitale I1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique I01",
+      "help": "Identifiant du port physique utilise par l'entree digitale I01. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i1BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_input"
     },
-    "io/input/i1/edge_mode": {
-      "module": "io/input/i1",
+    "io/input/i01/edge_mode": {
+      "module": "io/input/i01",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Mode de front I1",
-      "help": "Front a compter pour I1 en mode compteur (0=descendant, 1=montant, 2=les deux).",
+      "label": "Mode de front I01",
+      "help": "Front a compter pour I01 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i1EdgeModeVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_edge_mode"
     },
-    "io/input/i1/i1_active_high": {
-      "module": "io/input/i1",
-      "name": "i1_active_high",
+    "io/input/i01/i01_active_high": {
+      "module": "io/input/i01",
+      "name": "i01_active_high",
       "type": "Bool",
-      "label": "Actif a 1 I1",
-      "help": "Si active, l'entrée I1 est consideree active a l'etat haut.",
+      "label": "Actif a 1 I01",
+      "help": "Si active, l'entrée I01 est consideree active a l'etat haut.",
       "var": "i1ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/input/i1/i1_name": {
-      "module": "io/input/i1",
-      "name": "i1_name",
+    "io/input/i01/i01_c0": {
+      "module": "io/input/i01",
+      "name": "i01_c0",
+      "type": "Float",
+      "label": "I01 c0",
+      "help": "Parametre 'i01_c0' pour la branche 'io/input/i01' (type Float).",
+      "var": "i1C0Var_",
+      "source": "auto"
+    },
+    "io/input/i01/i01_name": {
+      "module": "io/input/i01",
+      "name": "i01_name",
       "type": "CharArray",
-      "label": "Nom entrée I1",
-      "help": "Nom lisible de l'entrée digitale I1.",
+      "label": "Nom entrée I01",
+      "help": "Nom lisible de l'entrée digitale I01.",
       "var": "i1NameVar_",
       "source": "auto-hint"
     },
-    "io/input/i1/i1_pull_mode": {
-      "module": "io/input/i1",
-      "name": "i1_pull_mode",
+    "io/input/i01/i01_prec": {
+      "module": "io/input/i01",
+      "name": "i01_prec",
+      "type": "Int32",
+      "label": "I01 prec",
+      "help": "Parametre 'i01_prec' pour la branche 'io/input/i01' (type Int32).",
+      "var": "i1PrecVar_",
+      "source": "auto"
+    },
+    "io/input/i01/i01_pull_mode": {
+      "module": "io/input/i01",
+      "name": "i01_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I1",
-      "help": "Mode de resistance interne applique a l'entrée I1.",
+      "label": "Pull entrée I01",
+      "help": "Mode de resistance interne applique a l'entrée I01.",
       "var": "i1PullModeVar_",
       "source": "auto-hint"
     },
-    "io/input/i2/binding_port": {
-      "module": "io/input/i2",
+    "io/input/i02/binding_port": {
+      "module": "io/input/i02",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique I2",
-      "help": "Identifiant du port physique utilise par l'entree digitale I2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique I02",
+      "help": "Identifiant du port physique utilise par l'entree digitale I02. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i2BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_input"
     },
-    "io/input/i2/edge_mode": {
-      "module": "io/input/i2",
+    "io/input/i02/edge_mode": {
+      "module": "io/input/i02",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Mode de front I2",
-      "help": "Front a compter pour I2 en mode compteur (0=descendant, 1=montant, 2=les deux).",
+      "label": "Mode de front I02",
+      "help": "Front a compter pour I02 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i2EdgeModeVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_edge_mode"
     },
-    "io/input/i2/i2_active_high": {
-      "module": "io/input/i2",
-      "name": "i2_active_high",
+    "io/input/i02/i02_active_high": {
+      "module": "io/input/i02",
+      "name": "i02_active_high",
       "type": "Bool",
-      "label": "Actif a 1 I2",
-      "help": "Si active, l'entrée I2 est consideree active a l'etat haut.",
+      "label": "Actif a 1 I02",
+      "help": "Si active, l'entrée I02 est consideree active a l'etat haut.",
       "var": "i2ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/input/i2/i2_name": {
-      "module": "io/input/i2",
-      "name": "i2_name",
+    "io/input/i02/i02_c0": {
+      "module": "io/input/i02",
+      "name": "i02_c0",
+      "type": "Float",
+      "label": "I02 c0",
+      "help": "Parametre 'i02_c0' pour la branche 'io/input/i02' (type Float).",
+      "var": "i2C0Var_",
+      "source": "auto"
+    },
+    "io/input/i02/i02_name": {
+      "module": "io/input/i02",
+      "name": "i02_name",
       "type": "CharArray",
-      "label": "Nom entrée I2",
-      "help": "Nom lisible de l'entrée digitale I2.",
+      "label": "Nom entrée I02",
+      "help": "Nom lisible de l'entrée digitale I02.",
       "var": "i2NameVar_",
       "source": "auto-hint"
     },
-    "io/input/i2/i2_pull_mode": {
-      "module": "io/input/i2",
-      "name": "i2_pull_mode",
+    "io/input/i02/i02_prec": {
+      "module": "io/input/i02",
+      "name": "i02_prec",
+      "type": "Int32",
+      "label": "I02 prec",
+      "help": "Parametre 'i02_prec' pour la branche 'io/input/i02' (type Int32).",
+      "var": "i2PrecVar_",
+      "source": "auto"
+    },
+    "io/input/i02/i02_pull_mode": {
+      "module": "io/input/i02",
+      "name": "i02_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I2",
-      "help": "Mode de resistance interne applique a l'entrée I2.",
+      "label": "Pull entrée I02",
+      "help": "Mode de resistance interne applique a l'entrée I02.",
       "var": "i2PullModeVar_",
       "source": "auto-hint"
     },
-    "io/input/i3/binding_port": {
-      "module": "io/input/i3",
+    "io/input/i03/binding_port": {
+      "module": "io/input/i03",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique I3",
-      "help": "Identifiant du port physique utilise par l'entree digitale I3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique I03",
+      "help": "Identifiant du port physique utilise par l'entree digitale I03. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i3BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_input"
     },
-    "io/input/i3/edge_mode": {
-      "module": "io/input/i3",
+    "io/input/i03/edge_mode": {
+      "module": "io/input/i03",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Mode de front I3",
-      "help": "Front a compter pour I3 en mode compteur (0=descendant, 1=montant, 2=les deux).",
+      "label": "Mode de front I03",
+      "help": "Front a compter pour I03 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i3EdgeModeVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_edge_mode"
     },
-    "io/input/i3/i3_active_high": {
-      "module": "io/input/i3",
-      "name": "i3_active_high",
+    "io/input/i03/i03_active_high": {
+      "module": "io/input/i03",
+      "name": "i03_active_high",
       "type": "Bool",
-      "label": "Actif a 1 I3",
-      "help": "Si active, l'entrée I3 est consideree active a l'etat haut.",
+      "label": "Actif a 1 I03",
+      "help": "Si active, l'entrée I03 est consideree active a l'etat haut.",
       "var": "i3ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/input/i3/i3_name": {
-      "module": "io/input/i3",
-      "name": "i3_name",
+    "io/input/i03/i03_c0": {
+      "module": "io/input/i03",
+      "name": "i03_c0",
+      "type": "Float",
+      "label": "I03 c0",
+      "help": "Parametre 'i03_c0' pour la branche 'io/input/i03' (type Float).",
+      "var": "i3C0Var_",
+      "source": "auto"
+    },
+    "io/input/i03/i03_name": {
+      "module": "io/input/i03",
+      "name": "i03_name",
       "type": "CharArray",
-      "label": "Nom entrée I3",
-      "help": "Nom lisible de l'entrée digitale I3.",
+      "label": "Nom entrée I03",
+      "help": "Nom lisible de l'entrée digitale I03.",
       "var": "i3NameVar_",
       "source": "auto-hint"
     },
-    "io/input/i3/i3_pull_mode": {
-      "module": "io/input/i3",
-      "name": "i3_pull_mode",
+    "io/input/i03/i03_prec": {
+      "module": "io/input/i03",
+      "name": "i03_prec",
+      "type": "Int32",
+      "label": "I03 prec",
+      "help": "Parametre 'i03_prec' pour la branche 'io/input/i03' (type Int32).",
+      "var": "i3PrecVar_",
+      "source": "auto"
+    },
+    "io/input/i03/i03_pull_mode": {
+      "module": "io/input/i03",
+      "name": "i03_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I3",
-      "help": "Mode de resistance interne applique a l'entrée I3.",
+      "label": "Pull entrée I03",
+      "help": "Mode de resistance interne applique a l'entrée I03.",
       "var": "i3PullModeVar_",
       "source": "auto-hint"
     },
-    "io/input/i4/binding_port": {
-      "module": "io/input/i4",
+    "io/input/i04/binding_port": {
+      "module": "io/input/i04",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique I4",
-      "help": "Identifiant du port physique utilise par l'entree digitale I4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique I04",
+      "help": "Identifiant du port physique utilise par l'entree digitale I04. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "i4BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_input"
     },
-    "io/input/i4/edge_mode": {
-      "module": "io/input/i4",
+    "io/input/i04/edge_mode": {
+      "module": "io/input/i04",
       "name": "edge_mode",
       "type": "UInt8",
-      "label": "Mode de front I4",
-      "help": "Front a compter pour I4 en mode compteur (0=descendant, 1=montant, 2=les deux).",
+      "label": "Mode de front I04",
+      "help": "Front a compter pour I04 en mode compteur (0=descendant, 1=montant, 2=les deux).",
       "var": "i4EdgeModeVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_edge_mode"
     },
-    "io/input/i4/i4_active_high": {
-      "module": "io/input/i4",
-      "name": "i4_active_high",
+    "io/input/i04/i04_active_high": {
+      "module": "io/input/i04",
+      "name": "i04_active_high",
       "type": "Bool",
-      "label": "Actif a 1 I4",
-      "help": "Si active, l'entrée I4 est consideree active a l'etat haut.",
+      "label": "Actif a 1 I04",
+      "help": "Si active, l'entrée I04 est consideree active a l'etat haut.",
       "var": "i4ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/input/i4/i4_name": {
-      "module": "io/input/i4",
-      "name": "i4_name",
+    "io/input/i04/i04_c0": {
+      "module": "io/input/i04",
+      "name": "i04_c0",
+      "type": "Float",
+      "label": "I04 c0",
+      "help": "Parametre 'i04_c0' pour la branche 'io/input/i04' (type Float).",
+      "var": "i4C0Var_",
+      "source": "auto"
+    },
+    "io/input/i04/i04_name": {
+      "module": "io/input/i04",
+      "name": "i04_name",
       "type": "CharArray",
-      "label": "Nom entrée I4",
-      "help": "Nom lisible de l'entrée digitale I4.",
+      "label": "Nom entrée I04",
+      "help": "Nom lisible de l'entrée digitale I04.",
       "var": "i4NameVar_",
       "source": "auto-hint"
     },
-    "io/input/i4/i4_pull_mode": {
-      "module": "io/input/i4",
-      "name": "i4_pull_mode",
+    "io/input/i04/i04_prec": {
+      "module": "io/input/i04",
+      "name": "i04_prec",
+      "type": "Int32",
+      "label": "I04 prec",
+      "help": "Parametre 'i04_prec' pour la branche 'io/input/i04' (type Int32).",
+      "var": "i4PrecVar_",
+      "source": "auto"
+    },
+    "io/input/i04/i04_pull_mode": {
+      "module": "io/input/i04",
+      "name": "i04_pull_mode",
       "type": "UInt8",
-      "label": "Pull entrée I4",
-      "help": "Mode de resistance interne applique a l'entrée I4.",
+      "label": "Pull entrée I04",
+      "help": "Mode de resistance interne applique a l'entrée I04.",
       "var": "i4PullModeVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/binding_port": {
-      "module": "io/output/d0",
+    "io/output/d00/binding_port": {
+      "module": "io/output/d00",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D0",
-      "help": "Identifiant du port physique pilote par la sortie D0. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D00",
+      "help": "Identifiant du port physique pilote par la sortie D00. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d0BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d0/d0_active_high": {
-      "module": "io/output/d0",
-      "name": "d0_active_high",
+    "io/output/d00/d00_active_high": {
+      "module": "io/output/d00",
+      "name": "d00_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D0",
-      "help": "Si vrai, D0 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D00",
+      "help": "Si vrai, D00 est active à l'état haut; sinon active-bas.",
       "var": "d0ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/d0_initial_on": {
-      "module": "io/output/d0",
-      "name": "d0_initial_on",
+    "io/output/d00/d00_initial_on": {
+      "module": "io/output/d00",
+      "name": "d00_initial_on",
       "type": "Bool",
-      "label": "État initial ON D0",
-      "help": "État appliqué au démarrage pour la sortie D0.",
+      "label": "État initial ON D00",
+      "help": "État appliqué au démarrage pour la sortie D00.",
       "var": "d0InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/d0_momentary": {
-      "module": "io/output/d0",
-      "name": "d0_momentary",
+    "io/output/d00/d00_momentary": {
+      "module": "io/output/d00",
+      "name": "d00_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D0",
-      "help": "Active un fonctionnement impulsionnel pour D0.",
+      "label": "Mode impulsion D00",
+      "help": "Active un fonctionnement impulsionnel pour D00.",
       "var": "d0MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/d0_name": {
-      "module": "io/output/d0",
-      "name": "d0_name",
+    "io/output/d00/d00_name": {
+      "module": "io/output/d00",
+      "name": "d00_name",
       "type": "CharArray",
-      "label": "Nom sortie D0",
-      "help": "Nom lisible de la sortie digitale D0.",
+      "label": "Nom sortie D00",
+      "help": "Nom lisible de la sortie digitale D00.",
       "var": "d0NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d0/d0_pulse_ms": {
-      "module": "io/output/d0",
-      "name": "d0_pulse_ms",
+    "io/output/d00/d00_pulse_ms": {
+      "module": "io/output/d00",
+      "name": "d00_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D0 (ms)",
-      "help": "Durée de l'impulsion automatique de D0.",
+      "label": "Durée impulsion D00 (ms)",
+      "help": "Durée de l'impulsion automatique de D00.",
       "var": "d0PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d1/binding_port": {
-      "module": "io/output/d1",
+    "io/output/d01/binding_port": {
+      "module": "io/output/d01",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D1",
-      "help": "Identifiant du port physique pilote par la sortie D1. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D01",
+      "help": "Identifiant du port physique pilote par la sortie D01. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d1BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d1/d1_active_high": {
-      "module": "io/output/d1",
-      "name": "d1_active_high",
+    "io/output/d01/d01_active_high": {
+      "module": "io/output/d01",
+      "name": "d01_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D1",
-      "help": "Si vrai, D1 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D01",
+      "help": "Si vrai, D01 est active à l'état haut; sinon active-bas.",
       "var": "d1ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d1/d1_initial_on": {
-      "module": "io/output/d1",
-      "name": "d1_initial_on",
+    "io/output/d01/d01_initial_on": {
+      "module": "io/output/d01",
+      "name": "d01_initial_on",
       "type": "Bool",
-      "label": "État initial ON D1",
-      "help": "État appliqué au démarrage pour la sortie D1.",
+      "label": "État initial ON D01",
+      "help": "État appliqué au démarrage pour la sortie D01.",
       "var": "d1InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d1/d1_momentary": {
-      "module": "io/output/d1",
-      "name": "d1_momentary",
+    "io/output/d01/d01_momentary": {
+      "module": "io/output/d01",
+      "name": "d01_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D1",
-      "help": "Active un fonctionnement impulsionnel pour D1.",
+      "label": "Mode impulsion D01",
+      "help": "Active un fonctionnement impulsionnel pour D01.",
       "var": "d1MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d1/d1_name": {
-      "module": "io/output/d1",
-      "name": "d1_name",
+    "io/output/d01/d01_name": {
+      "module": "io/output/d01",
+      "name": "d01_name",
       "type": "CharArray",
-      "label": "Nom sortie D1",
-      "help": "Nom lisible de la sortie digitale D1.",
+      "label": "Nom sortie D01",
+      "help": "Nom lisible de la sortie digitale D01.",
       "var": "d1NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d1/d1_pulse_ms": {
-      "module": "io/output/d1",
-      "name": "d1_pulse_ms",
+    "io/output/d01/d01_pulse_ms": {
+      "module": "io/output/d01",
+      "name": "d01_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D1 (ms)",
-      "help": "Durée de l'impulsion automatique de D1.",
+      "label": "Durée impulsion D01 (ms)",
+      "help": "Durée de l'impulsion automatique de D01.",
       "var": "d1PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d2/binding_port": {
-      "module": "io/output/d2",
+    "io/output/d02/binding_port": {
+      "module": "io/output/d02",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D2",
-      "help": "Identifiant du port physique pilote par la sortie D2. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D02",
+      "help": "Identifiant du port physique pilote par la sortie D02. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d2BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d2/d2_active_high": {
-      "module": "io/output/d2",
-      "name": "d2_active_high",
+    "io/output/d02/d02_active_high": {
+      "module": "io/output/d02",
+      "name": "d02_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D2",
-      "help": "Si vrai, D2 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D02",
+      "help": "Si vrai, D02 est active à l'état haut; sinon active-bas.",
       "var": "d2ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d2/d2_initial_on": {
-      "module": "io/output/d2",
-      "name": "d2_initial_on",
+    "io/output/d02/d02_initial_on": {
+      "module": "io/output/d02",
+      "name": "d02_initial_on",
       "type": "Bool",
-      "label": "État initial ON D2",
-      "help": "État appliqué au démarrage pour la sortie D2.",
+      "label": "État initial ON D02",
+      "help": "État appliqué au démarrage pour la sortie D02.",
       "var": "d2InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d2/d2_momentary": {
-      "module": "io/output/d2",
-      "name": "d2_momentary",
+    "io/output/d02/d02_momentary": {
+      "module": "io/output/d02",
+      "name": "d02_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D2",
-      "help": "Active un fonctionnement impulsionnel pour D2.",
+      "label": "Mode impulsion D02",
+      "help": "Active un fonctionnement impulsionnel pour D02.",
       "var": "d2MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d2/d2_name": {
-      "module": "io/output/d2",
-      "name": "d2_name",
+    "io/output/d02/d02_name": {
+      "module": "io/output/d02",
+      "name": "d02_name",
       "type": "CharArray",
-      "label": "Nom sortie D2",
-      "help": "Nom lisible de la sortie digitale D2.",
+      "label": "Nom sortie D02",
+      "help": "Nom lisible de la sortie digitale D02.",
       "var": "d2NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d2/d2_pulse_ms": {
-      "module": "io/output/d2",
-      "name": "d2_pulse_ms",
+    "io/output/d02/d02_pulse_ms": {
+      "module": "io/output/d02",
+      "name": "d02_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D2 (ms)",
-      "help": "Durée de l'impulsion automatique de D2.",
+      "label": "Durée impulsion D02 (ms)",
+      "help": "Durée de l'impulsion automatique de D02.",
       "var": "d2PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d3/binding_port": {
-      "module": "io/output/d3",
+    "io/output/d03/binding_port": {
+      "module": "io/output/d03",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D3",
-      "help": "Identifiant du port physique pilote par la sortie D3. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D03",
+      "help": "Identifiant du port physique pilote par la sortie D03. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d3BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d3/d3_active_high": {
-      "module": "io/output/d3",
-      "name": "d3_active_high",
+    "io/output/d03/d03_active_high": {
+      "module": "io/output/d03",
+      "name": "d03_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D3",
-      "help": "Si vrai, D3 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D03",
+      "help": "Si vrai, D03 est active à l'état haut; sinon active-bas.",
       "var": "d3ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d3/d3_initial_on": {
-      "module": "io/output/d3",
-      "name": "d3_initial_on",
+    "io/output/d03/d03_initial_on": {
+      "module": "io/output/d03",
+      "name": "d03_initial_on",
       "type": "Bool",
-      "label": "État initial ON D3",
-      "help": "État appliqué au démarrage pour la sortie D3.",
+      "label": "État initial ON D03",
+      "help": "État appliqué au démarrage pour la sortie D03.",
       "var": "d3InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d3/d3_momentary": {
-      "module": "io/output/d3",
-      "name": "d3_momentary",
+    "io/output/d03/d03_momentary": {
+      "module": "io/output/d03",
+      "name": "d03_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D3",
-      "help": "Active un fonctionnement impulsionnel pour D3.",
+      "label": "Mode impulsion D03",
+      "help": "Active un fonctionnement impulsionnel pour D03.",
       "var": "d3MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d3/d3_name": {
-      "module": "io/output/d3",
-      "name": "d3_name",
+    "io/output/d03/d03_name": {
+      "module": "io/output/d03",
+      "name": "d03_name",
       "type": "CharArray",
-      "label": "Nom sortie D3",
-      "help": "Nom lisible de la sortie digitale D3.",
+      "label": "Nom sortie D03",
+      "help": "Nom lisible de la sortie digitale D03.",
       "var": "d3NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d3/d3_pulse_ms": {
-      "module": "io/output/d3",
-      "name": "d3_pulse_ms",
+    "io/output/d03/d03_pulse_ms": {
+      "module": "io/output/d03",
+      "name": "d03_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D3 (ms)",
-      "help": "Durée de l'impulsion automatique de D3.",
+      "label": "Durée impulsion D03 (ms)",
+      "help": "Durée de l'impulsion automatique de D03.",
       "var": "d3PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d4/binding_port": {
-      "module": "io/output/d4",
+    "io/output/d04/binding_port": {
+      "module": "io/output/d04",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D4",
-      "help": "Identifiant du port physique pilote par la sortie D4. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D04",
+      "help": "Identifiant du port physique pilote par la sortie D04. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d4BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d4/d4_active_high": {
-      "module": "io/output/d4",
-      "name": "d4_active_high",
+    "io/output/d04/d04_active_high": {
+      "module": "io/output/d04",
+      "name": "d04_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D4",
-      "help": "Si vrai, D4 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D04",
+      "help": "Si vrai, D04 est active à l'état haut; sinon active-bas.",
       "var": "d4ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d4/d4_initial_on": {
-      "module": "io/output/d4",
-      "name": "d4_initial_on",
+    "io/output/d04/d04_initial_on": {
+      "module": "io/output/d04",
+      "name": "d04_initial_on",
       "type": "Bool",
-      "label": "État initial ON D4",
-      "help": "État appliqué au démarrage pour la sortie D4.",
+      "label": "État initial ON D04",
+      "help": "État appliqué au démarrage pour la sortie D04.",
       "var": "d4InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d4/d4_momentary": {
-      "module": "io/output/d4",
-      "name": "d4_momentary",
+    "io/output/d04/d04_momentary": {
+      "module": "io/output/d04",
+      "name": "d04_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D4",
-      "help": "Active un fonctionnement impulsionnel pour D4.",
+      "label": "Mode impulsion D04",
+      "help": "Active un fonctionnement impulsionnel pour D04.",
       "var": "d4MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d4/d4_name": {
-      "module": "io/output/d4",
-      "name": "d4_name",
+    "io/output/d04/d04_name": {
+      "module": "io/output/d04",
+      "name": "d04_name",
       "type": "CharArray",
-      "label": "Nom sortie D4",
-      "help": "Nom lisible de la sortie digitale D4.",
+      "label": "Nom sortie D04",
+      "help": "Nom lisible de la sortie digitale D04.",
       "var": "d4NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d4/d4_pulse_ms": {
-      "module": "io/output/d4",
-      "name": "d4_pulse_ms",
+    "io/output/d04/d04_pulse_ms": {
+      "module": "io/output/d04",
+      "name": "d04_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D4 (ms)",
-      "help": "Durée de l'impulsion automatique de D4.",
+      "label": "Durée impulsion D04 (ms)",
+      "help": "Durée de l'impulsion automatique de D04.",
       "var": "d4PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d5/binding_port": {
-      "module": "io/output/d5",
+    "io/output/d05/binding_port": {
+      "module": "io/output/d05",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D5",
-      "help": "Identifiant du port physique pilote par la sortie D5. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D05",
+      "help": "Identifiant du port physique pilote par la sortie D05. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d5BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d5/d5_active_high": {
-      "module": "io/output/d5",
-      "name": "d5_active_high",
+    "io/output/d05/d05_active_high": {
+      "module": "io/output/d05",
+      "name": "d05_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D5",
-      "help": "Si vrai, D5 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D05",
+      "help": "Si vrai, D05 est active à l'état haut; sinon active-bas.",
       "var": "d5ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d5/d5_initial_on": {
-      "module": "io/output/d5",
-      "name": "d5_initial_on",
+    "io/output/d05/d05_initial_on": {
+      "module": "io/output/d05",
+      "name": "d05_initial_on",
       "type": "Bool",
-      "label": "État initial ON D5",
-      "help": "État appliqué au démarrage pour la sortie D5.",
+      "label": "État initial ON D05",
+      "help": "État appliqué au démarrage pour la sortie D05.",
       "var": "d5InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d5/d5_momentary": {
-      "module": "io/output/d5",
-      "name": "d5_momentary",
+    "io/output/d05/d05_momentary": {
+      "module": "io/output/d05",
+      "name": "d05_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D5",
-      "help": "Active un fonctionnement impulsionnel pour D5.",
+      "label": "Mode impulsion D05",
+      "help": "Active un fonctionnement impulsionnel pour D05.",
       "var": "d5MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d5/d5_name": {
-      "module": "io/output/d5",
-      "name": "d5_name",
+    "io/output/d05/d05_name": {
+      "module": "io/output/d05",
+      "name": "d05_name",
       "type": "CharArray",
-      "label": "Nom sortie D5",
-      "help": "Nom lisible de la sortie digitale D5.",
+      "label": "Nom sortie D05",
+      "help": "Nom lisible de la sortie digitale D05.",
       "var": "d5NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d5/d5_pulse_ms": {
-      "module": "io/output/d5",
-      "name": "d5_pulse_ms",
+    "io/output/d05/d05_pulse_ms": {
+      "module": "io/output/d05",
+      "name": "d05_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D5 (ms)",
-      "help": "Durée de l'impulsion automatique de D5.",
+      "label": "Durée impulsion D05 (ms)",
+      "help": "Durée de l'impulsion automatique de D05.",
       "var": "d5PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d6/binding_port": {
-      "module": "io/output/d6",
+    "io/output/d06/binding_port": {
+      "module": "io/output/d06",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D6",
-      "help": "Identifiant du port physique pilote par la sortie D6. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D06",
+      "help": "Identifiant du port physique pilote par la sortie D06. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d6BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d6/d6_active_high": {
-      "module": "io/output/d6",
-      "name": "d6_active_high",
+    "io/output/d06/d06_active_high": {
+      "module": "io/output/d06",
+      "name": "d06_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D6",
-      "help": "Si vrai, D6 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D06",
+      "help": "Si vrai, D06 est active à l'état haut; sinon active-bas.",
       "var": "d6ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d6/d6_initial_on": {
-      "module": "io/output/d6",
-      "name": "d6_initial_on",
+    "io/output/d06/d06_initial_on": {
+      "module": "io/output/d06",
+      "name": "d06_initial_on",
       "type": "Bool",
-      "label": "État initial ON D6",
-      "help": "État appliqué au démarrage pour la sortie D6.",
+      "label": "État initial ON D06",
+      "help": "État appliqué au démarrage pour la sortie D06.",
       "var": "d6InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d6/d6_momentary": {
-      "module": "io/output/d6",
-      "name": "d6_momentary",
+    "io/output/d06/d06_momentary": {
+      "module": "io/output/d06",
+      "name": "d06_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D6",
-      "help": "Active un fonctionnement impulsionnel pour D6.",
+      "label": "Mode impulsion D06",
+      "help": "Active un fonctionnement impulsionnel pour D06.",
       "var": "d6MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d6/d6_name": {
-      "module": "io/output/d6",
-      "name": "d6_name",
+    "io/output/d06/d06_name": {
+      "module": "io/output/d06",
+      "name": "d06_name",
       "type": "CharArray",
-      "label": "Nom sortie D6",
-      "help": "Nom lisible de la sortie digitale D6.",
+      "label": "Nom sortie D06",
+      "help": "Nom lisible de la sortie digitale D06.",
       "var": "d6NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d6/d6_pulse_ms": {
-      "module": "io/output/d6",
-      "name": "d6_pulse_ms",
+    "io/output/d06/d06_pulse_ms": {
+      "module": "io/output/d06",
+      "name": "d06_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D6 (ms)",
-      "help": "Durée de l'impulsion automatique de D6.",
+      "label": "Durée impulsion D06 (ms)",
+      "help": "Durée de l'impulsion automatique de D06.",
       "var": "d6PulseVar_",
       "source": "auto-hint",
       "unit": "ms"
     },
-    "io/output/d7/binding_port": {
-      "module": "io/output/d7",
+    "io/output/d07/binding_port": {
+      "module": "io/output/d07",
       "name": "binding_port",
       "type": "UInt16",
-      "label": "Port physique D7",
-      "help": "Identifiant du port physique pilote par la sortie D7. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+      "label": "Port physique D07",
+      "help": "Identifiant du port physique pilote par la sortie D07. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
       "var": "d7BindingVar_",
       "source": "cfgdoc",
       "enum_set": "flowio_binding_port_digital_output"
     },
-    "io/output/d7/d7_active_high": {
-      "module": "io/output/d7",
-      "name": "d7_active_high",
+    "io/output/d07/d07_active_high": {
+      "module": "io/output/d07",
+      "name": "d07_active_high",
       "type": "Bool",
-      "label": "Actif a 1 D7",
-      "help": "Si vrai, D7 est active à l'état haut; sinon active-bas.",
+      "label": "Actif a 1 D07",
+      "help": "Si vrai, D07 est active à l'état haut; sinon active-bas.",
       "var": "d7ActiveHighVar_",
       "source": "auto-hint"
     },
-    "io/output/d7/d7_initial_on": {
-      "module": "io/output/d7",
-      "name": "d7_initial_on",
+    "io/output/d07/d07_initial_on": {
+      "module": "io/output/d07",
+      "name": "d07_initial_on",
       "type": "Bool",
-      "label": "État initial ON D7",
-      "help": "État appliqué au démarrage pour la sortie D7.",
+      "label": "État initial ON D07",
+      "help": "État appliqué au démarrage pour la sortie D07.",
       "var": "d7InitialOnVar_",
       "source": "auto-hint"
     },
-    "io/output/d7/d7_momentary": {
-      "module": "io/output/d7",
-      "name": "d7_momentary",
+    "io/output/d07/d07_momentary": {
+      "module": "io/output/d07",
+      "name": "d07_momentary",
       "type": "Bool",
-      "label": "Mode impulsion D7",
-      "help": "Active un fonctionnement impulsionnel pour D7.",
+      "label": "Mode impulsion D07",
+      "help": "Active un fonctionnement impulsionnel pour D07.",
       "var": "d7MomentaryVar_",
       "source": "auto-hint"
     },
-    "io/output/d7/d7_name": {
-      "module": "io/output/d7",
-      "name": "d7_name",
+    "io/output/d07/d07_name": {
+      "module": "io/output/d07",
+      "name": "d07_name",
       "type": "CharArray",
-      "label": "Nom sortie D7",
-      "help": "Nom lisible de la sortie digitale D7.",
+      "label": "Nom sortie D07",
+      "help": "Nom lisible de la sortie digitale D07.",
       "var": "d7NameVar_",
       "source": "auto-hint"
     },
-    "io/output/d7/d7_pulse_ms": {
-      "module": "io/output/d7",
-      "name": "d7_pulse_ms",
+    "io/output/d07/d07_pulse_ms": {
+      "module": "io/output/d07",
+      "name": "d07_pulse_ms",
       "type": "Int32",
-      "label": "Durée impulsion D7 (ms)",
-      "help": "Durée de l'impulsion automatique de D7.",
+      "label": "Durée impulsion D07 (ms)",
+      "help": "Durée de l'impulsion automatique de D07.",
       "var": "d7PulseVar_",
       "source": "auto-hint",
       "unit": "ms"

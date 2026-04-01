@@ -91,12 +91,13 @@
     {
       "valueId": 5,
       "key": "pool.water_counter",
-      "label": "Compteur eau",
-      "type": "int32",
+      "label": "Volume eau",
+      "type": "float",
       "domain": "pool",
       "group": "Compteur",
       "display": "value",
-      "unit": "imp",
+      "unit": "L",
+      "decimals": 0,
       "order": 50
     }
   ]

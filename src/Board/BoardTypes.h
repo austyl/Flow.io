@@ -73,6 +73,7 @@ struct St7789DisplaySpec {
     int8_t csPin;
     int8_t dcPin;
     int8_t rstPin;
+    int8_t misoPin;
     int8_t mosiPin;
     int8_t sclkPin;
     bool swapColorBytes;
