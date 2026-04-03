@@ -409,11 +409,22 @@
     {
       "type": "wokwi-pushbutton",
       "id": "btn1",
-      "top": 92.6,
-      "left": -134.4,
+      "top": 73.4,
+      "left": -153.6,
       "attrs": { "color": "green", "xray": "1" }
     },
-    { "type": "wokwi-vcc", "id": "vcc9", "top": 77.56, "left": -163.2, "attrs": {} }
+    {
+      "type": "wokwi-resistor",
+      "id": "r22",
+      "top": 118.6,
+      "left": -87.25,
+      "rotate": 270,
+      "attrs": { "value": "10000" }
+    },
+    { "type": "wokwi-gnd", "id": "gnd13", "top": 86.4, "left": -202.2, "attrs": {} },
+    { "type": "chip-bme680", "id": "chip1", "top": 193.02, "left": 254.4, "attrs": {} },
+    { "type": "wokwi-vcc", "id": "vcc9", "top": 144.76, "left": 249.6, "attrs": {} },
+    { "type": "wokwi-gnd", "id": "gnd14", "top": 230.4, "left": 239.4, "attrs": {} }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -527,7 +538,13 @@
     [ "ads1115-int:ADDR1", "gnd11:GND", "green", [ "v0" ] ],
     [ "ads1115-int1:ADDR1", "gnd12:GND", "green", [ "v0" ] ],
     [ "esp:35", "btn1:1.r", "green", [ "h0" ] ],
-    [ "vcc9:VCC", "btn1:1.l", "red", [ "v0" ] ]
+    [ "r22:2", "btn1:1.r", "green", [ "v-8.4", "h-29" ] ],
+    [ "esp:3V3", "r22:1", "green", [ "h-28.65", "v115.2", "h-96" ] ],
+    [ "gnd13:GND", "btn1:1.l", "black", [ "v0" ] ],
+    [ "ads1115-int1:SCL", "chip1:SCL", "purple", [ "h-115.2", "v86.4" ] ],
+    [ "chip1:SDA", "ads1115-int1:SDA", "purple", [ "h30.61", "v-86.4" ] ],
+    [ "chip1:VCC", "vcc9:VCC", "red", [ "h0" ] ],
+    [ "chip1:GND", "gnd14:GND", "black", [ "h0" ] ]
   ],
   "dependencies": {}
 }

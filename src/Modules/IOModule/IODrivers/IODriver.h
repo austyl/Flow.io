@@ -28,9 +28,28 @@ public:
     virtual bool read(bool& on) const = 0;
 };
 
+struct IODigitalCounterDebugStats {
+    uint8_t pin = 0;
+    uint8_t edgeMode = 0;
+    bool activeHigh = true;
+    bool logicalState = false;
+    int32_t pulseCount = 0;
+    uint32_t irqCalls = 0;
+    uint32_t transitions = 0;
+    uint32_t ignoredSameState = 0;
+    uint32_t ignoredWrongEdge = 0;
+    uint32_t ignoredDebounce = 0;
+    uint32_t lastPulseUs = 0;
+};
+
 class IDigitalCounterDriver : public IDigitalPinDriver {
 public:
     virtual bool readCount(int32_t& count) const = 0;
+    virtual bool readDebugStats(IODigitalCounterDebugStats& out) const
+    {
+        (void)out;
+        return false;
+    }
 };
 
 class IAnalogSourceDriver : public IODriver {

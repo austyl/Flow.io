@@ -154,6 +154,7 @@ private:
     bool findDigitalSlotByIoId_(IoId id, uint8_t& slotIdxOut) const;
     bool loadCounterPersistedTotal_(uint8_t logicalIdx, float& totalOut) const;
     bool persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount);
+    void traceDigitalCounters_(uint32_t nowMs);
     void beginIoCycle_(uint32_t nowMs);
     void markIoCycleChanged_(IoId id);
     static bool writeDigitalOut_(void* ctx, bool on);
@@ -411,6 +412,7 @@ private:
     bool runtimeReady_ = false;
     bool runtimeInitAttempted_ = false;
     bool pcfEnableNeedsReinitWarned_ = false;
+    uint32_t counterTraceLastMs_ = 0;
     uint32_t analogCalcLogLastMs_[3]{0, 0, 0};
     int32_t* analogPrecisionLast_ = nullptr;
     bool analogPrecisionLastInit_ = false;

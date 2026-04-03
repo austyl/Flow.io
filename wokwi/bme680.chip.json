@@ -1,0 +1,50 @@
+{
+  "name": "bme680",
+  "author": "Christophe Belmont",
+  "pins": [
+    "VCC",
+    "GND",
+    "INT",
+    "SDA",
+    "SCL"
+  ],
+  "package": {
+    "type": "chip",
+    "language": "c",
+    "main": "bme680.chip.c"
+  },
+  "controls": [
+    {
+      "id": "temperature",
+      "type": "range",
+      "label": "Temperature (°C)",
+      "min": -20,
+      "max": 50,
+      "value": 25
+    },
+    {
+      "id": "humidity",
+      "type": "range",
+      "label": "Humidity (%)",
+      "min": 0,
+      "max": 100,
+      "value": 45
+    },
+    {
+      "id": "pressure",
+      "type": "range",
+      "label": "Pressure (hPa)",
+      "min": 950,
+      "max": 1050,
+      "value": 1013
+    },
+    {
+      "id": "gas",
+      "type": "range",
+      "label": "Gas Resistance (kΩ)",
+      "min": 0,
+      "max": 1000,
+      "value": 120
+    }
+  ]
+}

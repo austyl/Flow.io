@@ -4,9 +4,19 @@
  */
 
 #include "GpioCounterDriver.h"
+#include <esp_heap_caps.h>
 
 namespace {
 portMUX_TYPE gGpioCounterMux = portMUX_INITIALIZER_UNLOCKED;
+
+int gpioInterruptModeForCounter_(bool activeHigh, uint8_t edgeMode)
+{
+    if (edgeMode == 2U) return CHANGE;
+    if (edgeMode == 0U) {
+        return activeHigh ? FALLING : RISING;
+    }
+    return activeHigh ? RISING : FALLING;
+}
 }
 
 GpioCounterDriver::GpioCounterDriver(const char* driverId,
@@ -26,15 +36,27 @@ GpioCounterDriver::GpioCounterDriver(const char* driverId,
 
 bool GpioCounterDriver::begin()
 {
+    if (!state_) {
+        state_ = static_cast<RuntimeState*>(
+            heap_caps_calloc(1, sizeof(RuntimeState), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+        );
+    }
+    if (!state_) return false;
+
     if (inputPullMode_ == 1) pinMode(pin_, INPUT_PULLUP);
     else if (inputPullMode_ == 2) pinMode(pin_, INPUT_PULLDOWN);
     else pinMode(pin_, INPUT);
 
     int rawLevel = digitalRead(pin_);
-    lastLogicalState_ = activeHigh_ ? (rawLevel == HIGH) : (rawLevel == LOW);
-    pulseCount_ = 0;
-    lastPulseUs_ = 0;
-    attachInterruptArg(pin_, &GpioCounterDriver::handleInterruptThunk_, this, CHANGE);
+    state_->lastLogicalState = activeHigh_ ? (rawLevel == HIGH) : (rawLevel == LOW);
+    state_->pulseCount = 0;
+    state_->lastPulseUs = 0;
+    state_->irqCallCount = 0;
+    state_->transitionCount = 0;
+    state_->ignoredSameStateCount = 0;
+    state_->ignoredWrongEdgeCount = 0;
+    state_->ignoredDebounceCount = 0;
+    attachInterruptArg(pin_, &GpioCounterDriver::handleInterruptThunk_, this, gpioInterruptModeForCounter_(activeHigh_, edgeMode_));
     return true;
 }
 
@@ -48,7 +70,25 @@ bool GpioCounterDriver::read(bool& on) const
 bool GpioCounterDriver::readCount(int32_t& count) const
 {
     portENTER_CRITICAL(&gGpioCounterMux);
-    count = pulseCount_;
+    count = state_ ? state_->pulseCount : 0;
+    portEXIT_CRITICAL(&gGpioCounterMux);
+    return true;
+}
+
+bool GpioCounterDriver::readDebugStats(IODigitalCounterDebugStats& out) const
+{
+    portENTER_CRITICAL(&gGpioCounterMux);
+    out.pin = pin_;
+    out.edgeMode = edgeMode_;
+    out.activeHigh = activeHigh_;
+    out.logicalState = state_ ? state_->lastLogicalState : false;
+    out.pulseCount = state_ ? state_->pulseCount : 0;
+    out.irqCalls = state_ ? state_->irqCallCount : 0;
+    out.transitions = state_ ? state_->transitionCount : 0;
+    out.ignoredSameState = state_ ? state_->ignoredSameStateCount : 0;
+    out.ignoredWrongEdge = state_ ? state_->ignoredWrongEdgeCount : 0;
+    out.ignoredDebounce = state_ ? state_->ignoredDebounceCount : 0;
+    out.lastPulseUs = state_ ? state_->lastPulseUs : 0;
     portEXIT_CRITICAL(&gGpioCounterMux);
     return true;
 }
@@ -61,12 +101,19 @@ void IRAM_ATTR GpioCounterDriver::handleInterruptThunk_(void* arg)
 
 void IRAM_ATTR GpioCounterDriver::handleInterrupt_()
 {
+    RuntimeState* state = state_;
+    if (!state) return;
+    ++state->irqCallCount;
     int level = digitalRead(pin_);
     const bool logicalOn = activeHigh_ ? (level == HIGH) : (level == LOW);
     const uint32_t nowUs = micros();
-    const bool wasLogicalOn = lastLogicalState_;
-    if (logicalOn == wasLogicalOn) return;
-    lastLogicalState_ = logicalOn;
+    const bool wasLogicalOn = state->lastLogicalState;
+    if (logicalOn == wasLogicalOn) {
+        ++state->ignoredSameStateCount;
+        return;
+    }
+    state->lastLogicalState = logicalOn;
+    ++state->transitionCount;
 
     const bool isRising = (!wasLogicalOn && logicalOn);
     const bool isFalling = (wasLogicalOn && !logicalOn);
@@ -74,16 +121,20 @@ void IRAM_ATTR GpioCounterDriver::handleInterrupt_()
         ((edgeMode_ == 1U) && isRising) ||
         ((edgeMode_ == 0U) && isFalling) ||
         ((edgeMode_ == 2U) && (isRising || isFalling));
-    if (!shouldCount) return;
+    if (!shouldCount) {
+        ++state->ignoredWrongEdgeCount;
+        return;
+    }
 
-    if (counterDebounceUs_ > 0 && lastPulseUs_ != 0U) {
-        if ((uint32_t)(nowUs - lastPulseUs_) < counterDebounceUs_) {
+    if (counterDebounceUs_ > 0 && state->lastPulseUs != 0U) {
+        if ((uint32_t)(nowUs - state->lastPulseUs) < counterDebounceUs_) {
+            ++state->ignoredDebounceCount;
             return;
         }
     }
 
     portENTER_CRITICAL_ISR(&gGpioCounterMux);
-    if (pulseCount_ < INT32_MAX) ++pulseCount_;
-    lastPulseUs_ = nowUs;
+    if (state->pulseCount < INT32_MAX) ++state->pulseCount;
+    state->lastPulseUs = nowUs;
     portEXIT_CRITICAL_ISR(&gGpioCounterMux);
 }

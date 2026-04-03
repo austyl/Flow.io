@@ -4067,6 +4067,29 @@
       return Number.isFinite(parsed) ? parsed : 0;
     }
 
+    function configNumericKind(doc, value) {
+      const typeName = String((doc && doc.type) || '').trim().toLowerCase();
+      if (typeName === 'float' || typeName === 'double') {
+        return 'float';
+      }
+      if (typeName === 'int32' || typeName === 'uint16' || typeName === 'uint8') {
+        return 'int';
+      }
+      if (typeof value === 'number') {
+        return Number.isInteger(value) ? 'int' : 'float';
+      }
+      return 'string';
+    }
+
+    function configFieldNormalizedInitialValue(doc, value) {
+      const numericKind = configNumericKind(doc, value);
+      if (numericKind === 'int' || numericKind === 'float') {
+        const displayFormat = (doc && typeof doc.display_format === 'string') ? doc.display_format : '';
+        return parseConfigNumericValue(value, numericKind, displayFormat);
+      }
+      return value;
+    }
+
     function configDocFor(moduleName, key, extraSources) {
       const k = String(key || '').trim();
       const candidates = cfgDocPathCandidates(moduleName);
@@ -4282,7 +4305,7 @@
           const select = document.createElement('select');
           select.className = 'control-input';
           select.dataset.key = key;
-          select.dataset.kind = (typeof value === 'number' && Number.isInteger(value)) ? 'int' : (typeof value === 'number' ? 'float' : 'string');
+          select.dataset.kind = configNumericKind(doc, value);
           if (doc && typeof doc.display_format === 'string') {
             select.dataset.format = doc.display_format;
           }
@@ -4302,21 +4325,25 @@
           storeConfigFieldInitialValue(select, value);
           inputEl = select;
           valueWrap.appendChild(select);
-        } else if (typeof value === 'number') {
+        } else if (configNumericKind(doc, value) !== 'string') {
           const input = document.createElement('input');
           input.className = 'control-input';
           const displayFormat = (doc && typeof doc.display_format === 'string') ? doc.display_format : '';
+          const numericKind = configNumericKind(doc, value);
           input.type = displayFormat === 'hex' ? 'text' : 'number';
-          input.value = formatConfigValueForDisplay(value, displayFormat);
+          input.value = formatConfigValueForDisplay(
+            configFieldNormalizedInitialValue(doc, value),
+            displayFormat
+          );
           if (displayFormat !== 'hex') {
-            input.step = Number.isInteger(value) ? '1' : '0.001';
+            input.step = (numericKind === 'float') ? '0.001' : '1';
           }
           input.dataset.key = key;
-          input.dataset.kind = Number.isInteger(value) ? 'int' : 'float';
+          input.dataset.kind = numericKind;
           if (displayFormat) {
             input.dataset.format = displayFormat;
           }
-          storeConfigFieldInitialValue(input, value);
+          storeConfigFieldInitialValue(input, configFieldNormalizedInitialValue(doc, value));
           inputEl = input;
           valueWrap.appendChild(input);
         } else {

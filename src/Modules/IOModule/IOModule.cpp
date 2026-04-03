@@ -130,6 +130,17 @@ static bool isOutputEndpointIdLocal(const char* id)
     return strcmp(id, "status_leds_mask") == 0;
 }
 
+static const char* ioEdgeModeLabelLocal(uint8_t edgeMode)
+{
+    switch (edgeMode) {
+        case IO_EDGE_FALLING: return "falling";
+        case IO_EDGE_BOTH: return "both";
+        case IO_EDGE_RISING:
+        default:
+            return "rising";
+    }
+}
+
 void IOModule::setOneWireBuses(OneWireBus* water, OneWireBus* air)
 {
     oneWireWater_ = water;
@@ -921,6 +932,42 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
     return true;
 }
 
+void IOModule::traceDigitalCounters_(uint32_t nowMs)
+{
+    if (!cfgData_.traceEnabled || !runtimeReady_) return;
+    if (counterTraceLastMs_ != 0U && (uint32_t)(nowMs - counterTraceLastMs_) < 1000U) return;
+    counterTraceLastMs_ = nowMs;
+
+    for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
+        DigitalSlot& slot = digitalSlots_[i];
+        if (!slot.used || slot.kind != DIGITAL_SLOT_INPUT) continue;
+        if (slot.inDef.mode != IO_DIGITAL_INPUT_COUNTER) continue;
+        if (!slot.provider.isBound()) continue;
+
+        IDigitalCounterDriver* counterDriver = static_cast<IDigitalCounterDriver*>(slot.provider.ctx);
+        if (!counterDriver) continue;
+
+        IODigitalCounterDebugStats stats{};
+        if (!counterDriver->readDebugStats(stats)) continue;
+
+        const uint32_t ageMs = (stats.lastPulseUs == 0U) ? 0U : ((uint32_t)(micros() - stats.lastPulseUs) / 1000U);
+
+        LOGI("Ctr %s p=%u st=%s e=%s irq=%lu tr=%lu ss=%lu cnt=%ld re=%lu rd=%lu db=%lu lp=%lu",
+             slot.endpointId,
+             (unsigned)stats.pin,
+             stats.logicalState ? "ON" : "OFF",
+             ioEdgeModeLabelLocal(stats.edgeMode),
+             (unsigned long)stats.irqCalls,
+             (unsigned long)stats.transitions,
+             (unsigned long)stats.ignoredSameState,
+             (long)stats.pulseCount,
+             (unsigned long)stats.ignoredWrongEdge,
+             (unsigned long)stats.ignoredDebounce,
+             (unsigned long)slot.inDef.counterDebounceUs,
+             (unsigned long)ageMs);
+    }
+}
+
 int32_t IOModule::sanitizeAnalogPrecision_(int32_t precision) const
 {
     if (precision < 0) return 0;
@@ -1244,6 +1291,7 @@ IoStatus IOModule::ioTick_(uint32_t nowMs)
 
     beginIoCycle_(nowMs);
     scheduler_.tick(nowMs);
+    traceDigitalCounters_(nowMs);
     return IO_OK;
 }
 

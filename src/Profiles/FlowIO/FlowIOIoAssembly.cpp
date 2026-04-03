@@ -19,7 +19,6 @@ namespace {
 
 using Profiles::FlowIO::ModuleInstances;
 namespace FlowIoLayout = Profiles::FlowIO::IoLayout;
-static constexpr uint32_t kWaterCounterDebounceUs = 500000U;  // Accept at most 1 pulse every 500 ms.
 static constexpr uint8_t kFlowIoAnalogHaSlots = 15;
 
 struct FlowIoAnalogHaSpec {

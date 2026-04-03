@@ -25,8 +25,20 @@ public:
     bool write(bool) override { return false; }
     bool read(bool& on) const override;
     bool readCount(int32_t& count) const override;
+    bool readDebugStats(IODigitalCounterDebugStats& out) const override;
 
 private:
+    struct RuntimeState {
+        volatile int32_t pulseCount = 0;
+        volatile bool lastLogicalState = false;
+        volatile uint32_t lastPulseUs = 0;
+        volatile uint32_t irqCallCount = 0;
+        volatile uint32_t transitionCount = 0;
+        volatile uint32_t ignoredSameStateCount = 0;
+        volatile uint32_t ignoredWrongEdgeCount = 0;
+        volatile uint32_t ignoredDebounceCount = 0;
+    };
+
     static void IRAM_ATTR handleInterruptThunk_(void* arg);
     void IRAM_ATTR handleInterrupt_();
 
@@ -36,7 +48,5 @@ private:
     uint8_t inputPullMode_ = 0;
     uint8_t edgeMode_ = 1;
     uint32_t counterDebounceUs_ = 0;
-    volatile int32_t pulseCount_ = 0;
-    volatile bool lastLogicalState_ = false;
-    volatile uint32_t lastPulseUs_ = 0;
+    RuntimeState* state_ = nullptr;
 };

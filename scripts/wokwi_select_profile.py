@@ -31,6 +31,16 @@ ENV_PROFILE_MAP = {
 }
 
 
+def project_dir() -> Path:
+    if PIO_ENV is not None:
+        project_dir_value = PIO_ENV.get("PROJECT_DIR")
+        if project_dir_value:
+            return Path(str(project_dir_value))
+    if "__file__" in globals():
+        return Path(__file__).resolve().parent.parent
+    return Path.cwd()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Select active Wokwi profile")
     parser.add_argument(
@@ -42,8 +52,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_profile(profile: str) -> int:
-    project_dir = Path(__file__).resolve().parent.parent
-    profile_dir = project_dir / "wokwi" / profile
+    root_dir = project_dir()
+    profile_dir = root_dir / "wokwi" / profile
 
     if not profile_dir.exists():
         print(f"[wokwi-profile] missing profile directory: {profile_dir}", file=sys.stderr)
@@ -51,15 +61,15 @@ def apply_profile(profile: str) -> int:
 
     for name in PROFILE_FILES:
         src = profile_dir / name
-        dst = project_dir / name
+        dst = root_dir / name
         if not src.exists():
             print(f"[wokwi-profile] missing source file: {src}", file=sys.stderr)
             return 2
         shutil.copy2(src, dst)
 
     print(f"[wokwi-profile] active profile set to '{profile}'")
-    print(f"[wokwi-profile] updated: {project_dir / 'diagram.json'}")
-    print(f"[wokwi-profile] updated: {project_dir / 'wokwi.toml'}")
+    print(f"[wokwi-profile] updated: {root_dir / 'diagram.json'}")
+    print(f"[wokwi-profile] updated: {root_dir / 'wokwi.toml'}")
     return 0
 
 
@@ -80,6 +90,15 @@ def main() -> int:
 
     args = parse_args()
     return apply_profile(args.profile)
+
+
+if PIO_ENV is not None:
+    inferred_profile = profile_from_platformio_env()
+    if inferred_profile is None:
+        raise RuntimeError("[wokwi-profile] unable to infer profile from PIOENV")
+    rc = apply_profile(inferred_profile)
+    if rc != 0:
+        raise RuntimeError(f"[wokwi-profile] failed with exit code {rc}")
 
 
 if __name__ == "__main__":

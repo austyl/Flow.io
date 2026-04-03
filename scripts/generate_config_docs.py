@@ -93,6 +93,10 @@ BINDING_ENTRY_RE = re.compile(
     r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
     re.S,
 )
+DIGITAL_INPUT_ROLE_DEFAULT_RE = re.compile(
+    r"\{\s*DomainRole::[A-Za-z0-9_]+\s*,\s*(?P<port>PortDigitalIn[0-9]+)\s*,\s*(?P<mode>IO_DIGITAL_INPUT_[A-Z_]+)\s*,",
+    re.S,
+)
 BOARD_IO_POINT_RE = re.compile(
     r'\{\s*"(?P<name>[^"]+)"\s*,\s*IoCapability::(?P<cap>[A-Za-z0-9_]+)\s*,\s*BoardSignal::(?P<signal>[A-Za-z0-9_]+)\s*,\s*(?P<pin>-?\d+)\s*,',
     re.S,
@@ -190,15 +194,32 @@ def _binding_kind_group(kind: str) -> Optional[str]:
     return None
 
 
-def _binding_label(kind: str, port_name: str, param0: str, board_points: List[dict]) -> str:
+def _digital_input_mode_suffix(port_name: str, mode_by_port: Dict[str, str]) -> str:
+    mode = mode_by_port.get(port_name, "").strip()
+    if mode == "IO_DIGITAL_INPUT_COUNTER":
+        return " | compteur"
+    if mode == "IO_DIGITAL_INPUT_STATE":
+        return " | etat"
+    return ""
+
+
+def _binding_label(kind: str,
+                   port_name: str,
+                   param0: str,
+                   board_points: List[dict],
+                   digital_input_mode_by_port: Optional[Dict[str, str]] = None) -> str:
     port_display = f"{port_name}"
+    digital_input_mode_by_port = digital_input_mode_by_port or {}
+    input_mode_suffix = ""
+    if kind == "IO_PORT_KIND_GPIO_INPUT":
+        input_mode_suffix = _digital_input_mode_suffix(port_name, digital_input_mode_by_port)
 
     board_ref = BOARD_PIN_REF_RE.search(param0)
     if board_ref:
         idx = int(board_ref.group("idx"))
         if 0 <= idx < len(board_points):
             point = board_points[idx]
-            return f"{port_display} | {point['name']} | GPIO{point['pin']}"
+            return f"{port_display} | {point['name']} | GPIO{point['pin']}{input_mode_suffix}"
 
     raw = param0.strip()
     if kind == "IO_PORT_KIND_ADS_INTERNAL_SINGLE":
@@ -210,7 +231,7 @@ def _binding_label(kind: str, port_name: str, param0: str, board_points: List[di
     if kind == "IO_PORT_KIND_DS18_AIR":
         return f"{port_display} | DS18B20 | bus air"
     if kind == "IO_PORT_KIND_GPIO_INPUT":
-        return f"{port_display} | entree GPIO | GPIO{raw}"
+        return f"{port_display} | entree GPIO | GPIO{raw}{input_mode_suffix}"
     if kind == "IO_PORT_KIND_GPIO_OUTPUT":
         return f"{port_display} | sortie GPIO | GPIO{raw}"
     if kind == "IO_PORT_KIND_PCF8574_OUTPUT":
@@ -238,6 +259,10 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
     for m in PORT_ENUM_RE.finditer(text):
         port_ids[m.group("name").strip()] = int(m.group("value"))
 
+    digital_input_mode_by_port: Dict[str, str] = {}
+    for m in DIGITAL_INPUT_ROLE_DEFAULT_RE.finditer(text):
+        digital_input_mode_by_port[m.group("port").strip()] = m.group("mode").strip()
+
     enum_sets: Dict[str, List[dict]] = {
         FLOWIO_BINDING_SET_ANALOG: [],
         FLOWIO_BINDING_SET_DIGITAL_INPUT: [],
@@ -259,7 +284,7 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
             continue
         enum_sets[group].append({
             "value": port_id,
-            "label": f"{port_id} | {_binding_label(kind, port_name, param0, board_points)}",
+            "label": f"{port_id} | {_binding_label(kind, port_name, param0, board_points, digital_input_mode_by_port)}",
         })
 
     for key in list(enum_sets.keys()):
