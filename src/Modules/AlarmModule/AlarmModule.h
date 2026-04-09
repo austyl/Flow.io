@@ -58,7 +58,6 @@ private:
         uint32_t activeSinceMs = 0;
         uint32_t lastChangeMs = 0;
         uint32_t lastNotifyMs = 0;
-        bool notifyPending = false;
     };
 
     static bool cmdList_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
@@ -87,8 +86,8 @@ private:
     int16_t findSlotById_(AlarmId id) const;
     int16_t findFreeSlot_() const;
     void emitAlarmEvent_(EventId id, AlarmId alarmId) const;
-    bool allowAlarmNotifyNow_(AlarmId id, uint32_t nowMs);
-    uint8_t takeDueAlarmNotifyIds_(AlarmId* out, uint8_t max, uint32_t nowMs);
+    void noteAlarmNotified_(AlarmId id, uint32_t nowMs);
+    uint8_t takeDueAlarmReminderIds_(AlarmId* out, uint8_t max, uint32_t nowMs);
     static bool delayReached_(uint32_t sinceMs, uint32_t delayMs, uint32_t nowMs);
     static const char* condStateStr_(AlarmCondState s);
     void registerHaEntities_(ServiceRegistry& services);

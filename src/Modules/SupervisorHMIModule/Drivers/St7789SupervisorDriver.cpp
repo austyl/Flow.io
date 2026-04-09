@@ -57,6 +57,7 @@ static constexpr uint16_t kColorPh = rgb565_(34, 197, 94);
 static constexpr uint16_t kColorOrp = rgb565_(132, 82, 236);
 static constexpr uint16_t kColorPsi = rgb565_(234, 88, 12);
 static constexpr uint16_t kColorCounter = rgb565_(8, 145, 178);
+static constexpr uint16_t kColorAlarmIdle = rgb565_(207, 218, 232);
 
 static constexpr int16_t kHeaderH = 48;
 static constexpr int16_t kSidePad = 8;
@@ -634,9 +635,35 @@ uint16_t alarmTextColor_(const SupervisorHmiViewModel& vm, uint8_t alarmIndex)
     const bool resettable = (vm.flowAlarmResettableMask & mask) != 0U;
     const bool conditionTrue = (vm.flowAlarmConditionMask & mask) != 0U;
 
+    if (active && conditionTrue) return kColorText;
+    if (active && (!conditionTrue || resettable)) return kColorText;
+    return kColorMuted;
+}
+
+uint16_t alarmIndicatorColor_(const SupervisorHmiViewModel& vm, uint8_t alarmIndex)
+{
+    const uint32_t mask = (alarmIndex < 32U) ? (1UL << alarmIndex) : 0U;
+    const bool active = (vm.flowAlarmActiveMask & mask) != 0U;
+    const bool conditionTrue = (vm.flowAlarmConditionMask & mask) != 0U;
+
     if (active && conditionTrue) return kColorAlarmAct;
-    if (active && (!conditionTrue || resettable)) return kColorAlarmAck;
-    return kColorGaugeOk;
+    if (active) return kColorAlarmAck;
+    return kColorAlarmIdle;
+}
+
+void drawAlarmIndicator_(SupervisorSt7789& d,
+                         bool swapBytes,
+                         int16_t cx,
+                         int16_t cy,
+                         uint16_t fill,
+                         bool active)
+{
+    d.fillCircle(cx, cy, 11, panelColor_(swapBytes, fill));
+    if (!active) return;
+
+    const uint16_t markColor = panelColor_(swapBytes, kColorGaugeCardBg);
+    d.fillRoundRect((int16_t)(cx - 2), (int16_t)(cy - 7), 4, 10, 2, markColor);
+    d.fillCircle(cx, (int16_t)(cy + 6), 2, markColor);
 }
 
 struct Rect {
@@ -769,30 +796,32 @@ void drawAlarmCard_(SupervisorSt7789& d,
     d.fillRoundRect(x, y, w, h, 12, panelColor_(swapBytes, kColorGaugeCardBg));
     d.drawRoundRect(x, y, w, h, 12, panelColor_(swapBytes, kColorCardBorder));
 
-    const int16_t innerY = (int16_t)(y + 6);
-    const int16_t rowH = (int16_t)((h - 12) / 3);
+    const int16_t iconCx = (int16_t)(x + w - 22);
+    const int16_t labelX = (int16_t)(x + 12);
+    const int16_t topPad = 18;
+    const int16_t bottomPad = 18;
+    const int16_t rowSpan = (int16_t)(h - topPad - bottomPad);
+    const int16_t rowGap = (int16_t)(rowSpan / 2);
     for (uint8_t i = 0; i < 3; ++i) {
         const uint8_t alarmIndex = (uint8_t)(startIndex + i);
         if (alarmIndex >= kSupervisorAlarmSlotCount) break;
 
-        const int16_t rowY = (int16_t)(innerY + ((int16_t)i * rowH));
-        if (i > 0) {
-            d.drawFastHLine((int16_t)(x + 10),
-                            (int16_t)(rowY - 4),
-                            (int16_t)(w - 20),
-                            panelColor_(swapBytes, kColorDivider));
-        }
+        const int16_t rowCenterY = (int16_t)(y + topPad + ((int16_t)i * rowGap));
+        const uint16_t textColor = alarmTextColor_(vm, alarmIndex);
+        const uint16_t indicatorColor = alarmIndicatorColor_(vm, alarmIndex);
+        const uint32_t mask = (alarmIndex < 32U) ? (1UL << alarmIndex) : 0U;
+        const bool active = (vm.flowAlarmActiveMask & mask) != 0U;
 
-        const uint16_t color = alarmTextColor_(vm, alarmIndex);
         drawGfxTextCenteredY_(d,
                               swapBytes,
                               &FreeSans9pt7b,
-                              color,
+                              textColor,
                               kColorGaugeCardBg,
-                              (int16_t)(x + 12),
-                              rowY,
-                              rowH,
+                              labelX,
+                              (int16_t)(rowCenterY - 12),
+                              24,
                               kAlarmRows[alarmIndex].label);
+        drawAlarmIndicator_(d, swapBytes, iconCx, rowCenterY, indicatorColor, active);
     }
 }
 

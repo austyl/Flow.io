@@ -90,8 +90,15 @@ MQTT consomme les événements alarmes via `MQTTModule`.
 
 ## Notifications et anti-spam
 
-Le module applique un `minRepeatMs` par alarme pour limiter la fréquence des notifications EventBus
-quand une condition reste active/oscille rapidement.
+Les transitions utiles sont publiées immédiatement sur l'EventBus:
+- `AlarmRaised`
+- `AlarmCleared`
+- `AlarmReset`
+- `AlarmConditionChanged` quand la condition change réellement
+
+`minRepeatMs` ne sert plus à retarder ces transitions. Il ne sert qu'aux rappels
+périodiques `AlarmConditionChanged` tant qu'une alarme reste active avec
+`condition=true`.
 
 ## Alarmes définies actuellement
 

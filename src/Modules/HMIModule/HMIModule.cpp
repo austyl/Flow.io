@@ -9,7 +9,9 @@
 #include "Core/EventBus/EventPayloads.h"
 #include "Core/AlarmIds.h"
 #include "Domain/Pool/PoolBindings.h"
+#include "Modules/IOModule/IORuntime.h"
 #include "Modules/Network/MQTTModule/MQTTRuntime.h"
+#include "Modules/Network/WifiModule/WifiRuntime.h"
 #include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
 #include <ArduinoJson.h>
 #include <stdio.h>
@@ -32,6 +34,7 @@ static constexpr uint8_t kLedBitAlarmB = 5;
 static constexpr uint8_t kLedBitAlarmC = 6;
 static constexpr uint8_t kLedBitAlarmD = 7;
 static constexpr uint32_t kLedPageTogglePeriodMs = 2000U;
+static constexpr uint32_t kWifiBlinkPeriodMs = 125U;
 
 static inline uint8_t normalizeLedPage_(uint8_t page)
 {
@@ -57,6 +60,28 @@ static bool findJsonBool_(const char* json, const char* key, bool& out)
         return true;
     }
     return false;
+}
+
+static bool findJsonUInt16_(const char* json, const char* key, uint16_t& out)
+{
+    if (!json || !key || key[0] == '\0') return false;
+    char needle[48]{};
+    const int nn = snprintf(needle, sizeof(needle), "\"%s\":", key);
+    if (nn <= 0 || (size_t)nn >= sizeof(needle)) return false;
+    const char* p = strstr(json, needle);
+    if (!p) return false;
+    p += nn;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') ++p;
+    if (*p < '0' || *p > '9') return false;
+
+    unsigned long v = 0UL;
+    while (*p >= '0' && *p <= '9') {
+        v = (v * 10UL) + (unsigned long)(*p - '0');
+        if (v > 65535UL) return false;
+        ++p;
+    }
+    out = (uint16_t)v;
+    return true;
 }
 
 #if FLOW_HMI_CONFIG_MENU_ENABLED
@@ -122,6 +147,7 @@ void HMIModule::init(ConfigStore&, ServiceRegistry& services)
     cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
     dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
     alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
+    ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
     statusLedsSvc_ = services.get<StatusLedsService>(ServiceId::StatusLeds);
     auto* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
@@ -170,6 +196,8 @@ void HMIModule::init(ConfigStore&, ServiceRegistry& services)
     ledMaskValid_ = false;
     lastLedApplyTryMs_ = 0;
     lastLedPageToggleMs_ = millis();
+    lastWifiBlinkToggleMs_ = millis();
+    poolLevelIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPoolLevel].ioId;
 
     LOGI("HMI service registered with driver=%s led_panel=%s",
          driver_ ? driver_->driverId() : "none",
@@ -208,6 +236,28 @@ void HMIModule::refreshPoolLogicFlags_()
     if (findJsonBool_(poollogicCfgJson_, "winter_mode", v)) winterMode_ = v;
     if (findJsonBool_(poollogicCfgJson_, "ph_auto_mode", v)) phPidEnabled_ = v;
     if (findJsonBool_(poollogicCfgJson_, "orp_auto_mode", v)) chlorinePidEnabled_ = v;
+
+    if (cfgSvc_->toJsonModule(cfgSvc_->ctx,
+                              "poollogic/sensors",
+                              poollogicCfgJson_,
+                              sizeof(poollogicCfgJson_),
+                              &truncated)) {
+        uint16_t ioId = (uint16_t)poolLevelIoId_;
+        if (findJsonUInt16_(poollogicCfgJson_, "pool_lvl_io_id", ioId)) {
+            poolLevelIoId_ = (IoId)ioId;
+        }
+    }
+}
+
+void HMIModule::refreshWaterLevelFlag_()
+{
+    waterLevelLow_ = false;
+    if (!ioSvc_ || !ioSvc_->readDigital) return;
+    if (poolLevelIoId_ == IO_ID_INVALID) return;
+
+    uint8_t levelOk = 0U;
+    if (ioSvc_->readDigital(ioSvc_->ctx, poolLevelIoId_, &levelOk, nullptr, nullptr) != IO_OK) return;
+    waterLevelLow_ = (levelOk == 0U);
 }
 
 void HMIModule::updatePumpRuntimeAlarmFromSlot_(uint8_t slot)
@@ -229,9 +279,11 @@ void HMIModule::updatePumpRuntimeAlarmFromSlot_(uint8_t slot)
 void HMIModule::refreshRuntimeFlags_()
 {
     if (!dsSvc_ || !dsSvc_->store) return;
+    wifiReady_ = wifiReady(*dsSvc_->store);
     mqttReady_ = mqttReady(*dsSvc_->store);
     updatePumpRuntimeAlarmFromSlot_(PoolBinding::kDeviceSlotPhPump);
     updatePumpRuntimeAlarmFromSlot_(PoolBinding::kDeviceSlotChlorinePump);
+    refreshWaterLevelFlag_();
 }
 
 void HMIModule::refreshAlarmFlags_()
@@ -249,22 +301,25 @@ void HMIModule::applyLedMask_(bool force)
     if (!statusLedsSvc_ || !statusLedsSvc_->setMask) return;
 
     uint8_t mask = 0U;
-    if (mqttReady_) mask |= (uint8_t)(1U << kLedBitMqttConnected);
+    if (wifiReady_ && (mqttReady_ || wifiBlinkOn_)) {
+        mask |= (uint8_t)(1U << kLedBitMqttConnected);
+    }
 
     const bool page2 = (ledPage_ == 2U);
-    if (page2) mask |= (uint8_t)(1U << kLedBitPageSelect);
+    if (!page2) mask |= (uint8_t)(1U << kLedBitPageSelect);
 
-    if (!page2) {
+    if (page2) {
         if (autoRegEnabled_) mask |= (uint8_t)(1U << kLedBitModeA);
         if (winterMode_) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (phTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
-        if (chlorineTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmB);
-        if (phPumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmC);
-        if (chlorinePumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
+        if (psiAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
+        if (waterLevelLow_) mask |= (uint8_t)(1U << kLedBitAlarmB);
     } else {
         if (phPidEnabled_) mask |= (uint8_t)(1U << kLedBitModeA);
         if (chlorinePidEnabled_) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (psiAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
+        if (chlorinePumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
+        if (phPumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmB);
+        if (chlorineTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmC);
+        if (phTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
     }
 
     if (!force && ledMaskValid_ && ledMaskLast_ == mask) return;
@@ -306,7 +361,7 @@ void HMIModule::onEvent_(const Event& e)
         }
     } else if (e.id == EventId::DataChanged && e.payload && e.len >= sizeof(DataChangedPayload)) {
         const DataChangedPayload* p = static_cast<const DataChangedPayload*>(e.payload);
-        if (p->id == DATAKEY_MQTT_READY) {
+        if (p->id == DATAKEY_WIFI_READY || p->id == DATAKEY_MQTT_READY) {
             refreshRuntimeFlags_();
             ledDirty = true;
         } else if (p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + PoolBinding::kDeviceSlotPhPump)) {
@@ -314,6 +369,10 @@ void HMIModule::onEvent_(const Event& e)
             ledDirty = true;
         } else if (p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + PoolBinding::kDeviceSlotChlorinePump)) {
             updatePumpRuntimeAlarmFromSlot_(PoolBinding::kDeviceSlotChlorinePump);
+            ledDirty = true;
+        } else if (poolLevelIoId_ != IO_ID_INVALID &&
+                   p->id == (DataKey)(DATAKEY_IO_BASE + poolLevelIoId_)) {
+            refreshWaterLevelFlag_();
             ledDirty = true;
         }
     } else if ((e.id == EventId::AlarmRaised || e.id == EventId::AlarmCleared) &&
@@ -524,6 +583,18 @@ void HMIModule::loop()
     }
 
     const uint32_t now = millis();
+    if (wifiReady_ && !mqttReady_) {
+        if ((uint32_t)(now - lastWifiBlinkToggleMs_) >= kWifiBlinkPeriodMs) {
+            lastWifiBlinkToggleMs_ = now;
+            wifiBlinkOn_ = !wifiBlinkOn_;
+            applyLedMask_(true);
+        }
+    } else if (wifiBlinkOn_) {
+        wifiBlinkOn_ = false;
+        lastWifiBlinkToggleMs_ = now;
+        applyLedMask_(true);
+    }
+
     if (statusLedsSvc_ && (uint32_t)(now - lastLedPageToggleMs_) >= kLedPageTogglePeriodMs) {
         lastLedPageToggleMs_ = now;
         const uint8_t nextPage = (ledPage_ == 1U) ? 2U : 1U;

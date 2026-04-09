@@ -41,6 +41,7 @@ private:
     const ConfigStoreService* cfgSvc_ = nullptr;
     const DataStoreService* dsSvc_ = nullptr;
     const AlarmService* alarmSvc_ = nullptr;
+    const IOServiceV2* ioSvc_ = nullptr;
     const StatusLedsService* statusLedsSvc_ = nullptr;
     EventBus* eventBus_ = nullptr;
 
@@ -54,6 +55,7 @@ private:
     uint8_t ledPage_ = 1;
     uint8_t ledMaskLast_ = 0;
     bool ledMaskValid_ = false;
+    bool wifiReady_ = false;
     bool mqttReady_ = false;
     bool autoRegEnabled_ = false;
     bool winterMode_ = false;
@@ -64,9 +66,13 @@ private:
     bool phPumpRuntimeAlarm_ = false;
     bool chlorinePumpRuntimeAlarm_ = false;
     bool psiAlarm_ = false;
+    bool waterLevelLow_ = false;
+    bool wifiBlinkOn_ = false;
+    IoId poolLevelIoId_ = IO_ID_INVALID;
     char poollogicCfgJson_[768]{};
     uint32_t lastLedApplyTryMs_ = 0;
     uint32_t lastLedPageToggleMs_ = 0;
+    uint32_t lastWifiBlinkToggleMs_ = 0;
 
     static void onEventStatic_(const Event& e, void* user);
     void onEvent_(const Event& e);
@@ -82,6 +88,7 @@ private:
     void refreshPoolLogicFlags_();
     void refreshRuntimeFlags_();
     void refreshAlarmFlags_();
+    void refreshWaterLevelFlag_();
     void updatePumpRuntimeAlarmFromSlot_(uint8_t slot);
     void applyLedMask_(bool force = false);
 

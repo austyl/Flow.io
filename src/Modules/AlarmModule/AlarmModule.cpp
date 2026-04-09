@@ -91,30 +91,18 @@ void AlarmModule::emitAlarmEvent_(EventId id, AlarmId alarmId) const
     (void)eventBus_->post(id, &payload, sizeof(payload));
 }
 
-bool AlarmModule::allowAlarmNotifyNow_(AlarmId id, uint32_t nowMs)
+void AlarmModule::noteAlarmNotified_(AlarmId id, uint32_t nowMs)
 {
-    bool allowNow = true;
     portENTER_CRITICAL(&slotsMux_);
     const int16_t idx = findSlotById_(id);
     if (idx >= 0) {
         AlarmSlot& s = slots_[(uint16_t)idx];
-        const uint32_t minRepeatMs = s.def.minRepeatMs;
-        if (minRepeatMs > 0U &&
-            s.lastNotifyMs != 0U &&
-            !delayReached_(s.lastNotifyMs, minRepeatMs, nowMs)) {
-            s.notifyPending = true;
-            allowNow = false;
-        } else {
-            s.lastNotifyMs = nowMs;
-            s.notifyPending = false;
-            allowNow = true;
-        }
+        s.lastNotifyMs = nowMs;
     }
     portEXIT_CRITICAL(&slotsMux_);
-    return allowNow;
 }
 
-uint8_t AlarmModule::takeDueAlarmNotifyIds_(AlarmId* out, uint8_t max, uint32_t nowMs)
+uint8_t AlarmModule::takeDueAlarmReminderIds_(AlarmId* out, uint8_t max, uint32_t nowMs)
 {
     if (!out || max == 0U) return 0U;
 
@@ -122,10 +110,11 @@ uint8_t AlarmModule::takeDueAlarmNotifyIds_(AlarmId* out, uint8_t max, uint32_t 
     portENTER_CRITICAL(&slotsMux_);
     for (uint16_t i = 0; i < Limits::Alarm::MaxAlarms && count < max; ++i) {
         AlarmSlot& s = slots_[i];
-        if (!s.used || !s.notifyPending) continue;
+        if (!s.used || !s.active || s.lastCond != AlarmCondState::True) continue;
         const uint32_t minRepeatMs = s.def.minRepeatMs;
-        if (minRepeatMs == 0U || delayReached_(s.lastNotifyMs, minRepeatMs, nowMs)) {
-            s.notifyPending = false;
+        if (minRepeatMs > 0U &&
+            s.lastNotifyMs != 0U &&
+            delayReached_(s.lastNotifyMs, minRepeatMs, nowMs)) {
             s.lastNotifyMs = nowMs;
             out[count++] = s.id;
         }
@@ -221,6 +210,7 @@ bool AlarmModule::reset_(AlarmId id)
             s.active = false;
             s.offSinceMs = 0U;
             s.lastChangeMs = nowMs;
+            s.lastNotifyMs = nowMs;
             postReset = true;
         } else {
             resetCond = s.lastCond;
@@ -716,7 +706,7 @@ void AlarmModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 void AlarmModule::evaluateOnce_(uint32_t nowMs)
 {
     AlarmId dueNotifyIds[Limits::Alarm::MaxAlarms]{};
-    const uint8_t dueNotifyCount = takeDueAlarmNotifyIds_(dueNotifyIds, (uint8_t)Limits::Alarm::MaxAlarms, nowMs);
+    const uint8_t dueNotifyCount = takeDueAlarmReminderIds_(dueNotifyIds, (uint8_t)Limits::Alarm::MaxAlarms, nowMs);
     for (uint8_t i = 0; i < dueNotifyCount; ++i) {
         emitAlarmEvent_(EventId::AlarmConditionChanged, dueNotifyIds[i]);
     }
@@ -818,21 +808,15 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
             LOGI("Alarm cleared id=%u code=%s cond=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?", condStateStr_(cond));
         }
 
-        bool postNotify = false;
-        EventId notifyEvent = EventId::AlarmConditionChanged;
         if (postRaised) {
-            postNotify = true;
-            notifyEvent = EventId::AlarmRaised;
+            noteAlarmNotified_(id, nowMs);
+            emitAlarmEvent_(EventId::AlarmRaised, id);
         } else if (postCleared) {
-            postNotify = true;
-            notifyEvent = EventId::AlarmCleared;
+            noteAlarmNotified_(id, nowMs);
+            emitAlarmEvent_(EventId::AlarmCleared, id);
         } else if (postCondTrue || postCondFalse) {
-            postNotify = true;
-            notifyEvent = EventId::AlarmConditionChanged;
-        }
-
-        if (postNotify && allowAlarmNotifyNow_(id, nowMs)) {
-            emitAlarmEvent_(notifyEvent, id);
+            noteAlarmNotified_(id, nowMs);
+            emitAlarmEvent_(EventId::AlarmConditionChanged, id);
         }
     }
 }
