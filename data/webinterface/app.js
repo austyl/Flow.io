@@ -375,7 +375,12 @@
         if (typeof data.web_asset_version === 'string') {
           const announcedVersion = data.web_asset_version.trim();
           if (announcedVersion) {
+            const previousVersion = (webAssetVersion || '').trim();
             webAssetVersion = announcedVersion;
+            if (previousVersion && previousVersion !== announcedVersion) {
+              runtimeManifestDomainCache = null;
+              runtimeManifestDomainLoadPromise = null;
+            }
             setStorageValue(localStorage, flowWebAssetVersionStorageKey, announcedVersion);
             if (loadedWebAssetVersion && loadedWebAssetVersion !== announcedVersion) {
               const reloadKey = 'flow_web_asset_reload_once';
@@ -702,6 +707,12 @@
     let flowStatusReqSeq = 0;
     const fieldApplyCheckIcon = '✓';
     const flowStatusDomainTtlMs = 20000;
+    const flowStatusDashboardRuntimeUiIds = Object.freeze({
+      waterTemp: 2101,
+      airTemp: 2102,
+      ph: 2103,
+      orp: 2104
+    });
     const flowStatusDomainKeys = ['system', 'wifi', 'mqtt', 'pool', 'i2c'];
     const flowStatusDomainCache = {
       system: { data: null, fetchedAt: 0 },
@@ -710,6 +721,7 @@
       pool: { data: null, fetchedAt: 0 },
       i2c: { data: null, fetchedAt: 0 }
     };
+    const flowStatusDashboardSlotsCache = { data: [], fetchedAt: 0 };
     const runtimeMeasureDomainKeys = ['pool', 'mqtt', 'system', 'wifi', 'alarm'];
     let runtimeManifestDomainCache = null;
     let runtimeManifestDomainLoadPromise = null;
@@ -2073,7 +2085,7 @@
       return '-';
     }
 
-    function buildFlowStatusFromDomains(domainData) {
+    function buildFlowStatusFromDomains(domainData, dashboardSlots) {
       const merged = { ok: true };
       let anyDomainOk = false;
 
@@ -2109,6 +2121,10 @@
         merged.i2c = i2c.i2c;
       }
 
+      if (Array.isArray(dashboardSlots)) {
+        merged.dashboardSlots = dashboardSlots;
+      }
+
       return anyDomainOk ? merged : null;
     }
 
@@ -2117,7 +2133,7 @@
       flowStatusDomainKeys.forEach((domainKey) => {
         domainData[domainKey] = flowStatusDomainCache[domainKey].data;
       });
-      return buildFlowStatusFromDomains(domainData);
+      return buildFlowStatusFromDomains(domainData, flowStatusDashboardSlotsCache.data);
     }
 
     async function fetchFlowStatusDomain(domainKey, forceRefresh) {
@@ -2234,6 +2250,7 @@
       const wifi = (data && typeof data.wifi === 'object') ? data.wifi : {};
       const mqtt = (data && typeof data.mqtt === 'object') ? data.mqtt : {};
       const pool = (data && typeof data.pool === 'object') ? data.pool : {};
+      const dashboardSlots = Array.isArray(data && data.dashboardSlots) ? data.dashboardSlots : [];
       const heap = (data && data.heap && typeof data.heap === 'object') ? data.heap : {};
       const i2c = (data && data.i2c && typeof data.i2c === 'object') ? data.i2c : {};
       const firmware = fmtFlowStatusVal(data.fw);
@@ -2279,9 +2296,20 @@
         supervisorFirmwareVersion !== '-' ||
         supervisorUptimeMs > 0 ||
         supervisorHeapFree !== null;
+      const dashboardLabelByRuntimeUiId = new Map();
+      dashboardSlots.forEach((slot) => {
+        const runtimeUiId = dashboardSlotRuntimeUiId(slot);
+        const label = (slot && typeof slot.label === 'string') ? slot.label.trim() : '';
+        if (!runtimeUiId || !label || dashboardLabelByRuntimeUiId.has(runtimeUiId)) return;
+        dashboardLabelByRuntimeUiId.set(runtimeUiId, label);
+      });
+      const waterTempLabel = dashboardLabelByRuntimeUiId.get(flowStatusDashboardRuntimeUiIds.waterTemp) || 'Temperature eau';
+      const airTempLabel = dashboardLabelByRuntimeUiId.get(flowStatusDashboardRuntimeUiIds.airTemp) || 'Temperature air';
+      const phLabel = dashboardLabelByRuntimeUiId.get(flowStatusDashboardRuntimeUiIds.ph) || 'pH';
+      const orpLabel = dashboardLabelByRuntimeUiId.get(flowStatusDashboardRuntimeUiIds.orp) || 'ORP';
       const poolGaugeNodes = [
         buildFlowArcGauge({
-          label: 'Temperature eau',
+          label: waterTempLabel,
           value: waterTemp,
           min: 0,
           max: 40,
@@ -2297,7 +2325,7 @@
           })
         }),
         buildFlowArcGauge({
-          label: 'Temperature air',
+          label: airTempLabel,
           value: airTemp,
           min: -10,
           max: 45,
@@ -2313,7 +2341,7 @@
           })
         }),
         buildFlowArcGauge({
-          label: 'pH',
+          label: phLabel,
           value: phValue,
           min: 6.4,
           max: 8.4,
@@ -2328,7 +2356,7 @@
           })
         }),
         buildFlowArcGauge({
-          label: 'ORP',
+          label: orpLabel,
           value: orpValue,
           min: 350,
           max: 900,
@@ -2476,8 +2504,9 @@
           domainData[domainKey] = await fetchFlowStatusDomain(domainKey, !!forceRefresh);
           if (reqSeq !== flowStatusReqSeq) return;
         }
+        const dashboardSlots = await fetchFlowStatusDashboardSlots(!!forceRefresh).catch(() => []);
         if (reqSeq !== flowStatusReqSeq) return;
-        const data = buildFlowStatusFromDomains(domainData);
+        const data = buildFlowStatusFromDomains(domainData, dashboardSlots);
         if (!data) throw new Error('statut indisponible');
         renderFlowStatus(data);
       } catch (err) {
@@ -2723,9 +2752,66 @@
       return Array.isArray(data.slots) ? data.slots : [];
     }
 
+    function dashboardSlotRuntimeUiId(slot) {
+      if (!slot || typeof slot !== 'object') return 0;
+      const raw = slot.runtime_ui_id ?? slot.runtimeUiId ?? 0;
+      const id = Number(raw);
+      return Number.isFinite(id) && id > 0 ? id : 0;
+    }
+
+    async function fetchFlowStatusDashboardSlots(forceRefresh) {
+      const now = Date.now();
+      const cacheValid = Array.isArray(flowStatusDashboardSlotsCache.data) &&
+        ((now - flowStatusDashboardSlotsCache.fetchedAt) < flowStatusDomainTtlMs);
+      if (!forceRefresh && cacheValid) {
+        return flowStatusDashboardSlotsCache.data;
+      }
+
+      try {
+        const slots = await fetchPoolDashboardSlots();
+        flowStatusDashboardSlotsCache.data = Array.isArray(slots) ? slots : [];
+        flowStatusDashboardSlotsCache.fetchedAt = Date.now();
+        return flowStatusDashboardSlotsCache.data;
+      } catch (err) {
+        if (Array.isArray(flowStatusDashboardSlotsCache.data) && flowStatusDashboardSlotsCache.data.length) {
+          return flowStatusDashboardSlotsCache.data;
+        }
+        throw err;
+      }
+    }
+
     function isPoolDashboardSondesEntry(entry) {
       if (!entry || String(entry.domain || '').trim().toLowerCase() !== 'pool') return false;
       return String(entry.group || '').trim().localeCompare('Sondes', 'fr', { sensitivity: 'base' }) === 0;
+    }
+
+    function poolDashboardSlotDisplayParts(slot) {
+      const available = !!(slot && slot.available);
+      const unit = (slot && typeof slot.unit === 'string') ? slot.unit.trim() : '';
+      const rawValue = (slot && typeof slot.value === 'string') ? slot.value.trim() : '';
+      if (!available) {
+        return { valueText: '--', unitText: '' };
+      }
+      if (!rawValue) {
+        return { valueText: '-', unitText: '' };
+      }
+      if (!unit) {
+        return { valueText: rawValue, unitText: '' };
+      }
+
+      const suffix = ' ' + unit;
+      if (rawValue.length > suffix.length && rawValue.endsWith(suffix)) {
+        return {
+          valueText: rawValue.slice(0, rawValue.length - suffix.length).trim(),
+          unitText: unit
+        };
+      }
+      return { valueText: rawValue, unitText: unit };
+    }
+
+    function dashboardSlotBgColor(slot) {
+      const color = (slot && typeof slot.bg_color === 'string') ? slot.bg_color.trim() : '';
+      return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : '';
     }
 
     function buildPoolDashboardSlotsCard(slots) {
@@ -2739,25 +2825,71 @@
       heading.textContent = formatRuntimeGroupCardTitle('pool', 'Sondes');
       card.appendChild(heading);
 
-      const kv = document.createElement('div');
-      kv.className = 'status-kv';
+      const grid = document.createElement('div');
+      grid.className = 'status-dashboard-slot-grid';
       cleanSlots.forEach((slot) => {
         const label = (slot && typeof slot.label === 'string') ? slot.label.trim() : '';
-        const value = (slot && typeof slot.value === 'string') ? slot.value.trim() : '';
-        if (!label && !value) return;
-        appendFlowStatusRow(
-          kv,
-          label,
-          value
-        );
+        const display = poolDashboardSlotDisplayParts(slot);
+        if (!label && !display.valueText && !display.unitText) return;
+
+        const tile = document.createElement('div');
+        tile.className = 'status-dashboard-slot';
+        if (!(slot && slot.available)) tile.classList.add('is-empty');
+        const bgColor = dashboardSlotBgColor(slot);
+        if (bgColor) {
+          tile.style.background = bgColor;
+        }
+
+        const title = document.createElement('div');
+        title.className = 'status-dashboard-slot-title';
+        title.textContent = label || 'Mesure';
+        tile.appendChild(title);
+
+        const metric = document.createElement('div');
+        metric.className = 'status-dashboard-slot-metric';
+
+        const value = document.createElement('span');
+        value.className = 'status-dashboard-slot-value';
+        value.textContent = display.valueText || '-';
+        metric.appendChild(value);
+
+        if (display.unitText) {
+          const unit = document.createElement('span');
+          unit.className = 'status-dashboard-slot-unit';
+          unit.textContent = display.unitText;
+          metric.appendChild(unit);
+        }
+
+        tile.appendChild(metric);
+        grid.appendChild(tile);
       });
-      if (!kv.childNodes.length) return null;
-      card.appendChild(kv);
+      if (!grid.childNodes.length) return null;
+      card.appendChild(grid);
       return card;
+    }
+
+    function buildDashboardSlotLabelByRuntimeUiId(slots) {
+      const labelByRuntimeUiId = new Map();
+      (Array.isArray(slots) ? slots : []).forEach((slot) => {
+        const runtimeUiId = dashboardSlotRuntimeUiId(slot);
+        const label = (slot && typeof slot.label === 'string') ? slot.label.trim() : '';
+        if (!runtimeUiId || !label || labelByRuntimeUiId.has(runtimeUiId)) return;
+        labelByRuntimeUiId.set(runtimeUiId, label);
+      });
+      return labelByRuntimeUiId;
     }
 
     function runtimeMeasureDisplayLabel(entry) {
       return entry.label || entry.key || String(entry.id);
+    }
+
+    function runtimeMeasureResolvedLabel(entry, options) {
+      const opts = options && typeof options === 'object' ? options : {};
+      if (typeof opts.displayLabelResolver === 'function') {
+        const resolved = String(opts.displayLabelResolver(entry) || '').trim();
+        if (resolved) return resolved;
+      }
+      return runtimeMeasureDisplayLabel(entry);
     }
 
     function formatRuntimeFloatValue(value, decimals) {
@@ -2826,7 +2958,7 @@
         : {};
     }
 
-    function buildRuntimeMeasureCircGaugeNode(entry, runtimeValue) {
+    function buildRuntimeMeasureCircGaugeNode(entry, runtimeValue, options) {
       const displayConfig = runtimeMeasureDisplayConfig(entry);
       let bands = [];
       let min = Number(displayConfig.min);
@@ -2848,7 +2980,7 @@
         : runtimeValue.value;
 
       return buildFlowArcGauge({
-        label: String(runtimeMeasureDisplayLabel(entry) || 'Mesure'),
+        label: String(runtimeMeasureResolvedLabel(entry, options) || 'Mesure'),
         value: value,
         min: min,
         max: max,
@@ -2864,19 +2996,21 @@
       return buildFlowRssiGauge(hasValue ? Number(runtimeValue.value) : null, hasValue);
     }
 
-    function buildRuntimeMeasureBooleanNode(entry, runtimeValue) {
+    function buildRuntimeMeasureBooleanNode(entry, runtimeValue, options) {
       const displayConfig = runtimeMeasureDisplayConfig(entry);
+      const opts = options && typeof options === 'object' ? options : {};
       const value = (!runtimeValue || runtimeValue.status === 'not_found' || runtimeValue.status === 'unavailable')
         ? null
         : (typeof runtimeValue.value === 'boolean' ? runtimeValue.value : null);
+      const booleanTexts = (opts.booleanTexts && typeof opts.booleanTexts === 'object') ? opts.booleanTexts : {};
 
       return buildFlowReadonlyStateTile(
-        String(runtimeMeasureDisplayLabel(entry) || 'Etat'),
+        String(runtimeMeasureResolvedLabel(entry, opts) || 'Etat'),
         value,
         {
-          activeText: displayConfig.activeText,
-          inactiveText: displayConfig.inactiveText,
-          unknownText: displayConfig.unknownText
+          activeText: booleanTexts.activeText || displayConfig.activeText,
+          inactiveText: booleanTexts.inactiveText || displayConfig.inactiveText,
+          unknownText: booleanTexts.unknownText || displayConfig.unknownText
         }
       );
     }
@@ -2944,6 +3078,34 @@
       return Math.trunc(value);
     }
 
+    function mergeRuntimeAlarmFlags(entries) {
+      const byMask = new Map();
+
+      (entries || []).forEach((entry) => {
+        normalizeRuntimeMeasureFlags(entry).forEach((flag) => {
+          if (!flag || !Number.isFinite(Number(flag.mask))) return;
+          const mask = Math.trunc(Number(flag.mask));
+          if (mask <= 0) return;
+          const existing = byMask.get(mask);
+          if (!existing) {
+            byMask.set(mask, flag);
+            return;
+          }
+          if ((!existing.label || !existing.label.trim()) && flag.label && flag.label.trim()) {
+            byMask.set(mask, flag);
+          }
+        });
+      });
+
+      return Array.from(byMask.values())
+        .sort((left, right) => {
+          const leftOrder = Number.isFinite(Number(left && left.order)) ? Number(left.order) : 9999;
+          const rightOrder = Number.isFinite(Number(right && right.order)) ? Number(right.order) : 9999;
+          if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+          return Number(left.mask) - Number(right.mask);
+        });
+    }
+
     function buildRuntimeMeasureFlagCell(value, label, columnLabel) {
       const known = typeof value === 'boolean';
       const state = known ? (value ? 'is-true' : 'is-false') : 'is-empty';
@@ -2955,6 +3117,88 @@
         label + ' / ' + columnLabel + ' : ' + (known ? (value ? 'oui' : 'non') : 'indisponible')
       );
       return marker;
+    }
+
+    function isRuntimeAlarmGroup(group) {
+      if (!group) return false;
+      if (String(group.domainKey || '').trim().toLowerCase() !== 'alarm') return false;
+      return String(group.groupKey || '').trim().localeCompare('Alarmes', 'fr', { sensitivity: 'base' }) === 0;
+    }
+
+    function buildRuntimeAlarmStateNode(value) {
+      const known = typeof value === 'boolean';
+      const node = document.createElement('div');
+      node.className = 'status-alarm-slot-state ' + (known ? (value ? 'is-true' : 'is-false') : 'is-empty');
+
+      const dot = document.createElement('span');
+      dot.className = 'status-state-dot';
+      node.appendChild(dot);
+
+      const text = document.createElement('span');
+      text.className = 'status-alarm-slot-state-text';
+      text.textContent = known ? (value ? 'Déclenchée' : 'OK') : 'Indispo';
+      node.appendChild(text);
+      return node;
+    }
+
+    function buildRuntimeAlarmConditionNode(value) {
+      const known = typeof value === 'boolean';
+      const node = document.createElement('div');
+      node.className = 'status-alarm-slot-condition ' + (known ? (value ? 'is-true' : 'is-false') : 'is-empty');
+      node.textContent = known ? ('Statut: ' + (value ? 'KO' : 'OK')) : 'Statut: ?';
+      return node;
+    }
+
+    function buildRuntimeAlarmGrid(entries, valueById) {
+      const columnsByRole = new Map();
+      const flagDefs = mergeRuntimeAlarmFlags(entries);
+
+      (entries || []).forEach((entry) => {
+        const role = runtimeMeasureFlagRole(entry);
+        if (!role || columnsByRole.has(role)) return;
+        columnsByRole.set(role, entry);
+      });
+
+      const activeEntry = columnsByRole.get('active') || null;
+      const conditionEntry = columnsByRole.get('condition') || null;
+      if (!flagDefs.length || (!activeEntry && !conditionEntry)) return null;
+
+      const activeMaskValue = activeEntry ? runtimeMeasureMaskValue(valueById.get(Number(activeEntry.id))) : null;
+      const conditionMaskValue = conditionEntry ? runtimeMeasureMaskValue(valueById.get(Number(conditionEntry.id))) : null;
+      const maxSlots = 8;
+
+      const grid = document.createElement('div');
+      grid.className = 'status-alarm-slot-grid';
+
+      for (let index = 0; index < maxSlots; index += 1) {
+        const flag = flagDefs[index] || null;
+        const tile = document.createElement('div');
+        tile.className = 'status-alarm-slot';
+
+        if (!flag) {
+          tile.classList.add('is-empty');
+          grid.appendChild(tile);
+          continue;
+        }
+
+        const title = document.createElement('div');
+        title.className = 'status-alarm-slot-title';
+        title.textContent = flag.label;
+        tile.appendChild(title);
+
+        const footer = document.createElement('div');
+        footer.className = 'status-alarm-slot-row';
+
+        const activeValue = activeMaskValue === null ? null : ((activeMaskValue & flag.mask) !== 0);
+        const conditionValue = conditionMaskValue === null ? null : ((conditionMaskValue & flag.mask) !== 0);
+        footer.appendChild(buildRuntimeAlarmStateNode(activeValue));
+        footer.appendChild(buildRuntimeAlarmConditionNode(conditionValue));
+
+        tile.appendChild(footer);
+        grid.appendChild(tile);
+      }
+
+      return grid;
     }
 
     function buildRuntimeMeasureFlagsTable(entries, valueById) {
@@ -3018,8 +3262,10 @@
       return table;
     }
 
-    function buildPoolMeasureCards(entries, values) {
+    function buildPoolMeasureCards(entries, values, options) {
       const fragment = document.createDocumentFragment();
+      const opts = options && typeof options === 'object' ? options : {};
+      const dashboardLabelByRuntimeUiId = buildDashboardSlotLabelByRuntimeUiId(opts.dashboardSlots);
       const valueById = new Map();
       (values || []).forEach((item) => {
         const id = Number(item && item.id);
@@ -3048,6 +3294,28 @@
           'status-card status-card-runtime'
           + ' status-card-runtime-domain-' + runtimeMeasureCssSlug(group.domainKey)
           + ' status-card-runtime-group-' + runtimeMeasureCssSlug(group.groupKey);
+        const isPoolModeGroup =
+          String(group.domainKey || '').trim().toLowerCase() === 'pool' &&
+          String(group.groupKey || '').trim().localeCompare('Mode', 'fr', { sensitivity: 'base' }) === 0;
+        const isPoolDashboardGroup =
+          String(group.domainKey || '').trim().toLowerCase() === 'pool' &&
+          String(group.groupKey || '').trim().localeCompare('Dashboard', 'fr', { sensitivity: 'base' }) === 0;
+        const groupDisplayOptions = {
+          displayLabelResolver: (entry) => {
+            if (isPoolDashboardGroup) {
+              const runtimeUiId = Number(entry && (entry.runtimeId ?? entry.runtime_ui_id ?? entry.id));
+              const override = dashboardLabelByRuntimeUiId.get(runtimeUiId);
+              if (override) return override;
+            }
+            return runtimeMeasureDisplayLabel(entry);
+          },
+          booleanTexts: isPoolModeGroup
+            ? {
+              activeText: 'Marche',
+              inactiveText: 'Arrêt'
+            }
+            : null
+        };
 
         const heading = document.createElement('h3');
         heading.textContent = group.name;
@@ -3067,7 +3335,7 @@
             return;
           }
           if (display === 'circ-gauge') {
-            const gaugeNode = buildRuntimeMeasureCircGaugeNode(entry, runtimeValue);
+            const gaugeNode = buildRuntimeMeasureCircGaugeNode(entry, runtimeValue, groupDisplayOptions);
             if (gaugeNode) {
               circGaugeNodes.push(gaugeNode);
               return;
@@ -3075,13 +3343,13 @@
           }
           if (display === 'horiz-gauge') {
             horizGaugeRows.push([
-              runtimeMeasureDisplayLabel(entry),
+              runtimeMeasureResolvedLabel(entry, groupDisplayOptions),
               buildRuntimeMeasureHorizGaugeNode(entry, runtimeValue)
             ]);
             return;
           }
           if (display === 'boolean') {
-            booleanNodes.push(buildRuntimeMeasureBooleanNode(entry, runtimeValue));
+            booleanNodes.push(buildRuntimeMeasureBooleanNode(entry, runtimeValue, groupDisplayOptions));
             return;
           }
           if (display === 'flags') {
@@ -3089,7 +3357,7 @@
             return;
           }
           valueRows.push([
-            runtimeMeasureDisplayLabel(entry),
+            runtimeMeasureResolvedLabel(entry, groupDisplayOptions),
             formatRuntimeMeasureValue(entry, runtimeValue)
           ]);
         });
@@ -3112,8 +3380,18 @@
         }
 
         if (flagEntries.length) {
-          const flagTable = buildRuntimeMeasureFlagsTable(flagEntries, valueById);
-          if (flagTable) card.appendChild(flagTable);
+          if (isRuntimeAlarmGroup(group)) {
+            const alarmGrid = buildRuntimeAlarmGrid(flagEntries, valueById);
+            if (alarmGrid) {
+              card.appendChild(alarmGrid);
+            } else {
+              const flagTable = buildRuntimeMeasureFlagsTable(flagEntries, valueById);
+              if (flagTable) card.appendChild(flagTable);
+            }
+          } else {
+            const flagTable = buildRuntimeMeasureFlagsTable(flagEntries, valueById);
+            if (flagTable) card.appendChild(flagTable);
+          }
         }
 
         if (horizGaugeRows.length || valueRows.length) {
@@ -3214,6 +3492,14 @@
       return animation;
     }
 
+    function poolMeasureDomainHasRenderableData(domainKey, state) {
+      const cleanDomain = normalizeRuntimeMeasureDomainKey(domainKey);
+      const domainState = state && typeof state === 'object' ? state : null;
+      if (!cleanDomain || !domainState) return false;
+      if (Array.isArray(domainState.entries) && domainState.entries.length > 0) return true;
+      return cleanDomain === 'pool' && Array.isArray(domainState.dashboardSlots) && domainState.dashboardSlots.length > 0;
+    }
+
     function renderPoolMeasuresGrid() {
       if (!poolMeasuresGrid) return;
       poolMeasuresGrid.innerHTML = '';
@@ -3231,7 +3517,8 @@
       activeDomains.forEach((domainKey) => {
         const state = poolMeasureDomainState[domainKey];
         const hasDashboardSlots = cleanDomainName => cleanDomainName === 'pool' && Array.isArray(state.dashboardSlots) && state.dashboardSlots.length > 0;
-        if (state.loading) {
+        const hasRenderableData = poolMeasureDomainHasRenderableData(domainKey, state);
+        if (state.loading && !hasRenderableData) {
           const card = document.createElement('div');
           card.className = 'status-card';
           const heading = document.createElement('h3');
@@ -3245,7 +3532,7 @@
           renderedCardCount += 1;
           return;
         }
-        if (state.error) {
+        if (state.error && !hasRenderableData) {
           const card = document.createElement('div');
           card.className = 'status-card';
           const heading = document.createElement('h3');
@@ -3280,7 +3567,7 @@
             renderedCardCount += 1;
           }
         }
-        const cards = buildPoolMeasureCards(state.entries, state.values);
+        const cards = buildPoolMeasureCards(state.entries, state.values, { dashboardSlots: state.dashboardSlots });
         renderedCardCount += cards.childNodes.length;
         poolMeasuresGrid.appendChild(cards);
       });
@@ -3341,11 +3628,17 @@
       if (!cleanDomain) return;
       const state = poolMeasureDomainState[cleanDomain];
       if (!state.active) return;
+      const hadRenderableData = poolMeasureDomainHasRenderableData(cleanDomain, state);
       const requestSeq = state.requestSeq + 1;
       state.requestSeq = requestSeq;
       state.loading = true;
       state.error = '';
-      refreshPoolMeasuresView();
+      if (hadRenderableData) {
+        renderPoolMeasureDomainButtons();
+        refreshPoolMeasuresStatus();
+      } else {
+        refreshPoolMeasuresView();
+      }
 
       try {
         const allEntries = await runtimeMeasureEntriesForDomain(cleanDomain, !!forceRefresh);
@@ -3364,9 +3657,11 @@
         state.error = '';
       } catch (err) {
         if (state.requestSeq !== requestSeq) return;
-        state.entries = [];
-        state.values = [];
-        state.dashboardSlots = [];
+        if (!hadRenderableData) {
+          state.entries = [];
+          state.values = [];
+          state.dashboardSlots = [];
+        }
         state.error = 'Chargement ' + formatRuntimeDomainLabel(cleanDomain) + ' echoue: ' + err;
       } finally {
         if (state.requestSeq === requestSeq) {

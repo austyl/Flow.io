@@ -96,6 +96,18 @@ AlarmCondState PoolLogicModule::condChlorineTankLowStatic_(void* ctx, uint32_t)
     return low ? AlarmCondState::True : AlarmCondState::False;
 }
 
+AlarmCondState PoolLogicModule::condWaterLevelLowStatic_(void* ctx, uint32_t)
+{
+    PoolLogicModule* self = static_cast<PoolLogicModule*>(ctx);
+    if (!self || !self->enabled_) return AlarmCondState::False;
+
+    bool levelOk = false;
+    if (!self->loadDigitalSensor_(self->levelIoId_, levelOk)) {
+        return AlarmCondState::Unknown;
+    }
+    return levelOk ? AlarmCondState::False : AlarmCondState::True;
+}
+
 AlarmCondState PoolLogicModule::condPhPumpMaxUptimeStatic_(void* ctx, uint32_t)
 {
     PoolLogicModule* self = static_cast<PoolLogicModule*>(ctx);

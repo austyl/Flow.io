@@ -709,10 +709,165 @@
       width: 100%;
     }
     .status-card-runtime-group-mode > h3 + .status-state-grid,
-    .status-card-runtime-group-sondes > h3 + .status-kv,
-    .status-card-runtime-group-alarmes > h3 + .status-flag-table,
+    .status-card-runtime-group-sondes > h3 + .status-dashboard-slot-grid,
+    .status-card-runtime-group-alarmes > h3 + .status-alarm-slot-grid,
     .status-card-runtime-group-systeme > h3 + .status-kv {
       margin-top: 14px;
+    }
+    .status-dashboard-slot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .status-dashboard-slot {
+      min-width: 0;
+      min-height: 60px;
+      border: 1px solid var(--panel-frame-border);
+      border-radius: 12px;
+      background: var(--panel-soft-bg);
+      padding: 9px 11px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .status-dashboard-slot-title {
+      min-width: 0;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--panel-frame-title);
+      text-align: left;
+      align-self: start;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .status-dashboard-slot-metric {
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 4px;
+      min-width: 0;
+      align-self: end;
+      max-width: 100%;
+    }
+    .status-dashboard-slot-value {
+      min-width: 0;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      color: var(--panel-frame-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-dashboard-slot-unit {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--panel-frame-title);
+      white-space: nowrap;
+    }
+    .status-dashboard-slot.is-empty .status-dashboard-slot-value {
+      color: var(--state-muted-fg);
+    }
+    .status-alarm-slot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .status-alarm-slot {
+      min-width: 0;
+      min-height: 60px;
+      border: 1px solid var(--panel-frame-border);
+      border-radius: 12px;
+      background: var(--panel-soft-bg);
+      padding: 9px 11px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 6px;
+    }
+    .status-alarm-slot.is-empty {
+      background:
+        linear-gradient(135deg, rgba(162, 184, 201, 0.08), rgba(162, 184, 201, 0.02));
+      border-style: dashed;
+      opacity: 0.72;
+    }
+    .status-alarm-slot-title {
+      min-width: 0;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--panel-frame-title);
+      text-align: left;
+      text-wrap: balance;
+    }
+    .status-alarm-slot-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      min-width: 0;
+      align-self: end;
+    }
+    .status-alarm-slot-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--state-muted-fg);
+    }
+    .status-alarm-slot-state.is-true {
+      color: var(--state-alert-fg);
+    }
+    .status-alarm-slot-state.is-true .status-state-dot {
+      background: var(--state-alert-fg);
+      box-shadow: 0 0 0 4px var(--state-alert-ring);
+    }
+    .status-alarm-slot-state.is-false {
+      color: var(--state-ok-fg);
+    }
+    .status-alarm-slot-state.is-false .status-state-dot {
+      background: var(--state-ok-fg);
+      box-shadow: 0 0 0 4px rgba(47, 158, 104, 0.18);
+    }
+    .status-alarm-slot-state.is-empty {
+      color: var(--state-muted-fg);
+    }
+    .status-alarm-slot-state.is-empty .status-state-dot {
+      background: var(--state-muted-bg);
+      box-shadow: 0 0 0 4px var(--state-muted-ring);
+    }
+    .status-alarm-slot-state-text {
+      white-space: nowrap;
+    }
+    .status-alarm-slot-condition {
+      flex: 0 0 auto;
+      max-width: 56%;
+      border-radius: 999px;
+      padding: 3px 6px;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+      text-align: right;
+      color: var(--state-muted-fg);
+      background: rgba(162, 184, 201, 0.14);
+    }
+    .status-alarm-slot-condition.is-true {
+      color: var(--state-alert-fg);
+      background: rgba(235, 87, 87, 0.14);
+    }
+    .status-alarm-slot-condition.is-false {
+      color: var(--state-ok-fg);
+      background: rgba(47, 158, 104, 0.14);
     }
     .status-flag-table {
       width: 100%;
@@ -782,10 +937,11 @@
     }
     .status-state-tile {
       min-width: 0;
+      min-height: 60px;
       border: 1px solid var(--panel-frame-border);
       border-radius: 12px;
       background: var(--panel-soft-bg);
-      padding: 10px;
+      padding: 11px 12px;
       display: grid;
       gap: 6px;
     }
@@ -869,14 +1025,15 @@
       margin-top: 12px;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 6px;
+      gap: 8px;
       width: 100%;
     }
     .status-arc-gauge {
       border: 1px solid var(--panel-frame-border);
       border-radius: 10px;
       background: var(--panel-soft-bg);
-      padding: 4px 4px 5px 4px;
+      min-height: 126px;
+      padding: 8px 8px 7px 8px;
       min-width: 0;
       display: grid;
       gap: 0;
@@ -885,13 +1042,13 @@
       display: none;
     }
     .status-arc-gauge-title {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       color: var(--panel-frame-title);
       line-height: 1.15;
       text-align: center;
       white-space: nowrap;
-      margin-top: -12px;
+      margin-top: -6px;
     }
     .status-arc-gauge-reading {
       font-size: 9px;
@@ -920,14 +1077,14 @@
     .status-arc-gauge-marker {
     }
     .status-arc-gauge-value {
-      font-size: 21px;
+      font-size: 24px;
       font-weight: 800;
       text-anchor: middle;
       dominant-baseline: middle;
     }
     .status-arc-gauge-unit {
       fill: #7B8897;
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-anchor: middle;

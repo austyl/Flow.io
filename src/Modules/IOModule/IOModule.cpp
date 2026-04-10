@@ -1048,16 +1048,18 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
         float* lastConfigTotal = counterConfigTotalState_(slot.logicalIdx);
         if (cfg && lastConfigTotal && *lastConfigTotal != cfg->counterTotal) {
             slot.counterScaledTotal = cfg->counterTotal;
+            slot.counterLastPersistedTotal = cfg->counterTotal;
             *lastConfigTotal = cfg->counterTotal;
             slot.counterLastRawCount = rawCount;
             slot.counterLastFlushedRawCount = rawCount;
+            slot.counterLastPersistMs = nowMs;
         }
 
         const int32_t delta = rawCount - slot.counterLastRawCount;
         if (delta > 0) {
             slot.counterScaledTotal += ((float)delta * c0);
             slot.counterLastRawCount = rawCount;
-            (void)persistCounterTotalIfNeeded_(slot, rawCount);
+            (void)persistCounterTotalIfNeeded_(slot, rawCount, nowMs);
         } else if (delta < 0) {
             slot.counterLastRawCount = rawCount;
             slot.counterLastFlushedRawCount = rawCount;
@@ -1651,14 +1653,27 @@ bool IOModule::resolveDsBusAddress_(OneWireBus* bus, const char* runtimeKey, uin
     return true;
 }
 
-bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount)
+bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount, uint32_t nowMs)
 {
     static constexpr int32_t kCounterPersistPulseDelta = 32;
+    static constexpr uint32_t kCounterPersistPeriodMs = 180000U;
 
     if (!cfgStore_) return false;
     if (slot.kind != DIGITAL_SLOT_INPUT || slot.inDef.mode != IO_DIGITAL_INPUT_COUNTER) return false;
-    if (rawCount < slot.counterLastFlushedRawCount) return false;
-    if ((rawCount - slot.counterLastFlushedRawCount) < kCounterPersistPulseDelta) return false;
+    if (slot.counterScaledTotal == slot.counterLastPersistedTotal) return false;
+
+    bool shouldPersist = false;
+    if (rawCount >= slot.counterLastFlushedRawCount &&
+        (rawCount - slot.counterLastFlushedRawCount) >= kCounterPersistPulseDelta) {
+        shouldPersist = true;
+    }
+    if (!shouldPersist &&
+        slot.counterLastPersistMs != 0U &&
+        (uint32_t)(nowMs - slot.counterLastPersistMs) >= kCounterPersistPeriodMs) {
+        shouldPersist = true;
+    }
+    if (!shouldPersist) return false;
+
     ConfigVariable<float,0>* totalVar = counterTotalVar_(slot.logicalIdx);
     if (!totalVar) return false;
 
@@ -1668,7 +1683,9 @@ bool IOModule::persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount)
     if (float* lastConfigTotal = counterConfigTotalState_(slot.logicalIdx)) {
         *lastConfigTotal = slot.counterScaledTotal;
     }
+    slot.counterLastPersistedTotal = slot.counterScaledTotal;
     slot.counterLastFlushedRawCount = rawCount;
+    slot.counterLastPersistMs = nowMs;
     return true;
 }
 
@@ -1807,8 +1824,10 @@ bool IOModule::configureRuntime_()
                 }
                 s.counterScaledTotal = configTotal;
                 s.counterScaledTotal += ((float)initialRawCount * c0);
+                s.counterLastPersistedTotal = configTotal;
                 s.counterLastRawCount = initialRawCount;
                 s.counterLastFlushedRawCount = initialRawCount;
+                s.counterLastPersistMs = millis();
                 s.lastValid = false;
                 const float scaledValue = ioRoundToPrecision(s.counterScaledTotal, precision);
                 static_cast<DigitalSensorEndpoint*>(s.endpoint)->updateFloat(scaledValue, true, millis());

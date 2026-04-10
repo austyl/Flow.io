@@ -40,6 +40,10 @@
         {
           "mask": 32,
           "label": "Max Uptime atteint Pompe Orp"
+        },
+        {
+          "mask": 64,
+          "label": "Niveau eau bas"
         }
       ],
       "display": "flags",
@@ -87,6 +91,10 @@
         {
           "mask": 32,
           "label": "Max Uptime atteint Pompe Orp"
+        },
+        {
+          "mask": 64,
+          "label": "Niveau eau bas"
         }
       ],
       "display": "flags",
@@ -134,6 +142,10 @@
         {
           "mask": 32,
           "label": "Max Uptime atteint Pompe Orp"
+        },
+        {
+          "mask": 64,
+          "label": "Niveau eau bas"
         }
       ],
       "display": "flags",

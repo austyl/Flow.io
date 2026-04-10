@@ -61,6 +61,50 @@ bool PoolLogicModule::computeFiltrationWindow_(float waterTemp, uint8_t& startHo
     return true;
 }
 
+bool PoolLogicModule::applyFiltrationWindowSlot_(uint8_t startHour, uint8_t stopHour)
+{
+    if (!schedSvc_ || !schedSvc_->setSlot) {
+        LOGW("No time.scheduler service available");
+        return false;
+    }
+
+    TimeSchedulerSlot window{};
+    window.slot = SLOT_FILTR_WINDOW;
+    window.eventId = POOLLOGIC_EVENT_FILTRATION_WINDOW;
+    window.enabled = true;
+    window.hasEnd = true;
+    window.replayStartOnBoot = true;
+    window.mode = TimeSchedulerMode::RecurringClock;
+    window.weekdayMask = TIME_WEEKDAY_ALL;
+    window.startHour = (startHour < 24U) ? startHour : 23U;
+    window.startMinute = 0;
+    window.endHour = (stopHour < 24U) ? stopHour : 23U;
+    window.endMinute = 0;
+    window.startEpochSec = 0;
+    window.endEpochSec = 0;
+    strncpy(window.label, "poollogic_filtration", sizeof(window.label) - 1);
+    window.label[sizeof(window.label) - 1] = '\0';
+
+    if (!schedSvc_->setSlot(schedSvc_->ctx, &window)) {
+        LOGW("Failed to set filtration window slot=%u", (unsigned)SLOT_FILTR_WINDOW);
+        return false;
+    }
+
+    filtrationCalcStart_ = window.startHour;
+    filtrationCalcStop_ = window.endHour;
+
+    bool windowActive = filtrationWindowActive_;
+    if (schedSvc_->isActive) {
+        windowActive = schedSvc_->isActive(schedSvc_->ctx, SLOT_FILTR_WINDOW);
+    }
+
+    portENTER_CRITICAL(&pendingMux_);
+    filtrationWindowActive_ = windowActive;
+    pendingFiltrationReconcile_ = true;
+    portEXIT_CRITICAL(&pendingMux_);
+    return true;
+}
+
 bool PoolLogicModule::recalcAndApplyFiltrationWindow_(uint8_t* startHourOut,
                                                       uint8_t* stopHourOut,
                                                       uint8_t* durationOut)
@@ -90,34 +134,11 @@ bool PoolLogicModule::recalcAndApplyFiltrationWindow_(uint8_t* startHourOut,
 
     // PoolLogic stores the computed window back into the shared scheduler so
     // filtration state changes continue to arrive as regular scheduler events.
-    TimeSchedulerSlot window{};
-    window.slot = SLOT_FILTR_WINDOW;
-    window.eventId = POOLLOGIC_EVENT_FILTRATION_WINDOW;
-    window.enabled = true;
-    window.hasEnd = true;
-    window.replayStartOnBoot = true;
-    window.mode = TimeSchedulerMode::RecurringClock;
-    window.weekdayMask = TIME_WEEKDAY_ALL;
-    window.startHour = startHour;
-    window.startMinute = 0;
-    window.endHour = stopHour;
-    window.endMinute = 0;
-    window.startEpochSec = 0;
-    window.endEpochSec = 0;
-    strncpy(window.label, "poollogic_filtration", sizeof(window.label) - 1);
-    window.label[sizeof(window.label) - 1] = '\0';
-
-    if (!schedSvc_->setSlot(schedSvc_->ctx, &window)) {
-        LOGW("Failed to set filtration window slot=%u", (unsigned)SLOT_FILTR_WINDOW);
-        return false;
-    }
+    if (!applyFiltrationWindowSlot_(startHour, stopHour)) return false;
 
     if (cfgStore_) {
         (void)cfgStore_->set(calcStartVar_, startHour);
         (void)cfgStore_->set(calcStopVar_, stopHour);
-    } else {
-        filtrationCalcStart_ = startHour;
-        filtrationCalcStop_ = stopHour;
     }
     if (startHourOut) *startHourOut = startHour;
     if (stopHourOut) *stopHourOut = stopHour;

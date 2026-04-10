@@ -609,6 +609,21 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         if (!alarmSvc_->registerAlarm(alarmSvc_->ctx, &chlorinePumpMaxUptimeAlarm, &PoolLogicModule::condChlorinePumpMaxUptimeStatic_, this)) {
             LOGW("PoolLogic failed to register AlarmId::PoolChlorinePumpMaxUptime");
         }
+
+        const AlarmRegistration waterLevelLowAlarm{
+            AlarmId::PoolWaterLevelLow,
+            AlarmSeverity::Alarm,
+            false,
+            60000,
+            1000,
+            60000,
+            "pool_water_level_low",
+            "Pool water level low",
+            "poollogic"
+        };
+        if (!alarmSvc_->registerAlarm(alarmSvc_->ctx, &waterLevelLowAlarm, &PoolLogicModule::condWaterLevelLowStatic_, this)) {
+            LOGW("PoolLogic failed to register AlarmId::PoolWaterLevelLow");
+        }
     } else {
         LOGW("PoolLogic running without alarm service");
     }
@@ -709,6 +724,18 @@ void PoolLogicModule::onEvent_(const Event& e)
     if (e.id == EventId::ConfigChanged) {
         if (!e.payload || e.len < sizeof(ConfigChangedPayload)) return;
         const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
+        if (p->moduleId == (uint8_t)ConfigModuleId::PoolLogic &&
+            p->localBranchId == kCfgBranchFiltration) {
+            if (strcmp(p->nvsKey, NvsKeys::PoolLogic::FiltrationCalcStart) == 0 ||
+                strcmp(p->nvsKey, NvsKeys::PoolLogic::FiltrationCalcStop) == 0) {
+                (void)applyFiltrationWindowSlot_(filtrationCalcStart_, filtrationCalcStop_);
+            } else {
+                portENTER_CRITICAL(&pendingMux_);
+                pendingDailyRecalc_ = true;
+                portEXIT_CRITICAL(&pendingMux_);
+            }
+            return;
+        }
         if (p->moduleId == (uint8_t)ConfigModuleId::PoolLogic &&
             p->localBranchId == kCfgBranchMode &&
             strcmp(p->nvsKey, NvsKeys::PoolLogic::AutoMode) == 0 &&

@@ -13,7 +13,7 @@
 #include "Core/Services/IWifi.h"
 #include "Modules/Network/I2CCfgClientModule/I2CCfgClientModuleDataModel.h"
 
-constexpr uint8_t kSupervisorAlarmSlotCount = 6;
+constexpr uint8_t kSupervisorAlarmSlotCount = 8;
 constexpr uint8_t kSupervisorDashboardSlotCount = kFlowRemoteDashboardSlotCount;
 
 struct SupervisorDashboardSlotViewModel {
@@ -100,6 +100,8 @@ struct SupervisorHmiViewModel {
     uint8_t flowAlarmResettableCount = 0;
     uint8_t flowAlarmClrCount = kSupervisorAlarmSlotCount;
     SupervisorAlarmState flowAlarmStates[kSupervisorAlarmSlotCount]{
+        SupervisorAlarmState::Clear,
+        SupervisorAlarmState::Clear,
         SupervisorAlarmState::Clear,
         SupervisorAlarmState::Clear,
         SupervisorAlarmState::Clear,

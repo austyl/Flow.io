@@ -15,7 +15,8 @@
         { "mask": 4, "label": "Bidon pH bas" },
         { "mask": 8, "label": "Bidon chlore bas" },
         { "mask": 16, "label": "Max Uptime atteint Pompe pH" },
-        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" }
+        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" },
+        { "mask": 64, "label": "Niveau eau bas" }
       ],
       "displayConfig": {
         "flagRole": "active",
@@ -37,7 +38,8 @@
         { "mask": 4, "label": "Bidon pH bas" },
         { "mask": 8, "label": "Bidon chlore bas" },
         { "mask": 16, "label": "Max Uptime atteint Pompe pH" },
-        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" }
+        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" },
+        { "mask": 64, "label": "Niveau eau bas" }
       ],
       "displayConfig": {
         "flagRole": "resettable",
@@ -59,7 +61,8 @@
         { "mask": 4, "label": "Bidon pH bas" },
         { "mask": 8, "label": "Bidon chlore bas" },
         { "mask": 16, "label": "Max Uptime atteint Pompe pH" },
-        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" }
+        { "mask": 32, "label": "Max Uptime atteint Pompe Orp" },
+        { "mask": 64, "label": "Niveau eau bas" }
       ],
       "displayConfig": {
         "flagRole": "condition",

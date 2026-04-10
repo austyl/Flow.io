@@ -170,7 +170,7 @@ private:
     ConfigVariable<float,0>* counterTotalVar_(uint8_t logicalIdx);
     float* counterConfigTotalState_(uint8_t logicalIdx);
     void eraseLegacyCounterPersistedTotal_(uint8_t logicalIdx);
-    bool persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount);
+    bool persistCounterTotalIfNeeded_(DigitalSlot& slot, int32_t rawCount, uint32_t nowMs);
     void traceDigitalCounters_(uint32_t nowMs);
     void beginIoCycle_(uint32_t nowMs);
     void markIoCycleChanged_(IoId id);
@@ -245,8 +245,10 @@ private:
         bool lastValid = false;
         bool lastValue = false;
         float counterScaledTotal = 0.0f;
+        float counterLastPersistedTotal = 0.0f;
         int32_t counterLastRawCount = 0;
         int32_t counterLastFlushedRawCount = 0;
+        uint32_t counterLastPersistMs = 0;
     };
 
     struct ExtraAnalogConfigVars {

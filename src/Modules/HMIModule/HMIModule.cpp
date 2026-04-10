@@ -252,6 +252,10 @@ void HMIModule::refreshPoolLogicFlags_()
 void HMIModule::refreshWaterLevelFlag_()
 {
     waterLevelLow_ = false;
+    if (alarmSvc_ && alarmSvc_->isActive) {
+        waterLevelLow_ = alarmSvc_->isActive(alarmSvc_->ctx, AlarmId::PoolWaterLevelLow);
+        return;
+    }
     if (!ioSvc_ || !ioSvc_->readDigital) return;
     if (poolLevelIoId_ == IO_ID_INVALID) return;
 
@@ -292,6 +296,7 @@ void HMIModule::refreshAlarmFlags_()
     void* ctx = alarmSvc_->ctx;
     phTankLowAlarm_ = alarmSvc_->isActive(ctx, AlarmId::PoolPhTankLow);
     chlorineTankLowAlarm_ = alarmSvc_->isActive(ctx, AlarmId::PoolChlorineTankLow);
+    waterLevelLow_ = alarmSvc_->isActive(ctx, AlarmId::PoolWaterLevelLow);
     psiAlarm_ = alarmSvc_->isActive(ctx, AlarmId::PoolPsiLow) ||
                 alarmSvc_->isActive(ctx, AlarmId::PoolPsiHigh);
 }
@@ -305,21 +310,28 @@ void HMIModule::applyLedMask_(bool force)
         mask |= (uint8_t)(1U << kLedBitMqttConnected);
     }
 
-    const bool page2 = (ledPage_ == 2U);
+    // The front-panel overlay is wired with page labels opposite to the
+    // internal toggle order, so we intentionally swap page 1/page 2 here.
+    const bool page2 = (ledPage_ == 1U);
     if (!page2) mask |= (uint8_t)(1U << kLedBitPageSelect);
 
-    if (page2) {
+    if (!page2) {
+        // Page 1:
+        // p2=mode auto, p3=winter, p4/p5 unused, p6=niveau eau bas, p7=PSI error.
         if (autoRegEnabled_) mask |= (uint8_t)(1U << kLedBitModeA);
         if (winterMode_) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (psiAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
-        if (waterLevelLow_) mask |= (uint8_t)(1U << kLedBitAlarmB);
+        if (waterLevelLow_) mask |= (uint8_t)(1U << kLedBitAlarmC);
+        if (psiAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
     } else {
+        // Page 2:
+        // p2=mode pH auto, p3=mode ORP auto, p4=bidon pH bas, p5=bidon chlore bas,
+        // p6=pompe pH uptime max, p7=pompe chlore uptime max.
         if (phPidEnabled_) mask |= (uint8_t)(1U << kLedBitModeA);
         if (chlorinePidEnabled_) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (chlorinePumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
-        if (phPumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmB);
-        if (chlorineTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmC);
-        if (phTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
+        if (phTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmA);
+        if (chlorineTankLowAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmB);
+        if (phPumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmC);
+        if (chlorinePumpRuntimeAlarm_) mask |= (uint8_t)(1U << kLedBitAlarmD);
     }
 
     if (!force && ledMaskValid_ && ledMaskLast_ == mask) return;
@@ -385,6 +397,9 @@ void HMIModule::onEvent_(const Event& e)
             ledDirty = true;
         } else if (id == AlarmId::PoolChlorineTankLow) {
             chlorineTankLowAlarm_ = (e.id == EventId::AlarmRaised);
+            ledDirty = true;
+        } else if (id == AlarmId::PoolWaterLevelLow) {
+            waterLevelLow_ = (e.id == EventId::AlarmRaised);
             ledDirty = true;
         } else if (id == AlarmId::PoolPsiLow || id == AlarmId::PoolPsiHigh) {
             if (e.id == EventId::AlarmRaised) {

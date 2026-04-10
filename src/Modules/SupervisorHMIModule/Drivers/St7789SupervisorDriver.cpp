@@ -91,6 +91,8 @@ static constexpr AlarmRowDef kAlarmRows[kSupervisorAlarmSlotCount] = {
     {"Chlore vide"},
     {"pH Uptime"},
     {"ORP Uptime"},
+    {"Eau basse"},
+    {""},
 };
 
 static constexpr GaugeBand kPhGaugeBands[] = {
@@ -648,7 +650,7 @@ uint16_t alarmIndicatorColor_(const SupervisorHmiViewModel& vm, uint8_t alarmInd
 
     if (active && conditionTrue) return kColorAlarmAct;
     if (active) return kColorAlarmAck;
-    return kColorAlarmIdle;
+    return kColorGaugeOk;
 }
 
 void drawAlarmIndicator_(SupervisorSt7789& d,
@@ -659,7 +661,14 @@ void drawAlarmIndicator_(SupervisorSt7789& d,
                          bool active)
 {
     d.fillCircle(cx, cy, 11, panelColor_(swapBytes, fill));
-    if (!active) return;
+    if (!active) {
+        const uint16_t markColor = panelColor_(swapBytes, kColorGaugeCardBg);
+        for (int8_t off = -1; off <= 1; ++off) {
+            d.drawLine((int16_t)(cx - 5), (int16_t)(cy + off), (int16_t)(cx - 1), (int16_t)(cy + 4 + off), markColor);
+            d.drawLine((int16_t)(cx - 1), (int16_t)(cy + 4 + off), (int16_t)(cx + 6), (int16_t)(cy - 4 + off), markColor);
+        }
+        return;
+    }
 
     const uint16_t markColor = panelColor_(swapBytes, kColorGaugeCardBg);
     d.fillRoundRect((int16_t)(cx - 2), (int16_t)(cy - 7), 4, 10, 2, markColor);
@@ -735,7 +744,7 @@ bool ipTextChanged_(const SupervisorHmiViewModel& prev, const SupervisorHmiViewM
 
 bool alarmCardChanged_(const SupervisorHmiViewModel& prev, const SupervisorHmiViewModel& curr, uint8_t startIndex)
 {
-    for (uint8_t i = 0; i < 3U; ++i) {
+    for (uint8_t i = 0; i < 4U; ++i) {
         const uint8_t alarmIndex = (uint8_t)(startIndex + i);
         if (alarmIndex >= kSupervisorAlarmSlotCount) break;
         if (alarmTextColor_(prev, alarmIndex) != alarmTextColor_(curr, alarmIndex)) return true;
@@ -800,11 +809,13 @@ void drawAlarmCard_(SupervisorSt7789& d,
     const int16_t labelX = (int16_t)(x + 12);
     const int16_t topPad = 18;
     const int16_t bottomPad = 18;
+    const uint8_t rowsPerCard = 4U;
     const int16_t rowSpan = (int16_t)(h - topPad - bottomPad);
-    const int16_t rowGap = (int16_t)(rowSpan / 2);
-    for (uint8_t i = 0; i < 3; ++i) {
+    const int16_t rowGap = (rowsPerCard > 1U) ? (int16_t)(rowSpan / (int16_t)(rowsPerCard - 1U)) : 0;
+    for (uint8_t i = 0; i < rowsPerCard; ++i) {
         const uint8_t alarmIndex = (uint8_t)(startIndex + i);
         if (alarmIndex >= kSupervisorAlarmSlotCount) break;
+        if (!kAlarmRows[alarmIndex].label || kAlarmRows[alarmIndex].label[0] == '\0') continue;
 
         const int16_t rowCenterY = (int16_t)(y + topPad + ((int16_t)i * rowGap));
         const uint16_t textColor = alarmTextColor_(vm, alarmIndex);
@@ -835,7 +846,7 @@ void drawOverviewBody_(SupervisorSt7789& d, bool swapBytes, int16_t w, int16_t h
     drawCenteredTextCard_(d, swapBytes, leftTopCard.x, leftTopCard.y, leftTopCard.w, leftTopCard.h, vm.ip, true, 2);
     drawCenteredTextCard_(d, swapBytes, rightTopCard.x, rightTopCard.y, rightTopCard.w, rightTopCard.h, "http://flowio.local", false, 2);
     drawAlarmCard_(d, swapBytes, leftCard.x, leftCard.y, leftCard.w, leftCard.h, vm, 0U);
-    drawAlarmCard_(d, swapBytes, rightCard.x, rightCard.y, rightCard.w, rightCard.h, vm, 3U);
+    drawAlarmCard_(d, swapBytes, rightCard.x, rightCard.y, rightCard.w, rightCard.h, vm, 4U);
 }
 
 const RuntimeUiManifestItem* dashboardSlotManifestItem_(RuntimeUiId id)
@@ -1134,9 +1145,9 @@ bool St7789SupervisorDriver::render(const SupervisorHmiViewModel& vm, bool force
             const Rect leftCard = overviewAlarmCardRect_(w, h, 0U);
             drawAlarmCard_(display_, swapBytes, leftCard.x, leftCard.y, leftCard.w, leftCard.h, vm, 0U);
         }
-        if (!haveLastVm_ || alarmCardChanged_(lastVm_, vm, 3U)) {
+        if (!haveLastVm_ || alarmCardChanged_(lastVm_, vm, 4U)) {
             const Rect rightCard = overviewAlarmCardRect_(w, h, 1U);
-            drawAlarmCard_(display_, swapBytes, rightCard.x, rightCard.y, rightCard.w, rightCard.h, vm, 3U);
+            drawAlarmCard_(display_, swapBytes, rightCard.x, rightCard.y, rightCard.w, rightCard.h, vm, 4U);
         }
     } else {
         for (uint8_t i = 0; i < kSupervisorDashboardSlotCount; ++i) {

@@ -659,6 +659,24 @@ void AlarmModule::registerHaEntities_(ServiceRegistry& services)
         }
     }
 
+    if (haSvc_->addBinarySensor) {
+        const HABinarySensorEntry waterLevelLow{
+            "alarms",
+            "alm_wlvl_low",
+            "Pool Water Level Low",
+            "rt/alarms/id1006",
+            "{{ 'True' if value_json.a | int(0) else 'False' }}",
+            "problem",
+            "diagnostic",
+            "mdi:waves-arrow-down"
+        };
+        if (haSvc_->addBinarySensor(haSvc_->ctx, &waterLevelLow)) {
+            registeredAny = true;
+        } else {
+            LOGW("HA registration failed: alm_wlvl_low");
+        }
+    }
+
     if (haSvc_->addButton) {
         const HAButtonEntry resetAll{
             "alarms",

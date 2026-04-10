@@ -876,6 +876,18 @@ bool dashboardSlotDegreeCUnit_(const char* unit)
     return (uint8_t)unit[0] == 0xC2 && (uint8_t)unit[1] == 0xB0 && unit[2] == 'C' && unit[3] == '\0';
 }
 
+void dashboardSlotBgColorHex_(uint16_t color565, char* out, size_t outLen)
+{
+    if (!out || outLen < 8U) return;
+    const uint8_t r5 = (uint8_t)((color565 >> 11) & 0x1FU);
+    const uint8_t g6 = (uint8_t)((color565 >> 5) & 0x3FU);
+    const uint8_t b5 = (uint8_t)(color565 & 0x1FU);
+    const uint8_t r8 = (uint8_t)((r5 << 3) | (r5 >> 2));
+    const uint8_t g8 = (uint8_t)((g6 << 2) | (g6 >> 4));
+    const uint8_t b8 = (uint8_t)((b5 << 3) | (b5 >> 2));
+    snprintf(out, outLen, "#%02X%02X%02X", (unsigned)r8, (unsigned)g8, (unsigned)b8);
+}
+
 uint8_t dashboardSlotDecimals_(const FlowRemoteDashboardSlotRuntime& slot)
 {
     if ((RuntimeUiWireType)slot.wireType != RuntimeUiWireType::Float32) return 0U;
@@ -1862,14 +1874,28 @@ void WebInterfaceModule::startServer_()
                 if (!slot.enabled) continue;
 
                 char valueBuf[40] = {0};
+                char bgColorBuf[8] = {0};
                 formatDashboardSlotValueText_(slot, valueBuf, sizeof(valueBuf));
+                dashboardSlotBgColorHex_(slot.bgColor565, bgColorBuf, sizeof(bgColorBuf));
                 if (!first) response->print(',');
                 response->print("{\"slot\":");
                 response->print((unsigned)i);
+                response->print(",\"runtime_ui_id\":");
+                response->print((unsigned long)slot.runtimeUiId);
+                const RuntimeUiManifestItem* item = findRuntimeUiManifestItem(slot.runtimeUiId);
+                const char* unit = (item && item->unit) ? item->unit : "";
                 response->print(",\"label\":");
                 printJsonEscaped_(*response, slot.label[0] != '\0' ? slot.label : "Mesure");
                 response->print(",\"value\":");
                 printJsonEscaped_(*response, valueBuf);
+                response->print(",\"unit\":");
+                if (unit && unit[0] != '\0') {
+                    printJsonEscaped_(*response, dashboardSlotDegreeCUnit_(unit) ? "\xC2\xB0""C" : unit);
+                } else {
+                    printJsonEscaped_(*response, "");
+                }
+                response->print(",\"bg_color\":");
+                printJsonEscaped_(*response, bgColorBuf);
                 response->print(",\"available\":");
                 response->print(slot.available ? "true" : "false");
                 response->print("}");

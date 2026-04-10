@@ -237,6 +237,15 @@ Exemples pratiques:
 Cette convention est cohérente avec une interprétation "métier" de `edgeMode` dans le domaine logique du signal.
 Elle peut toutefois surprendre si l'on s'attend à ce que `rising` et `falling` désignent toujours les fronts physiques bruts du GPIO.
 
+### Persistance NVS du cumul compteur
+
+Pour les entrées digitales en mode compteur, le cumul long terme `counter_total` est persisté en NVS selon deux conditions complémentaires:
+
+- immédiatement dès qu'au moins `32` nouvelles impulsions ont été accumulées depuis la dernière écriture réussie
+- au plus tard toutes les `3 minutes` si la valeur a changé depuis la dernière écriture réussie, même si le seuil des `32` impulsions n'a pas été atteint
+
+Cette politique limite l'usure NVS tout en réduisant la perte potentielle de cumul après redémarrage sur des compteurs à faible fréquence.
+
 ## DataStore
 
 Le module publie ses valeurs runtime via `Modules/IOModule/IORuntime.h`.

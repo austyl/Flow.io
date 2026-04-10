@@ -17,6 +17,7 @@ enum class AlarmId : uint16_t {
     PoolChlorineTankLow = 1003,
     PoolPhPumpMaxUptime = 1004,
     PoolChlorinePumpMaxUptime = 1005,
+    PoolWaterLevelLow = 1006,
 
     // Log pipeline domain
     LogWarningSeen = 1100,

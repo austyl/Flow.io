@@ -378,6 +378,7 @@ private:
 
     // Scheduler
     void ensureDailySlot_();
+    bool applyFiltrationWindowSlot_(uint8_t startHour, uint8_t stopHour);
     bool computeFiltrationWindow_(float waterTemp, uint8_t& startHourOut, uint8_t& stopHourOut, uint8_t& durationOut);
     bool recalcAndApplyFiltrationWindow_(uint8_t* startHourOut = nullptr,
                                          uint8_t* stopHourOut = nullptr,
@@ -388,6 +389,7 @@ private:
     static AlarmCondState condPsiHighStatic_(void* ctx, uint32_t nowMs);
     static AlarmCondState condPhTankLowStatic_(void* ctx, uint32_t nowMs);
     static AlarmCondState condChlorineTankLowStatic_(void* ctx, uint32_t nowMs);
+    static AlarmCondState condWaterLevelLowStatic_(void* ctx, uint32_t nowMs);
     static AlarmCondState condPhPumpMaxUptimeStatic_(void* ctx, uint32_t nowMs);
     static AlarmCondState condChlorinePumpMaxUptimeStatic_(void* ctx, uint32_t nowMs);
     AlarmCondState condPumpMaxUptime_(uint8_t deviceSlot) const;
