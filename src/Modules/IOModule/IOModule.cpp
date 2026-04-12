@@ -2248,7 +2248,7 @@ IDigitalCounterDriver* IOModule::allocGpioDriver_(const char* driverId,
     if (counterEnabled && !output) {
         if (gpioCounterDriverPoolUsed_ >= MAX_DIGITAL_INPUTS) return nullptr;
         void* mem = gpioCounterDriverPool_[gpioCounterDriverPoolUsed_++];
-        return new (mem) GpioCounterDriver(driverId, pin, activeHigh, inputPullMode, edgeMode, counterDebounceUs);
+        return new (mem) PcntCounterDriver(driverId, pin, activeHigh, inputPullMode, edgeMode, counterDebounceUs);
     }
 
     if (gpioDriverPoolUsed_ >= MAX_DIGITAL_SLOTS) return nullptr;

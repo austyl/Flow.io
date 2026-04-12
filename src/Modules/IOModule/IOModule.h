@@ -17,9 +17,9 @@
 #include "Modules/IOModule/IODrivers/Bme680Driver.h"
 #include "Modules/IOModule/IODrivers/Bmp280Driver.h"
 #include "Modules/IOModule/IODrivers/Ds18b20Driver.h"
-#include "Modules/IOModule/IODrivers/GpioCounterDriver.h"
 #include "Modules/IOModule/IODrivers/GpioDriver.h"
 #include "Modules/IOModule/IODrivers/Ina226Driver.h"
+#include "Modules/IOModule/IODrivers/PcntCounterDriver.h"
 #include "Modules/IOModule/IODrivers/Pcf8574BitDriver.h"
 #include "Modules/IOModule/IODrivers/Pcf8574Driver.h"
 #include "Modules/IOModule/IODrivers/Sht40Driver.h"
@@ -449,7 +449,7 @@ private:
     alignas(DigitalSensorEndpoint) uint8_t digitalSensorEndpointPool_[MAX_DIGITAL_INPUTS][sizeof(DigitalSensorEndpoint)]{};
     alignas(DigitalActuatorEndpoint) uint8_t digitalActuatorEndpointPool_[MAX_DIGITAL_OUTPUTS][sizeof(DigitalActuatorEndpoint)]{};
     alignas(GpioDriver) uint8_t gpioDriverPool_[MAX_DIGITAL_SLOTS][sizeof(GpioDriver)]{};
-    alignas(GpioCounterDriver) uint8_t gpioCounterDriverPool_[MAX_DIGITAL_INPUTS][sizeof(GpioCounterDriver)]{};
+    alignas(PcntCounterDriver) uint8_t gpioCounterDriverPool_[MAX_DIGITAL_INPUTS][sizeof(PcntCounterDriver)]{};
     alignas(Ads1115Driver) uint8_t adsDriverPool_[2][sizeof(Ads1115Driver)]{};
     alignas(Ds18b20Driver) uint8_t dsDriverPool_[2][sizeof(Ds18b20Driver)]{};
     alignas(Sht40Driver) uint8_t sht40DriverPool_[1][sizeof(Sht40Driver)]{};
