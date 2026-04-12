@@ -172,6 +172,15 @@ bool IOModule::ensureDigitalCounterCfgVars_()
     return true;
 }
 
+bool IOModule::ensureDigitalInputModeCfgVars_()
+{
+    if (extraDigitalInputModeCfgVars_) return true;
+    void* mem = heap_caps_malloc(sizeof(ExtraDigitalInputModeConfigVars), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!mem) return false;
+    extraDigitalInputModeCfgVars_ = new (mem) ExtraDigitalInputModeConfigVars(digitalInCfg_);
+    return true;
+}
+
 bool IOModule::ensureDigitalCounterConfigState_()
 {
     if (digitalCounterLastConfigTotals_) return true;
@@ -1060,7 +1069,23 @@ bool IOModule::processDigitalInputDefinition_(uint8_t slotIdx, uint32_t nowMs)
             slot.counterScaledTotal += ((float)delta * c0);
             slot.counterLastRawCount = rawCount;
             (void)persistCounterTotalIfNeeded_(slot, rawCount, nowMs);
+            if (cfgData_.traceEnabled) {
+                const float tracedScaledValue = ioRoundToPrecision(slot.counterScaledTotal, precision);
+                LOGI("Counter pulse i%02u io=%u raw=%ld delta=%ld total=%.3f",
+                     (unsigned)slot.logicalIdx,
+                     (unsigned)slot.ioId,
+                     (long)rawCount,
+                     (long)delta,
+                     (double)tracedScaledValue);
+            }
         } else if (delta < 0) {
+            if (cfgData_.traceEnabled) {
+                LOGW("Counter raw reset i%02u io=%u raw=%ld prev_raw=%ld",
+                     (unsigned)slot.logicalIdx,
+                     (unsigned)slot.ioId,
+                     (long)rawCount,
+                     (long)slot.counterLastRawCount);
+            }
             slot.counterLastRawCount = rawCount;
             slot.counterLastFlushedRawCount = rawCount;
         }
@@ -1133,6 +1158,17 @@ void IOModule::traceDigitalCounters_(uint32_t nowMs)
 
         IODigitalCounterDebugStats stats{};
         if (!counterDriver->readDebugStats(stats)) continue;
+        LOGI("Counter dbg i%02u pin=%u raw=%ld irq=%lu trans=%lu same=%lu edge=%lu db=%lu active_high=%u edge_mode=%u",
+             (unsigned)slot.logicalIdx,
+             (unsigned)stats.pin,
+             (long)stats.pulseCount,
+             (unsigned long)stats.irqCalls,
+             (unsigned long)stats.transitions,
+             (unsigned long)stats.ignoredSameState,
+             (unsigned long)stats.ignoredWrongEdge,
+             (unsigned long)stats.ignoredDebounce,
+             (unsigned)stats.activeHigh,
+             (unsigned)stats.edgeMode);
 
     }
 }
@@ -2405,6 +2441,17 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2BindingVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2EdgeModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2C0Var_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PrecVar_, kCfgModuleId, kCfgBranchIoI2);
     cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3BindingVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3EdgeModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3C0Var_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PrecVar_, kCfgModuleId, kCfgBranchIoI3);
     cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4BindingVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4EdgeModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4C0Var_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PrecVar_, kCfgModuleId, kCfgBranchIoI4);
+
+    if (ensureDigitalInputModeCfgVars_()) {
+        ExtraDigitalInputModeConfigVars& modes = *extraDigitalInputModeCfgVars_;
+        cfg.registerVar(modes.i0ModeVar_, kCfgModuleId, kCfgBranchIoI0);
+        cfg.registerVar(modes.i1ModeVar_, kCfgModuleId, kCfgBranchIoI1);
+        cfg.registerVar(modes.i2ModeVar_, kCfgModuleId, kCfgBranchIoI2);
+        cfg.registerVar(modes.i3ModeVar_, kCfgModuleId, kCfgBranchIoI3);
+        cfg.registerVar(modes.i4ModeVar_, kCfgModuleId, kCfgBranchIoI4);
+    } else {
+        LOGE("failed to allocate digital input mode config vars");
+    }
 
     if (ensureDigitalCounterCfgVars_()) {
         ExtraDigitalCounterConfigVars& totals = *extraDigitalCounterCfgVars_;

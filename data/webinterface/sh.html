@@ -2,7 +2,13 @@
   <div class="app">
     <aside id="drawer" class="drawer collapsed">
       <div class="drawer-header">
-        <button id="menuToggle" class="menu-btn" data-menu-toggle aria-label="Toggle menu">≡</button>
+        <button id="menuToggle" class="menu-btn" data-menu-toggle aria-label="Toggle menu">
+          <span class="menu-btn-glyph" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
         <div class="drawer-user" aria-label="Flow.io">
           <span class="brand-wordmark" aria-hidden="true">
             <span class="brand-flow">Flow</span><span class="brand-io">.io</span>
@@ -12,7 +18,7 @@
       <nav class="menu-group">
         <button class="menu-item active" data-page="page-pool-measures"><span class="ico icon-measures" aria-hidden="true"></span><span class="label">Mesures</span></button>
         <button class="menu-item" data-page="page-terminal"><span class="ico icon-terminal" aria-hidden="true"></span><span class="label">Journaux</span></button>
-        <button class="menu-item" data-page="page-system"><span class="ico icon-system" aria-hidden="true"></span><span class="label">Mise à jour</span></button>
+        <button class="menu-item" data-page="page-system"><span class="ico icon-system" aria-hidden="true"></span><span class="label">Mises à Jour</span></button>
         <button class="menu-item" data-page="page-control"><span class="ico icon-flowcfg" aria-hidden="true"></span><span class="label">Configuration</span></button>
       </nav>
       <div class="drawer-footer">
@@ -27,7 +33,13 @@
 
     <main class="content">
       <div class="mobile-topbar">
-        <button class="menu-btn" data-menu-toggle aria-label="Open menu">≡</button>
+        <button class="menu-btn" data-menu-toggle aria-label="Open menu">
+          <span class="menu-btn-glyph" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
         <div class="mobile-title" aria-label="Flow.io">
           <span class="mobile-wordmark" aria-hidden="true">
             <span class="brand-flow">Flow</span><span class="brand-io">.io</span>
@@ -84,7 +96,7 @@
 
       <section id="page-system" class="page">
         <div class="topbar">
-          <h1>Mise à jour</h1>
+          <h1>Mises à Jour</h1>
           <div class="topbar-actions">
             <span id="systemStatusText" class="status-chip system-status-badge">Prêt</span>
           </div>
@@ -108,7 +120,7 @@
                       <input id="flowPath" placeholder="/build/FlowIO.bin" />
                       <button id="applyFlowPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Flow.io" title="Aucun changement a appliquer">✓</button>
                     </div>
-                    <button id="upFlow" class="btn-primary">Go</button>
+                    <button id="upFlow" class="btn-primary">Install</button>
                   </div>
                 </div>
                 <div class="field full">
@@ -118,7 +130,7 @@
                       <input id="nextionPath" placeholder="/build/Nextion.tft" />
                       <button id="applyNextionPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Nextion" title="Aucun changement a appliquer">✓</button>
                     </div>
-                    <button id="upNextion" class="btn-primary">Go</button>
+                    <button id="upNextion" class="btn-primary">Install</button>
                   </div>
                 </div>
                 <div class="field full">
@@ -128,7 +140,7 @@
                       <input id="supervisorPath" placeholder="/build/Supervisor/firmware.bin" />
                       <button id="applySupervisorPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin Supervisor" title="Aucun changement a appliquer">✓</button>
                     </div>
-                    <button id="upSupervisor" class="btn-primary">Go</button>
+                    <button id="upSupervisor" class="btn-primary">Install</button>
                   </div>
                 </div>
                 <div class="field full">
@@ -138,7 +150,7 @@
                       <input id="spiffsPath" placeholder="/build/Supervisor/spiffs.bin" />
                       <button id="applySpiffsPath" type="button" class="control-field-apply" aria-label="Appliquer le chemin SPIFFS" title="Aucun changement a appliquer">✓</button>
                     </div>
-                    <button id="upSpiffs" class="btn-primary">Go</button>
+                    <button id="upSpiffs" class="btn-primary">Install</button>
                   </div>
                 </div>
               </div>

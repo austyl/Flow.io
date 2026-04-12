@@ -27,6 +27,7 @@
 # - slot 3 -> AlarmId 1003 -> chlorine_tank_low
 # - slot 4 -> AlarmId 1004 -> ph_pump_max_uptime
 # - slot 5 -> AlarmId 1005 -> chlorine_pump_max_uptime
+# - slot 6 -> AlarmId 1006 -> pool_water_level_low
 #
 # `PoolPhPumpMaxUptime` and `PoolChlorinePumpMaxUptime` are latched alarms.
 # Their matching HA reset buttons are:
@@ -212,3 +213,30 @@
         state: >
           {% set pack = states('sensor.fio53_alm_pack') | int(0) %}
           {{ ((pack // 134217728) % 2) == 1 }}
+
+      - name: fio53_water_level_low_active
+        unique_id: fio53_water_level_low_active
+        icon: mdi:waves-arrow-down
+        availability: >
+          {{ states('sensor.fio53_alm_pack') not in ['unknown', 'unavailable', 'none'] }}
+        state: >
+          {% set pack = states('sensor.fio53_alm_pack') | int(0) %}
+          {{ ((pack // 1073741824) % 2) == 1 }}
+
+      - name: fio53_water_level_low_resettable
+        unique_id: fio53_water_level_low_resettable
+        icon: mdi:restart-alert
+        availability: >
+          {{ states('sensor.fio53_alm_pack') not in ['unknown', 'unavailable', 'none'] }}
+        state: >
+          {% set pack = states('sensor.fio53_alm_pack') | int(0) %}
+          {{ ((pack // 2147483648) % 2) == 1 }}
+
+      - name: fio53_water_level_low_condition
+        unique_id: fio53_water_level_low_condition
+        icon: mdi:flash-alert
+        availability: >
+          {{ states('sensor.fio53_alm_pack') not in ['unknown', 'unavailable', 'none'] }}
+        state: >
+          {% set pack = states('sensor.fio53_alm_pack') | int(0) %}
+          {{ ((pack // 4294967296) % 2) == 1 }}

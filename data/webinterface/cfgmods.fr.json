@@ -23,6 +23,10 @@
         { "value": 1, "label": "Pull-up" },
         { "value": 2, "label": "Pull-down" }
       ],
+      "flowio_digital_input_mode": [
+        { "value": 0, "label": "0 | Etat" },
+        { "value": 1, "label": "1 | Compteur d'Impulsion" }
+      ],
       "log_levels": [
         { "value": 0, "label": "Debug" },
         { "value": 1, "label": "Info" },
@@ -110,10 +114,15 @@
     "io/input/a03/a03_source": { "enum_set": "io_analog_source" },
     "io/input/a04/a04_source": { "enum_set": "io_analog_source" },
     "io/input/a05/a05_source": { "enum_set": "io_analog_source" },
+    "io/input/i00/mode": { "type": "UInt8", "label": "Mode entrée I00", "help": "Choisit le type de fonctionnement de I00 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.", "enum_set": "flowio_digital_input_mode" },
     "io/input/i00/i00_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i01/mode": { "type": "UInt8", "label": "Mode entrée I01", "help": "Choisit le type de fonctionnement de I01 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.", "enum_set": "flowio_digital_input_mode" },
     "io/input/i01/i01_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i02/mode": { "type": "UInt8", "label": "Mode entrée I02", "help": "Choisit le type de fonctionnement de I02 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.", "enum_set": "flowio_digital_input_mode" },
     "io/input/i02/i02_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i03/mode": { "type": "UInt8", "label": "Mode entrée I03", "help": "Choisit le type de fonctionnement de I03 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.", "enum_set": "flowio_digital_input_mode" },
     "io/input/i03/i03_pull_mode": { "enum_set": "io_digital_pull_mode" },
+    "io/input/i04/mode": { "type": "UInt8", "label": "Mode entrée I04", "help": "Choisit le type de fonctionnement de I04 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.", "enum_set": "flowio_digital_input_mode" },
     "io/input/i04/i04_pull_mode": { "enum_set": "io_digital_pull_mode" },
     "poollogic/filtr_start_clc": { "enum_set": "hours_of_day" },
     "poollogic/filtr_start_min": { "enum_set": "hours_of_day" },

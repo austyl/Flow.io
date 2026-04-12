@@ -85,16 +85,12 @@ TOKEN_MAP = {
 }
 
 ANALOG_KEY_RE = re.compile(r"^a(?P<idx>[0-9]+)_(?P<field>name|source|channel|binding_port|c0|c1|prec|min|max)$")
-DIGITAL_INPUT_KEY_RE = re.compile(r"^i(?P<idx>[0-9]+)_(?P<field>name|binding_port|active_high|pull_mode|edge_mode|c0|prec)$")
+DIGITAL_INPUT_KEY_RE = re.compile(r"^i(?P<idx>[0-9]+)_(?P<field>name|binding_port|mode|active_high|pull_mode|edge_mode|c0|prec)$")
 DIGITAL_OUTPUT_KEY_RE = re.compile(r"^d(?P<idx>[0-9]+)_(?P<field>name|pin|binding_port|active_high|initial_on|momentary|pulse_ms)$")
 ANALOG_MODULE_RE = re.compile(r"^io/input/a(?P<idx>[0-9]+)$")
 PORT_ENUM_RE = re.compile(r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,\s*$", re.M)
 BINDING_ENTRY_RE = re.compile(
     r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
-    re.S,
-)
-DIGITAL_INPUT_ROLE_DEFAULT_RE = re.compile(
-    r"\{\s*DomainRole::[A-Za-z0-9_]+\s*,\s*(?P<port>PortDigitalIn[0-9]+)\s*,\s*(?P<mode>IO_DIGITAL_INPUT_[A-Z_]+)\s*,",
     re.S,
 )
 BOARD_IO_POINT_RE = re.compile(
@@ -113,6 +109,7 @@ FLOWIO_BINDING_SET_ANALOG = "flowio_binding_port_analog"
 FLOWIO_BINDING_SET_DIGITAL_INPUT = "flowio_binding_port_digital_input"
 FLOWIO_BINDING_SET_DIGITAL_OUTPUT = "flowio_binding_port_digital_output"
 FLOWIO_EDGE_MODE_SET = "flowio_edge_mode"
+FLOWIO_DIGITAL_INPUT_MODE_SET = "flowio_digital_input_mode"
 POOLLOGIC_DEVICE_SLOT_SET = "poollogic_device_slot"
 FLOWIO_LOGICAL_INPUT_SET_ANALOG = "flowio_logical_input_analog"
 FLOWIO_LOGICAL_INPUT_SET_DIGITAL = "flowio_logical_input_digital"
@@ -190,6 +187,8 @@ def _binding_enum_set_for_doc(module_name: str, json_name: str) -> Optional[str]
         return POOLLOGIC_DEVICE_SLOT_SET
     if json_name == "edge_mode" and module_name.startswith("io/input/i"):
         return FLOWIO_EDGE_MODE_SET
+    if json_name == "mode" and module_name.startswith("io/input/i"):
+        return FLOWIO_DIGITAL_INPUT_MODE_SET
     return None
 
 
@@ -234,32 +233,17 @@ def _binding_kind_group(kind: str) -> Optional[str]:
     return None
 
 
-def _digital_input_mode_suffix(port_name: str, mode_by_port: Dict[str, str]) -> str:
-    mode = mode_by_port.get(port_name, "").strip()
-    if mode == "IO_DIGITAL_INPUT_COUNTER":
-        return " | compteur"
-    if mode == "IO_DIGITAL_INPUT_STATE":
-        return " | etat"
-    return ""
-
-
 def _binding_label(kind: str,
                    port_name: str,
                    param0: str,
-                   board_points: List[dict],
-                   digital_input_mode_by_port: Optional[Dict[str, str]] = None) -> str:
+                   board_points: List[dict]) -> str:
     port_display = f"{port_name}"
-    digital_input_mode_by_port = digital_input_mode_by_port or {}
-    input_mode_suffix = ""
-    if kind == "IO_PORT_KIND_GPIO_INPUT":
-        input_mode_suffix = _digital_input_mode_suffix(port_name, digital_input_mode_by_port)
-
     board_ref = BOARD_PIN_REF_RE.search(param0)
     if board_ref:
         idx = int(board_ref.group("idx"))
         if 0 <= idx < len(board_points):
             point = board_points[idx]
-            return f"{port_display} | {point['name']} | GPIO{point['pin']}{input_mode_suffix}"
+            return f"{port_display} | {point['name']} | GPIO{point['pin']}"
 
     raw = param0.strip()
     if kind == "IO_PORT_KIND_ADS_INTERNAL_SINGLE":
@@ -271,7 +255,7 @@ def _binding_label(kind: str,
     if kind == "IO_PORT_KIND_DS18_AIR":
         return f"{port_display} | DS18B20 | bus air"
     if kind == "IO_PORT_KIND_GPIO_INPUT":
-        return f"{port_display} | entree GPIO | GPIO{raw}{input_mode_suffix}"
+        return f"{port_display} | entree GPIO | GPIO{raw}"
     if kind == "IO_PORT_KIND_GPIO_OUTPUT":
         return f"{port_display} | sortie GPIO | GPIO{raw}"
     if kind == "IO_PORT_KIND_PCF8574_OUTPUT":
@@ -305,10 +289,6 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
     port_ids: Dict[str, int] = {}
     for m in PORT_ENUM_RE.finditer(text):
         port_ids[m.group("name").strip()] = int(m.group("value"))
-
-    digital_input_mode_by_port: Dict[str, str] = {}
-    for m in DIGITAL_INPUT_ROLE_DEFAULT_RE.finditer(text):
-        digital_input_mode_by_port[m.group("port").strip()] = m.group("mode").strip()
 
     io_bases: Dict[str, int] = {}
     for m in IO_BASE_RE.finditer(io_service_text):
@@ -348,6 +328,10 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
             {"value": 19, "label": "#A8B2BF", "color": "#A8B2BF"},
             {"value": 20, "label": "#FFFFFF", "color": "#FFFFFF"},
         ],
+        FLOWIO_DIGITAL_INPUT_MODE_SET: [
+            {"value": 0, "label": "0 | Etat"},
+            {"value": 1, "label": "1 | Compteur d'Impulsion"},
+        ],
         FLOWIO_EDGE_MODE_SET: [
             {"value": 0, "label": "0 | Front descendant"},
             {"value": 1, "label": "1 | Front montant"},
@@ -366,7 +350,7 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
             continue
         enum_sets[group].append({
             "value": port_id,
-            "label": f"{port_id} | {_binding_label(kind, port_name, param0, board_points, digital_input_mode_by_port)}",
+            "label": f"{port_id} | {_binding_label(kind, port_name, param0, board_points)}",
         })
 
     for m in POOL_DEVICE_PRESET_RE.finditer(pool_domain_text):
@@ -657,6 +641,7 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
             labels = {
                 "name": f"Nom entrée I{idx}",
                 "binding_port": f"Port physique I{idx}",
+                "mode": f"Mode entrée I{idx}",
                 "active_high": f"Actif a 1 I{idx}",
                 "pull_mode": f"Pull entrée I{idx}",
                 "edge_mode": f"Mode de front I{idx}",
@@ -666,6 +651,7 @@ def _auto_doc_hint(module_name: str, json_name: str) -> Optional[dict]:
             helps = {
                 "name": f"Nom lisible de l'entrée digitale I{idx}.",
                 "binding_port": f"Identifiant du port physique utilise par I{idx}. La valeur reference un binding compile-time autorise, pas un numero de GPIO brut.",
+                "mode": f"Choisit le type de fonctionnement de I{idx} (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage.",
                 "active_high": f"Si active, l'entrée I{idx} est consideree active a l'etat haut.",
                 "pull_mode": f"Mode de resistance interne applique a l'entrée I{idx}.",
                 "edge_mode": f"Front a compter pour I{idx} en mode compteur (0=descendant, 1=montant, 2=les deux).",

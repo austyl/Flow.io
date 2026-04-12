@@ -11,11 +11,13 @@ portMUX_TYPE gGpioCounterMux = portMUX_INITIALIZER_UNLOCKED;
 
 int gpioInterruptModeForCounter_(bool activeHigh, uint8_t edgeMode)
 {
-    if (edgeMode == 2U) return CHANGE;
-    if (edgeMode == 0U) {
-        return activeHigh ? FALLING : RISING;
-    }
-    return activeHigh ? RISING : FALLING;
+    (void)activeHigh;
+    (void)edgeMode;
+    // The ISR edge classifier relies on seeing both signal transitions so it can
+    // keep lastLogicalState in sync. Restricting the hardware interrupt to a
+    // single edge makes some subsequent pulses look like "same state" and they
+    // get dropped.
+    return CHANGE;
 }
 }
 

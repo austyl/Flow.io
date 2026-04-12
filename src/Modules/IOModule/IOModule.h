@@ -160,6 +160,7 @@ private:
     void refreshAnalogConfigState_();
     bool ensureAnalogPrecisionState_();
     bool ensureExtraAnalogCfgVars_();
+    bool ensureDigitalInputModeCfgVars_();
     bool ensureDigitalCounterCfgVars_();
     bool ensureDigitalCounterConfigState_();
     bool ensureLastCycleState_();
@@ -370,6 +371,28 @@ private:
         }
     };
 
+    struct ExtraDigitalInputModeConfigVars {
+        // CFGDOC: {"label":"Mode entrée I00","help":"Choisit le type de fonctionnement de I00 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage."}
+        ConfigVariable<uint8_t,0> i0ModeVar_;
+        // CFGDOC: {"label":"Mode entrée I01","help":"Choisit le type de fonctionnement de I01 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage."}
+        ConfigVariable<uint8_t,0> i1ModeVar_;
+        // CFGDOC: {"label":"Mode entrée I02","help":"Choisit le type de fonctionnement de I02 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage."}
+        ConfigVariable<uint8_t,0> i2ModeVar_;
+        // CFGDOC: {"label":"Mode entrée I03","help":"Choisit le type de fonctionnement de I03 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage."}
+        ConfigVariable<uint8_t,0> i3ModeVar_;
+        // CFGDOC: {"label":"Mode entrée I04","help":"Choisit le type de fonctionnement de I04 (Etat ou Compteur d'Impulsion). Changement pris en compte au redemarrage."}
+        ConfigVariable<uint8_t,0> i4ModeVar_;
+
+        explicit ExtraDigitalInputModeConfigVars(IODigitalInputSlotConfig* digitalCfg)
+            : i0ModeVar_{NVS_KEY(NvsKeys::Io::IO_I0MD), "mode", "io/input/i00", ConfigType::UInt8, &digitalCfg[0].mode, ConfigPersistence::Persistent, 0},
+              i1ModeVar_{NVS_KEY(NvsKeys::Io::IO_I1MD), "mode", "io/input/i01", ConfigType::UInt8, &digitalCfg[1].mode, ConfigPersistence::Persistent, 0},
+              i2ModeVar_{NVS_KEY(NvsKeys::Io::IO_I2MD), "mode", "io/input/i02", ConfigType::UInt8, &digitalCfg[2].mode, ConfigPersistence::Persistent, 0},
+              i3ModeVar_{NVS_KEY(NvsKeys::Io::IO_I3MD), "mode", "io/input/i03", ConfigType::UInt8, &digitalCfg[3].mode, ConfigPersistence::Persistent, 0},
+              i4ModeVar_{NVS_KEY(NvsKeys::Io::IO_I4MD), "mode", "io/input/i04", ConfigType::UInt8, &digitalCfg[4].mode, ConfigPersistence::Persistent, 0}
+        {
+        }
+    };
+
     IOModuleConfig cfgData_{};
     IOAnalogSlotConfig analogCfg_[ANALOG_CFG_SLOTS]{};
     IODigitalInputSlotConfig digitalInCfg_[MAX_DIGITAL_INPUTS]{};
@@ -459,6 +482,7 @@ private:
     bool analogPrecisionLastInit_ = false;
     uint16_t analogConfigDirtyMask_ = 0;
     ExtraAnalogConfigVars* extraAnalogCfgVars_ = nullptr;
+    ExtraDigitalInputModeConfigVars* extraDigitalInputModeCfgVars_ = nullptr;
     ExtraDigitalCounterConfigVars* extraDigitalCounterCfgVars_ = nullptr;
 
     ConfigVariable<bool,0> enabledVar_ { NVS_KEY(NvsKeys::Io::IO_EN),"enabled","io",ConfigType::Bool,&cfgData_.enabled,ConfigPersistence::Persistent,0 };
