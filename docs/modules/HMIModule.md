@@ -66,7 +66,6 @@ Des hints peuvent forcer le widget et les contraintes (bornes/options).
 - Entrées:
   - protocole binaire custom `# <len> <opcode> <payload...>`
   - événements touch Nextion standard (`0x65`)
-  - événements texte optionnels (`EV:*`) terminés par `FF FF FF`
 - Référence de protocole et objets:
   - voir `docs/integration/nextion-esp-protocol.md`
 

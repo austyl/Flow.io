@@ -136,6 +136,15 @@ La présence effective d'un service dépend du profil compilé et des modules en
 - export par module
 - liste des modules
 - effacement complet
+- lecture de petits blobs runtime
+- écriture de petits blobs runtime
+- suppression ciblée d'une clé persistante
+
+`ConfigStoreService` n'est donc pas limité au couple apply/export JSON: il sert aussi de façade pour certaines opérations de stockage runtime et d'effacement clé par clé.
+
+La granularité de lecture exposée par le service est aujourd'hui l'export global ou l'export d'un module complet via `toJsonModule()`. Cette granularité est adaptée à l'inspection, aux endpoints de supervision/debug et aux snapshots de configuration; elle n'est pas présentée comme une API de lecture fine par variable.
+
+Quand un module consomme le store, le service reste l'interface à privilégier. Dans l'état actuel du code, certains chemins gardent néanmoins aussi un accès direct à `ConfigStore` lorsque le contrat du service n'expose pas toute la nuance nécessaire, par exemple l'export `toJsonModule(..., maskSecrets)` avec contrôle explicite du masquage des secrets.
 
 ### `DataStoreService`
 

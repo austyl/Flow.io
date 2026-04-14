@@ -8,8 +8,7 @@ par `HMIModule` / `NextionDriver`.
 Le protocole est volontairement mixte :
 - `ESP -> Nextion` : commandes Nextion natives (`.txt`, `.val`, `page ...`)
 - `Nextion -> ESP` : protocole binaire compact `# <len> <opcode> <payload...>`
-- compatibilité conservée : événements touch Nextion (`0x65`) et événements
-  texte `EV:*` terminés par `FF FF FF`
+- compatibilité conservée : événements touch Nextion (`0x65`)
 
 Le port série utilisé côté FlowIO est `Serial2` sur `RX16 / TX17` à `115200`.
 
@@ -40,12 +39,12 @@ Objets numériques :
 - `globals.vaStates.val`
 
 Sémantique :
-- `tWaterTemp.txt` : exemple `27.4 C`
-- `tAirTemp.txt` : exemple `21.8 C`
+- `tWaterTemp.txt` : exemple `27.4°C`
+- `tAirTemp.txt` : exemple `21.8°C`
 - `tpH.txt` : exemple `7.18`
-- `tORP.txt` : exemple `650 mV`
-- `vapHPercent.val` : jauge `0..180`, `90` à la consigne pH
-- `vaOrpPercent.val` : jauge `0..180`, `90` à la consigne ORP
+- `tORP.txt` : exemple `650`
+- `vapHPercent.val` : jauge `0..280`, `140` à la consigne pH
+- `vaOrpPercent.val` : jauge `0..280`, `140` à la consigne ORP
 - `globals.vaStates.val` : bitmap d'état compact
 
 ### Bitmap `globals.vaStates`
@@ -271,22 +270,8 @@ Le retour attendu est le rafraîchissement de l'état réel après exécution.
 
 ## Compatibilité conservée
 
-En plus du protocole binaire ci-dessus, `NextionDriver` accepte encore :
-
-- événements touch Nextion standard `0x65`
-- événements texte `EV:*` terminés par `FF FF FF`
-
-Exemples historiques acceptés :
-- `EV:HOME`
-- `EV:BACK`
-- `EV:VAL`
-- `EV:NEXT`
-- `EV:PREV`
-- `EV:ROW:2`
-- `EV:TOG:1`
-- `EV:CYC:3:1`
-
-Cela permet une migration progressive du firmware Nextion.
+En plus du protocole binaire ci-dessus, `NextionDriver` accepte encore les
+événements touch Nextion standard `0x65`.
 
 ## Pages et identifiants recommandés
 
@@ -344,7 +329,5 @@ Exemples :
 
 - Pas de handshake de version d'affichage encore implémenté.
 - Pas d'ACK binaire structuré renvoyé vers Nextion.
-- Les éditions texte/slider complexes peuvent continuer à utiliser le fallback
-  `EV:*` tant qu'un framing binaire dédié n'est pas nécessaire.
 - `globals.vaStates` est un contrat de firmware : toute modification d'ordre de
   bits doit être synchronisée entre ESP et Nextion.
