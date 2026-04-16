@@ -11,6 +11,10 @@ Couche d'orchestration HMI locale:
 En V1, le driver interactif embarqué est `NextionDriver`.
 Une sortie déportée `TfaVeniceRf433Sink` peut aussi émettre la température d'eau
 vers un récepteur TFA Venice compatible.
+Le menu Nextion de configuration est activé dans le build FlowIO, mais il ne
+rend `pageCfgMenu` qu'après une commande d'ouverture explicite depuis l'écran.
+Le modèle menu est stateless côté RAM longue durée : il relit la page courante
+depuis le `ConfigStore` et applique les changements simples immédiatement.
 
 ## Dépendances
 
@@ -22,6 +26,7 @@ vers un récepteur TFA Venice compatible.
 - `alarms`
 - `command`
 - `time`
+- `wifi`
 
 ## Service exposé
 
@@ -33,11 +38,22 @@ vers un récepteur TFA Venice compatible.
 
 ## Fonctionnement menu config
 
-- Racine: liste des modules `cfg/*` via `listModules()`
-- Détail module: clés/valeurs via `toJsonModule()`
+- Mode browse: liste hiérarchique des topics immédiats via `listModules()`
+- Mode édition: clés/valeurs de la branche sélectionnée via `toJsonModule()`
 - Pagination: 6 lignes
 - Actions UI: `Home`, `Back`, `Valider`, `Prev`, `Next`
-- `Valider`: patch JSON ciblé via `applyJson()`
+- En mode browse, `Prev/Next` paginent les `tL0..tL5` et `tV0..tV5` sont masqués.
+- En mode édition, `Prev/Next` paginent les attributs `tL0..tL5` / `tV0..tV5`.
+- Les changements simples (`Switch`, `Select`, `Slider`, `Text`) sont appliqués immédiatement via un patch JSON ciblé `applyJson()`.
+- Les valeurs de la page d'édition courante sont rafraîchies toutes les `5s`; la page complète n'est pas rerendue en continu.
+- `Valider` est réservé pour une évolution ultérieure; le modèle léger actuel ne conserve pas de cache `dirty`.
+- FlowIO ne change pas la page Nextion; le `Preinitialize Event` de `pageCfgMenu` doit envoyer `printh 23 02 50 0A` pour activer le rendu du menu côté FlowIO.
+- Le `Page Exit Event` Nextion de `pageCfgMenu` doit envoyer `printh 23 02 51 06` pour désactiver le rendu actif du menu côté FlowIO.
+
+Le modèle de menu est volontairement stateless côté RAM longue durée:
+- pas de cache persistant des modules;
+- pas de cache persistant des lignes de configuration;
+- une page est reconstruite à la demande depuis `ConfigStore`.
 
 Le chemin courant est exposé sous forme breadcrumb:
 `flow > cfg > <module>`
@@ -67,6 +83,22 @@ Des hints peuvent forcer le widget et les contraintes (bornes/options).
 - Entrées:
   - protocole binaire custom `# <len> <opcode> <payload...>`
   - événements touch Nextion standard (`0x65`)
+- Ouverture menu:
+  - bouton paramètres côté Home: `page pageCfgMenu`
+  - `Preinitialize Event` de `pageCfgMenu`: `printh 23 02 50 0A`
+  - `Page Exit Event` de `pageCfgMenu`: `printh 23 02 51 06`
+- Navigation:
+  - mode browse: seuls les topics immédiats sont visibles dans `tL0..tL5`; `tV0..tV5` sont masqués
+  - clic `tLN`: `printh 23 02 52 0N` pour entrer dans la branche
+  - clic `bRN`: `printh 23 02 55 0N` pour éditer les attributs de la branche
+  - mode édition: `tL0..tL5` affichent les clés, `tV0..tV5` affichent les valeurs et servent de dual-state button pour les booléens; refresh valeurs toutes les `5s`
+  - valeur non-switch: FlowIO désactive `tVN` avec `tsw tVN,0`, force `tVN.val=0`, puis met `tVN.txt`
+  - valeur switch: FlowIO active `tVN` avec `tsw tVN,1`, met `tVN.val=0/1`, puis `tVN.txt` à `OFF/ON`
+  - changement switch `tVN`: `printh 23 02 53 0N`
+  - fermeture recommandée: `bBack` à la racine + changement de page local Nextion
+- RTC:
+  - lit `rtc0..rtc5` au boot si l'heure NTP n'est pas disponible
+  - écrit `rtc0..rtc5` quand l'ESP dispose d'une heure NTP fiable
 - Référence de protocole et objets:
   - voir `docs/integration/nextion-esp-protocol.md`
 

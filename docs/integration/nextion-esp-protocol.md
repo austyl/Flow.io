@@ -82,8 +82,11 @@ Bits actuellement utilisés :
 
 ### Page de configuration
 
-Quand le menu config est compilé, le driver rend sur la page `pageCfgMenu`
-avec les objets suivants :
+Le driver rend la configuration sur la page `pageCfgMenu` après réception
+de l'annonce de page `printh 23 02 50 0A` depuis Nextion.
+Le modèle côté ESP est volontairement léger en RAM : il ne garde pas de cache
+complet des modules ou des lignes, et reconstruit la page courante à la demande
+depuis le `ConfigStore`.
 
 - `tPath`
 - `bHome`
@@ -99,9 +102,20 @@ avec les objets suivants :
 
 Sémantique :
 - `tPath` : breadcrumb courant
-- `tLx` : libellé de ligne
-- `tVx` : valeur de ligne
-- `bRx` : zone tactile de ligne
+- `tLx` : libellé de ligne et zone tactile d'entrée dans une branche
+- `tVx` : dual-state button utilisé comme valeur de ligne en mode édition;
+  masqué en mode browse
+- `bRx` : zone tactile/action spéciale de ligne, visible uniquement si la
+  ligne existe
+- `bValid` : réservé ; dans le modèle léger actuel, les changements simples
+  sont appliqués immédiatement clé par clé au `ConfigStore`
+- Mode browse : seuls les topics immédiats sont affichés dans `tLx`.
+- Mode édition : les attributs de la branche sélectionnée sont affichés dans
+  `tLx/tVx`; un refresh léger des valeurs est fait toutes les `5s`.
+- Pour une valeur non-switch, FlowIO envoie `tsw tVx,0`, `tVx.val=0` puis
+  `tVx.txt`.
+- Pour un `Switch`, FlowIO envoie `tsw tVx,1`, `tVx.val=0/1` puis
+  `tVx.txt=" OFF"` ou `tVx.txt=" ON"`.
 
 ## Protocole Nextion -> ESP
 
@@ -184,11 +198,13 @@ Décodage :
 ### `0x50` : `PAGE`
 
 Payload :
-- `page_id` (`uint8`)
+- `page_code` (`uint8`, code protocolaire choisi cote Nextion)
 
 Usage :
 - utilisé par Nextion pour informer l'ESP de la page actuellement affichée
-- permet au driver de savoir si la page config est déjà visible
+- `page_code=0x0A` ouvre le rendu du menu configuration cote FlowIO
+- FlowIO ne change pas la page Nextion; il rend seulement le contenu si
+  `pageCfgMenu` a annonce son entree
 
 Exemple Nextion :
 
@@ -210,6 +226,8 @@ Valeurs supportées :
 - `0x03` : `VALIDATE`
 - `0x04` : `NEXT_PAGE`
 - `0x05` : `PREV_PAGE`
+- `0x06` : `CONFIG_EXIT`, a envoyer dans le `Page Exit Event` de
+  `pageCfgMenu` pour demander a FlowIO d'arreter le rendu actif du menu
 
 Exemple Nextion :
 
@@ -229,6 +247,9 @@ printh 23 02 52 03
 ```
 
 Active la ligne `3`.
+En mode browse, cette commande entre dans la sous-branche affichée par `tL3`.
+En mode édition, elle conserve le comportement d'action simple de la ligne
+quand le widget le permet.
 
 ### `0x53` : `ROW_TOGGLE`
 
@@ -261,6 +282,21 @@ printh 23 03 54 02 01
 
 Fait avancer la ligne `2`.
 
+### `0x55` : `ROW_EDIT`
+
+Payload :
+- `row` (`uint8`, `0..5`)
+
+Exemple :
+
+```text
+printh 23 02 55 03
+```
+
+Passe en mode édition des attributs de la branche affichée par la ligne `3`.
+Cette commande est prévue pour un geste/objet distinct du clic `tLx` qui, lui,
+sert à entrer dans la branche.
+
 ### `0x60` : `HOME_ACTION`
 
 Payload :
@@ -271,6 +307,7 @@ Actions supportées :
 - `0x01` : `FILTRATION_SET`
 - `0x02` : `AUTO_MODE_SET`
 - `0x03` : `SYNC_REQUEST`
+- `0x04` : `CONFIG_OPEN` (compatibilite no-op cote FlowIO; ne change pas la page Nextion)
 
 Valeur :
 - `0x00` : faux / OFF
@@ -302,6 +339,14 @@ Demande de resynchronisation Home :
 printh 23 03 60 03 01
 ```
 
+Demande logique d'ouverture du menu configuration, sans changement de page
+cote FlowIO. Le flux recommande reste de changer la page localement cote
+Nextion puis d'envoyer `PAGE=0x0A` depuis `pageCfgMenu`.
+
+```text
+printh 23 03 60 04 01
+```
+
 ## Mapping vers les commandes ESP
 
 Les actions Home sont routées via `CommandService` :
@@ -325,6 +370,11 @@ Les actions Home sont routées via `CommandService` :
 - `SYNC_REQUEST`
   - ne passe pas par `CommandService`
   - demande simplement à `HMIModule` de republier toutes les données Home
+- `CONFIG_OPEN`
+  - ne passe pas par `CommandService`
+  - compatibilité uniquement; FlowIO ne change plus la page Nextion
+  - le rendu du menu démarre uniquement lorsque `pageCfgMenu` envoie
+    `printh 23 02 50 0A`
 
 Il n'y a pas d'ACK synchrone formel vers Nextion dans cette V1.
 Le retour attendu est le rafraîchissement de l'état réel après exécution.
@@ -357,11 +407,16 @@ comme des toggles Home :
 
 ## Pages et identifiants recommandés
 
-Identifiants recommandés côté Nextion :
+Codes protocole recommandés côté Nextion :
 - `0x00` : page Home
 - `0x0A` : page `pageCfgMenu`
 
+Ces codes ne sont pas les IDs internes des pages Nextion. Ce sont seulement
+les valeurs envoyées volontairement dans `printh`.
+
 L'opcode `PAGE` peut être émis dans le `Preinitialize Event` de chaque page.
+Pour `pageCfgMenu`, c'est le signal qui demande a FlowIO d'ouvrir le menu et
+d'envoyer le rendu courant.
 
 Exemples :
 
@@ -389,12 +444,31 @@ Exemples :
 - bouton filtration OFF : `printh 23 03 60 01 00`
 - bouton auto ON : `printh 23 03 60 02 01`
 - bouton sync : `printh 23 03 60 03 01`
+- bouton paramètres : `page pageCfgMenu` cote Nextion, puis
+  `pageCfgMenu` annonce son entree avec `printh 23 02 50 0A`
 
 ### Config
+
+FlowIO ne pilote pas la navigation visuelle vers ou hors de `pageCfgMenu`.
+L'écran Nextion doit changer de page localement, puis annoncer l'entrée/sortie
+a FlowIO.
+
+Dans le `Preinitialize Event` de `pageCfgMenu` :
+
+```text
+printh 23 02 50 0A
+```
+
+Dans le `Page Exit Event` de `pageCfgMenu` :
+
+```text
+printh 23 02 51 06
+```
 
 La page config peut s'appuyer sur :
 - `NAV`
 - `ROW_ACTIVATE`
+- `ROW_EDIT`
 - `ROW_TOGGLE`
 - `ROW_CYCLE`
 
@@ -404,8 +478,21 @@ Exemples :
 - `bValid` : `printh 23 02 51 03`
 - `bNext` : `printh 23 02 51 04`
 - `bPrev` : `printh 23 02 51 05`
-- `bR0` : `printh 23 02 52 00`
-- `bR1` : `printh 23 02 52 01`
+- `tL0` : `printh 23 02 52 00`
+- `tL1` : `printh 23 02 52 01`
+- `bR0` / commande édition ligne 0 : `printh 23 02 55 00`
+- `bR1` / commande édition ligne 1 : `printh 23 02 55 01`
+- changement switch `tV0` : `printh 23 02 53 00`
+- changement switch `tV1` : `printh 23 02 53 01`
+
+Si `bBack` est pressé à la racine du menu, `HMIModule` considère que le menu
+configuration est fermé. Le changement de page visuel vers Home doit alors être
+fait localement côté Nextion, par exemple avec `page <nom_de_la_page_home>`.
+
+Le `Page Exit Event` de `pageCfgMenu` doit aussi envoyer `printh 23 02 51 06`.
+Cette trame est l'arret explicite du mode menu cote FlowIO; sans elle, FlowIO
+peut continuer a considerer le menu actif et tenter de mettre a jour les objets
+du menu.
 
 ## Limitations actuelles
 

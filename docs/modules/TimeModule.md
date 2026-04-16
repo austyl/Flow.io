@@ -81,3 +81,7 @@ Slots système réservés (0..2):
 
 - Les modules métier (ex: `PoolLogicModule`) doivent utiliser `time.scheduler` pour programmer leurs fenêtres.
 - Les modules consommateurs doivent écouter `EventId::SchedulerEventTriggered`.
+- `TimeService.setExternalEpoch()` permet de régler l'horloge système depuis
+  une RTC externe, typiquement la RTC Nextion portée par `HMIModule`.
+- Quand l'heure vient d'une RTC externe, `TimeService.isExternalRtc()` reste à
+  `true` jusqu'à la prochaine synchronisation NTP réussie.

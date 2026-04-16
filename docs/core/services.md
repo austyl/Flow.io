@@ -179,6 +179,8 @@ Quand un module consomme le store, le service reste l'interface à privilégier.
 - état de synchronisation NTP
 - lecture de l'epoch
 - formatage de la date locale
+- réglage depuis une RTC externe
+- indication que l'heure courante provient d'une RTC externe
 
 ### `TimeSchedulerService`
 
