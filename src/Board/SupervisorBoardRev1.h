@@ -5,50 +5,52 @@
 namespace BoardProfiles {
 
 inline constexpr uint32_t kSupervisorBoardRev1UartBaud = 115200U;
-inline constexpr uint32_t kSupervisorBoardRev1InterlinkI2cHz = 100000U;
+inline constexpr uint32_t kSupervisorBoardRev1InterlinkI2cHz = 400000U;
 
 inline constexpr UartSpec kSupervisorBoardRev1Uarts[] = {
-    {"log", 0, -1, -1, kSupervisorBoardRev1UartBaud, true},
-    {"bridge", 2, 16, 17, kSupervisorBoardRev1UartBaud, false},
-    {"panel", 2, 33, 32, kSupervisorBoardRev1UartBaud, false},
+    // {name, uartIndex, rxPin, txPin, baud, primary}
+    {"log", 0, -1, -1, kSupervisorBoardRev1UartBaud, true}, // USB serial logs (UART0 default pins).
+    {"bridge", 2, 16, 17, kSupervisorBoardRev1UartBaud, false}, // FlowIO bridge UART (RX=GPIO16, TX=GPIO17).
+    {"panel", 2, 33, 32, kSupervisorBoardRev1UartBaud, false}, // Nextion panel UART (RX=GPIO33, TX=GPIO32).
 };
 
 inline constexpr I2cBusSpec kSupervisorBoardRev1I2c[] = {
-    {"interlink", 5, 15, kSupervisorBoardRev1InterlinkI2cHz},
+    // {name, sdaPin, sclPin, frequencyHz}
+    {"interlink", 27, 13, kSupervisorBoardRev1InterlinkI2cHz}, // FlowIO interlink bus (SDA=GPIO27, SCL=GPIO13).
 };
 
 inline constexpr St7789DisplaySpec kSupervisorBoardRev1Display{
-    240,
-    320,
-    1,
-    0,
-    0,
-    14,
-    15,
-    4,
-    5,
-    35,
-    18,
-    19,
-    false,
-    true,
-    8000000U,
-    80
+    240,      // resX: horizontal pixels.
+    320,      // resY: vertical pixels.
+    1,        // rotation: default landscape/portrait orientation index.
+    0,        // colStart: panel X offset.
+    0,        // rowStart: panel Y offset.
+    14,       // backlightPin: TFT backlight GPIO.
+    15,       // csPin: SPI chip-select GPIO.
+    4,        // dcPin: SPI data/command GPIO.
+    5,        // rstPin: TFT hardware reset GPIO.
+    35,       // misoPin: SPI MISO GPIO.
+    18,       // mosiPin: SPI MOSI GPIO.
+    19,       // sclkPin: SPI clock GPIO.
+    false,    // swapColorBytes: RGB565 byte order unchanged.
+    true,     // invertColors: panel color inversion enabled.
+    8000000U, // spiHz: SPI clock frequency.
+    80        // minRenderGapMs: minimum gap between render passes.
 };
 
 inline constexpr SupervisorInputSpec kSupervisorBoardRev1Inputs{
-    36,
-    120,
-    true,
-    23,
-    40
+    36,   // pirPin: PIR sensor GPIO.
+    120,  // pirDebounceMs: PIR debounce time.
+    true, // pirActiveHigh: PIR signal polarity.
+    23,   // factoryResetPin: long-press reset button GPIO.
+    40    // factoryResetDebounceMs: reset button debounce time.
 };
 
 inline constexpr SupervisorUpdateSpec kSupervisorBoardRev1Update{
-    25,
-    26,
-    12,
-    kSupervisorBoardRev1UartBaud
+    25,                       // flowIoEnablePin: controls target FlowIO EN line.
+    26,                       // flowIoBootPin: controls target FlowIO boot strap.
+    12,                       // nextionRebootPin: hardware reboot pin for Nextion panel.
+    kSupervisorBoardRev1UartBaud // nextionUploadBaud: upload UART baud rate.
 };
 
 inline constexpr SupervisorBoardSpec kSupervisorBoardRev1Supervisor{

@@ -68,9 +68,8 @@ Les tableaux ci-dessous décrivent le câblage actuellement reflété par les so
 
 Références principales:
 
-- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/FlowIODINBoards.h`
 - `src/Board/BoardSerialMap.h`
-- `src/Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h`
 
 | GPIO | Usage | Remarque |
 |---|---|---|
@@ -90,8 +89,8 @@ Références principales:
 | 18 | `temp_probe_2` | bus 1-Wire, rôle par défaut `AirTemp` |
 | 21 | I2C `io` SDA | bus principal des ADS1115 et du PCF8574 |
 | 22 | I2C `io` SCL | bus principal des ADS1115 et du PCF8574 |
-| 12 | I2C interlink SDA | valeur par défaut du serveur `i2c/cfg/server` |
-| 14 | I2C interlink SCL | valeur par défaut du serveur `i2c/cfg/server` |
+| 5 | I2C interlink SDA | bus `interlink` board (source de vérité) |
+| 15 | I2C interlink SCL | bus `interlink` board (source de vérité) |
 | 16 | UART2 RX | interface Nextion par défaut |
 | 17 | UART2 TX | interface Nextion par défaut |
 | 1 / 3 | UART0 | console série par défaut |
@@ -102,29 +101,29 @@ Références principales:
 
 - `src/Board/SupervisorBoardRev1.h`
 - `src/Profiles/Supervisor/SupervisorProfile.cpp`
-- `src/Modules/Network/I2CCfgClientModule/I2CCfgClientModule.h`
 
 | GPIO | Usage | Remarque |
 |---|---|---|
-| 21 | I2C interlink SDA | client `i2c/cfg/client` vers `FlowIO` |
-| 22 | I2C interlink SCL | client `i2c/cfg/client` vers `FlowIO` |
+| 27 | I2C interlink SDA | bus `interlink` board vers `FlowIO` |
+| 13 | I2C interlink SCL | bus `interlink` board vers `FlowIO` |
 | 16 | UART `bridge` RX | pont série vers `FlowIO` |
 | 17 | UART `bridge` TX | pont série vers `FlowIO` |
 | 33 | UART `panel` RX | liaison série Nextion côté Supervisor |
 | 32 | UART `panel` TX | liaison série Nextion côté Supervisor |
 | 25 | `flowIoEnablePin` | activation/reset matériel du `FlowIO` cible |
 | 26 | `flowIoBootPin` | entrée mode bootloader du `FlowIO` cible |
-| 13 | `nextionRebootPin` | redémarrage matériel Nextion |
+| 12 | `nextionRebootPin` | redémarrage matériel Nextion |
 | 14 | TFT ST7789 backlight | écran local Supervisor |
 | 15 | TFT ST7789 CS | écran local Supervisor |
-| 2 | TFT ST7789 DC | écran local Supervisor |
-| 4 | TFT ST7789 RST | écran local Supervisor |
-| 19 | TFT ST7789 MOSI/SDA | écran local Supervisor |
-| 18 | TFT ST7789 SCLK/SCL | écran local Supervisor |
+| 4 | TFT ST7789 DC | écran local Supervisor |
+| 5 | TFT ST7789 RST | écran local Supervisor |
+| 35 | TFT ST7789 MISO | écran local Supervisor |
+| 18 | TFT ST7789 MOSI/SDA | écran local Supervisor |
+| 19 | TFT ST7789 SCLK/SCL | écran local Supervisor |
 | 36 | entrée PIR | extinction automatique du backlight et rallumage sur détection de présence |
 | 1 / 3 | UART0 | console série par défaut |
 
-Sur le profil `Supervisor`, le reset Wi-Fi par appui long est prévu sur l'entrée `wifiResetPin`. Dans l'état actuel de la carte décrite par `src/Board/SupervisorBoardRev1.h`, cette entrée est désactivée (`pin = -1`), donc aucun bouton matériel de reset Wi‑Fi n'est câblé par défaut.
+Sur le profil `Supervisor`, le reset Wi-Fi par appui long est câblé sur `factoryResetPin=23` dans `src/Board/SupervisorBoardRev1.h`.
 
 ## Composition actuelle des firmwares
 

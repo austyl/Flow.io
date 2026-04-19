@@ -27,6 +27,8 @@ namespace {
 
 const SupervisorBoardSpec& supervisorBoardSpec_(const BoardSpec& board)
 {
+    // Safety fallback used only when the selected BoardSpec does not expose
+    // a supervisor extension block (board.supervisor == nullptr).
     static constexpr SupervisorBoardSpec kFallback{
         {
             240,

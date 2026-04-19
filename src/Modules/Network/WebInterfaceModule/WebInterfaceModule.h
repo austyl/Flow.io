@@ -92,8 +92,14 @@ private:
     // Lifecycle and service surface
     bool setPaused_(bool paused);
     bool isPaused_() const;
+    bool getHealth_(WebInterfaceHealth* out) const;
     static void onEventStatic_(const Event& e, void* user);
     void onEvent_(const Event& e);
+    void noteLoopActivity_();
+    void noteHttpActivity_();
+    void noteWsActivity_();
+    void noteServerStarted_();
+    static void onHttpActivityHook_(void* ctx);
 
     HardwareSerial& uart_ = Serial2;
     uint32_t uartBaud_ = 115200U;
@@ -148,10 +154,13 @@ private:
     uint32_t wsLogCoalescedCount_ = 0;
     uint32_t wsLogLastPressureLogMs_ = 0;
     uint32_t wsLogPendingSummaryDrops_ = 0;
+    mutable portMUX_TYPE healthMux_ = portMUX_INITIALIZER_UNLOCKED;
+    WebInterfaceHealth health_{};
 
     WebInterfaceService webInterfaceSvc_{
         ServiceBinding::bind<&WebInterfaceModule::setPaused_>,
         ServiceBinding::bind<&WebInterfaceModule::isPaused_>,
+        ServiceBinding::bind<&WebInterfaceModule::getHealth_>,
         this
     };
 };

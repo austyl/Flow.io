@@ -49,6 +49,12 @@ constexpr char ScheduleBlob[] = "tm_sched"; // Time module persisted key for fie
 namespace SystemMonitor {
 constexpr char TraceEnabled[] = "sm_tren"; // System monitor module persisted key for field `sm_tren`.
 constexpr char TracePeriodMs[] = "sm_trms"; // System monitor module persisted key for field `sm_trms`.
+constexpr char WebWatchdogEnabled[] = "sm_wden"; // System monitor module persisted key for field `sm_wden`.
+constexpr char WebWatchdogCheckPeriodMs[] = "sm_wdck"; // System monitor module persisted key for field `sm_wdck`.
+constexpr char WebWatchdogStaleMs[] = "sm_wdst"; // System monitor module persisted key for field `sm_wdst`.
+constexpr char WebWatchdogBootGraceMs[] = "sm_wdbg"; // System monitor module persisted key for field `sm_wdbg`.
+constexpr char WebWatchdogMaxFailures[] = "sm_wdmf"; // System monitor module persisted key for field `sm_wdmf`.
+constexpr char WebWatchdogAutoReboot[] = "sm_wdrb"; // System monitor module persisted key for field `sm_wdrb`.
 }  // namespace SystemMonitor
 
 namespace Io {

@@ -1,13 +1,13 @@
 # FlowIO — logique métier piscine (contexte de compilation `flowio`)
 
-Ce document résume la logique métier réellement compilée dans le profil **FlowIO** (board `FlowIOBoardRev1`, domain `Pool`).  
+Ce document résume la logique métier réellement compilée dans le profil **FlowIO** (board `FlowIODINv1`, domain `Pool`).  
 Il complète la doc module par module avec une vue orientée fonctionnement bassin (filtration, hiver, injection pH/ORP, électrolyse, robot, remplissage).
 
 ## 1) Contexte de compilation `flowio`
 
 Le profil `FlowIO` assemble:
 
-- Board: `FlowIOBoardRev1`
+- Board: `FlowIODINv1`
 - Domaine: `Pool`
 - Modules critiques métier: `IOModule`, `PoolLogicModule`, `PoolDeviceModule`, `TimeModule`, `AlarmModule`, `CommandModule`, `MQTTModule`, `HAModule`.
 

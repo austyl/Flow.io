@@ -122,6 +122,8 @@ struct SupervisorHmiViewModel {
 };
 
 struct St7789SupervisorDriverConfig {
+    // Generic C++ defaults for direct driver use.
+    // In SupervisorHMIModule, all these fields are overridden from BoardSpec.
     uint16_t resX = 240;
     uint16_t resY = 320;
     uint8_t rotation = 0;

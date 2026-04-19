@@ -119,6 +119,14 @@ void WebInterfaceModule::onWsEvent_(AsyncWebSocket*,
                                     uint8_t* data,
                                     size_t len)
 {
+    if (type == WS_EVT_CONNECT ||
+        type == WS_EVT_DISCONNECT ||
+        type == WS_EVT_DATA ||
+        type == WS_EVT_PONG ||
+        type == WS_EVT_ERROR) {
+        noteWsActivity_();
+    }
+
 #if FLOW_WEB_HEAP_FORENSICS
     const uint32_t forensicStartUs = micros();
     const HeapForensicSnapshot forensicStartHeap = captureHeapForensicSnapshot_();
@@ -206,6 +214,14 @@ void WebInterfaceModule::onWsLogEvent_(AsyncWebSocket*,
                                        uint8_t*,
                                        size_t)
 {
+    if (type == WS_EVT_CONNECT ||
+        type == WS_EVT_DISCONNECT ||
+        type == WS_EVT_DATA ||
+        type == WS_EVT_PONG ||
+        type == WS_EVT_ERROR) {
+        noteWsActivity_();
+    }
+
 #if FLOW_WEB_HEAP_FORENSICS
     const uint32_t forensicStartUs = micros();
     const HeapForensicSnapshot forensicStartHeap = captureHeapForensicSnapshot_();
@@ -311,6 +327,7 @@ void WebInterfaceModule::flushLine_(bool force)
     const AsyncWebSocket::SendStatus status = ws_.textAll(lineBuf_);
     if (status == AsyncWebSocket::ENQUEUED) {
         ++wsFlowSentCount_;
+        noteWsActivity_();
     } else {
         ++wsFlowDropCount_;
         if (status == AsyncWebSocket::PARTIALLY_ENQUEUED) {

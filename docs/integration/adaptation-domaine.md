@@ -80,7 +80,7 @@ Les broches réelles se changent dans les fichiers `Board`.
 
 Fichier de référence:
 
-- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/FlowIODINBoards.h`
 
 On y trouve:
 
@@ -91,8 +91,8 @@ On y trouve:
 
 Exemple de modification:
 
-- changer un relais de GPIO 32 à GPIO 5: modifier `kFlowIOBoardRev1IoPoints`
-- changer le bus I2C principal: modifier `kFlowIOBoardRev1I2c`
+- changer un relais de GPIO 32 à GPIO 5: modifier `kFlowIODINv1IoPoints`
+- changer le bus I2C principal: modifier `kFlowIODINv1I2c`
 
 ### `Supervisor`
 
@@ -215,6 +215,6 @@ Exemples dans le code actuel:
 - `src/Profiles/Supervisor/SupervisorProfile.cpp`
 - `src/Profiles/Supervisor/SupervisorProfile.h`
 - `src/Profiles/Supervisor/SupervisorBootstrap.cpp`
-- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/FlowIODINBoards.h`
 - `src/Board/SupervisorBoardRev1.h`
 - `src/Domain/Pool/PoolDomain.h`

@@ -126,6 +126,8 @@ private:
     uint32_t lastRtcPushAttemptMs_ = 0;
     uint32_t lastRtcPushDayStamp_ = 0xFFFFFFFFUL;
     bool rtcFallbackCompleted_ = false;
+    bool nextionVersionDetected_ = false;
+    uint32_t nextionVersion_ = 0U;
     char homeErrorMessage_[96]{};
 
     static void onEventStatic_(const Event& e, void* user);

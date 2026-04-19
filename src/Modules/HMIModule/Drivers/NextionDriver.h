@@ -25,6 +25,8 @@ struct NextionDriverConfig {
     const char* orpGaugePercentObject = "vaOrpPercent";
     const char* stateBitsObject = "globals.vaStates";
     const char* alarmBitsObject = "globals.vaAlarms";
+    const char* displayVersionExpr = "globals.vaVersion.val";
+    uint16_t displayVersionReadTimeoutMs = 180U;
     uint8_t configPageId = 10U;
 };
 
@@ -46,6 +48,8 @@ public:
     bool writeRtc(const HmiRtcDateTime& value) override;
     bool renderConfigMenu(const ConfigMenuView& view) override;
     bool refreshConfigMenuValues(const ConfigMenuView& view) override;
+    bool hasDisplayVersion() const { return versionDetected_; }
+    uint32_t displayVersion() const { return displayVersion_; }
 
 private:
     static constexpr uint8_t CustomRxBufSize = 64;
@@ -54,6 +58,8 @@ private:
     NextionDriverConfig cfg_{};
     bool started_ = false;
     bool pageReady_ = false;
+    bool versionDetected_ = false;
+    uint32_t displayVersion_ = 0U;
     uint32_t lastRenderMs_ = 0;
 
     bool customFrameActive_ = false;

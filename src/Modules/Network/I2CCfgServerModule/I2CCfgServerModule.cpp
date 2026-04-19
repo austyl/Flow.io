@@ -4,6 +4,7 @@
  */
 
 #include "I2CCfgServerModule.h"
+#include "Board/BoardSpec.h"
 #include "Core/ErrorCodes.h"
 #include "Core/FirmwareVersion.h"
 #include "Core/SystemStats.h"
@@ -16,6 +17,7 @@
 #include "Core/ModuleLog.h"
 
 #include <WiFi.h>
+#include <limits.h>
 #include <new>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -274,6 +276,23 @@ bool appendJsonBoolOrNull_(char* out, size_t outLen, size_t& pos, bool valid, bo
 
 }  // namespace
 
+I2CCfgServerModule::I2CCfgServerModule(const BoardSpec& board)
+{
+    applyBoardDefaults_(board);
+}
+
+void I2CCfgServerModule::applyBoardDefaults_(const BoardSpec& board)
+{
+    const I2cBusSpec* interlink = boardFindI2cBus(board, "interlink");
+    if (!interlink) return;
+
+    cfgData_.sda = interlink->sdaPin;
+    cfgData_.scl = interlink->sclPin;
+    cfgData_.freqHz = (interlink->frequencyHz > (uint32_t)INT32_MAX)
+        ? INT32_MAX
+        : (int32_t)interlink->frequencyHz;
+}
+
 const ModuleTaskSpec* I2CCfgServerModule::taskSpecs() const
 {
     static ModuleTaskSpec spec;
@@ -300,9 +319,6 @@ void I2CCfgServerModule::init(ConfigStore& cfg, ServiceRegistry& services)
     constexpr uint8_t kCfgBranchId = kI2cServerCfgBranch;
 
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(sdaVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(sclVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(freqVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(addrVar_, kCfgModuleId, kCfgBranchId);
 
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
@@ -346,6 +362,14 @@ void I2CCfgServerModule::startLink_()
     }
     if (!cfgSvc_ || !cfgSvc_->applyJson || !cfgSvc_->listModules || !cfgSvc_->toJsonModule) {
         LOGW("I2C cfg server not ready (config service missing)");
+        return;
+    }
+    if (cfgData_.sda < 0 || cfgData_.scl < 0) {
+        LOGE("I2C cfg server start failed: interlink GPIO defaults are not defined in BoardSpec");
+        return;
+    }
+    if (cfgData_.freqHz <= 0) {
+        LOGE("I2C cfg server start failed: interlink frequency is not defined in BoardSpec");
         return;
     }
     int32_t sda = cfgData_.sda;

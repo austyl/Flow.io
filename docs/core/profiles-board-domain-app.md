@@ -32,7 +32,7 @@ Le profil compilé est choisi par les macros:
 
 Références principales:
 
-- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/FlowIODINBoards.h`
 - `src/Board/SupervisorBoardRev1.h`
 - `src/Board/BoardSpec.h`
 

@@ -47,6 +47,7 @@
       --menu-icon-measures-url: none;
       --menu-icon-terminal-url: none;
       --menu-icon-system-url: none;
+      --menu-icon-calibration-url: none;
       --menu-icon-flowcfg-url: none;
       --ui-refresh-icon-url: none;
       --ui-crumb-arrow-icon-url: none;
@@ -266,6 +267,10 @@
     .icon-system {
       -webkit-mask-image: var(--menu-icon-system-url);
       mask-image: var(--menu-icon-system-url);
+    }
+    .icon-calibration {
+      -webkit-mask-image: var(--menu-icon-calibration-url);
+      mask-image: var(--menu-icon-calibration-url);
     }
     .icon-flowcfg {
       -webkit-mask-image: var(--menu-icon-flowcfg-url);
@@ -1788,6 +1793,175 @@
     .control-shell-tree {
       max-width: 1180px;
     }
+    .calibration-card {
+      border: none;
+      background: transparent;
+      padding: 6px 0;
+    }
+    .calibration-shell {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    .calibration-pane {
+      padding: 18px 18px 20px;
+      background:
+        radial-gradient(circle at top right, rgba(103, 208, 214, 0.16), transparent 42%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 251, 255, 0.96) 100%);
+    }
+    .calibration-intro {
+      margin: 6px 0 12px;
+      color: var(--panel-frame-text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .calibration-intro code {
+      font-family: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #1E5F95;
+    }
+    .calibration-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+    }
+    .calibration-actions-field .btn-row {
+      margin-top: 0;
+    }
+    .calibration-actions-row {
+      align-items: center;
+    }
+    .calibration-summary-grid {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .calibration-summary-card {
+      border: 1px solid var(--panel-frame-border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #FFFFFF;
+      display: grid;
+      gap: 4px;
+      min-height: 62px;
+      align-content: center;
+    }
+    .calibration-summary-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #6D8298;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .calibration-summary-value {
+      color: #16384F;
+      font-size: 14px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .calibration-fields-shell {
+      margin-top: 12px;
+      border: 1px dashed #C5D3E0;
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      display: grid;
+      gap: 10px;
+    }
+    .calibration-fields-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #577089;
+    }
+    .calibration-grid-points .field label {
+      font-size: 12px;
+    }
+    .calibration-main-actions {
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+    .calibration-preview {
+      margin-top: 10px;
+      border: 1px solid rgba(43, 118, 180, 0.3);
+      border-radius: 12px;
+      background: rgba(225, 236, 247, 0.5);
+      color: #1C4C74;
+      padding: 10px 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .calibration-preview-head {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1B5A88;
+    }
+    .calibration-preview-grid {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: center;
+      font-size: 12px;
+    }
+    .calibration-preview-grid b {
+      font-size: 13px;
+      color: #16384F;
+      text-align: right;
+    }
+    .calibration-preview-col-head {
+      font-size: 11px;
+      font-weight: 700;
+      color: #5B748C;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .calibration-checks {
+      margin-top: 8px;
+      border: 1px solid var(--panel-frame-border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px 12px;
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: #4D657A;
+    }
+    .calibration-check-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      min-width: 0;
+    }
+    .calibration-check-pill {
+      flex: 0 0 auto;
+      min-width: 42px;
+      border-radius: 999px;
+      padding: 3px 7px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #4D657A;
+      background: rgba(184, 199, 214, 0.26);
+    }
+    .calibration-check-line.is-ok .calibration-check-pill {
+      color: #256B4A;
+      background: rgba(47, 158, 104, 0.18);
+    }
+    .calibration-check-line.is-warn .calibration-check-pill {
+      color: #8A5C17;
+      background: rgba(240, 178, 85, 0.24);
+    }
+    .calibration-check-line.is-info .calibration-check-pill {
+      color: #1E5F95;
+      background: rgba(43, 118, 180, 0.18);
+    }
+    .calibration-check-text {
+      min-width: 0;
+      line-height: 1.4;
+    }
     .control-topbar-heading {
       min-width: 0;
       display: grid;
@@ -2499,7 +2673,31 @@
       }
       .control-topbar-actions {
         width: 100%;
-        justify-content: flex-start;
+        justify-content: flex-end;
+      }
+      .calibration-grid {
+        grid-template-columns: 1fr;
+      }
+      .calibration-summary-grid {
+        grid-template-columns: 1fr;
+      }
+      .calibration-main-actions {
+        justify-content: stretch;
+      }
+      .calibration-main-actions button {
+        width: 100%;
+      }
+      .calibration-actions-row button {
+        flex: 1 1 100%;
+      }
+      .calibration-preview-grid {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .calibration-preview-col-head:last-child {
+        text-align: right;
+      }
+      .calibration-preview-grid b {
+        text-align: right;
       }
       .control-topbar-actions .btn-compact {
         min-height: 30px;
@@ -2712,6 +2910,9 @@
     @media (max-width: 640px) {
       .cfg-pane {
         border-radius: 20px;
+        padding: 14px 14px 16px;
+      }
+      .calibration-pane {
         padding: 14px 14px 16px;
       }
       .control-current-path {

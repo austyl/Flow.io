@@ -30,6 +30,16 @@ inline const OneWireBusSpec* boardFindOneWire(const BoardSpec& board, BoardSigna
     return nullptr;
 }
 
+inline const I2cBusSpec* boardFindI2cBus(const BoardSpec& board, const char* name)
+{
+    if (!name) return nullptr;
+    for (uint8_t i = 0; i < board.i2cCount; ++i) {
+        const I2cBusSpec& spec = board.i2cBuses[i];
+        if (spec.name && strcmp(spec.name, name) == 0) return &spec;
+    }
+    return nullptr;
+}
+
 inline const SupervisorBoardSpec* boardSupervisorConfig(const BoardSpec& board)
 {
     return board.supervisor;

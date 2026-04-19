@@ -30,9 +30,11 @@ namespace Profiles {
 namespace FlowIO {
 
 struct ModuleInstances {
+    explicit ModuleInstances(const BoardSpec& board);
+
     WifiModule wifiModule{};
     TimeModule timeModule{};
-    I2CCfgServerModule i2cCfgServerModule{};
+    I2CCfgServerModule i2cCfgServerModule;
     CommandModule commandModule{};
     ConfigStoreModule configStoreModule{};
     DataStoreModule dataStoreModule{};

@@ -4,9 +4,9 @@
 
 namespace BoardCatalog {
 
-const BoardSpec& flowIOBoardRev1();
+const BoardSpec& flowIODINv1();
+const BoardSpec& flowIODINv2();
 const BoardSpec& supervisorBoardRev1();
 const BoardSpec& activeBoard();
 
 }  // namespace BoardCatalog
-

@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <WiFi.h>                ///< only for RSSI (optional)
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <new>
 #include <string.h>
 #ifdef CONFIG_HEAP_TASK_TRACKING
@@ -23,6 +24,11 @@
 namespace {
 static constexpr uint8_t kSysMonCfgProducerId = 45;
 static constexpr uint8_t kSysMonCfgBranch = 1;
+static constexpr uint32_t kWebWatchdogMinCheckPeriodMs = 250U;
+static constexpr uint32_t kWebWatchdogMinStaleMs = 1000U;
+static constexpr uint32_t kWebWatchdogMinBootGraceMs = 5000U;
+static constexpr uint32_t kWebWatchdogClientIdleFactor = 2U;
+static constexpr uint8_t kWebWatchdogMaxFailuresCap = 20U;
 static constexpr MqttConfigRouteProducer::Route kSysMonCfgRoutes[] = {
     {1, {(uint8_t)ConfigModuleId::SystemMonitor, kSysMonCfgBranch}, "sysmon", "sysmon", (uint8_t)MqttPublishPriority::Normal, nullptr},
 };
@@ -72,10 +78,20 @@ const char* SystemMonitorModule::wifiStateStr(WifiState st) {
 void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::SystemMonitor;
     constexpr uint8_t kCfgBranchId = kSysMonCfgBranch;
+    services_ = &services;
     cfgStore_ = &cfg;
     cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogEnabledVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogCheckPeriodVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogStaleVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogBootGraceVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogMaxFailuresVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(webWatchdogAutoRebootVar_, kCfgModuleId, kCfgBranchId);
 
     wifiSvc = services.get<WifiService>(ServiceId::Wifi);
+    netAccessSvc_ = services.get<NetworkAccessService>(ServiceId::NetworkAccess);
+    webInterfaceSvc_ = services.get<WebInterfaceService>(ServiceId::WebInterface);
+    cmdSvc_ = services.get<CommandService>(ServiceId::Command);
     cfgSvc  = services.get<ConfigStoreService>(ServiceId::ConfigStore);
     logHub  = services.get<LogHubService>(ServiceId::LogHub);
     haSvc_  = services.get<HAService>(ServiceId::Ha);
@@ -564,6 +580,138 @@ void SystemMonitorModule::logPendingHeapAllocFailure_()
          (unsigned long)snap.heap.largestFreeBlock);
 }
 
+void SystemMonitorModule::pollWebWatchdog_(uint32_t now)
+{
+    if (!cfgData_.webWatchdogEnabled) {
+        webWatchdogConsecutiveFailures_ = 0U;
+        webWatchdogRebootIssued_ = false;
+        return;
+    }
+
+    const uint32_t checkPeriodMs =
+        (cfgData_.webWatchdogCheckPeriodMs > (int32_t)kWebWatchdogMinCheckPeriodMs)
+            ? (uint32_t)cfgData_.webWatchdogCheckPeriodMs
+            : kWebWatchdogMinCheckPeriodMs;
+    if (lastWebWatchdogCheckMs_ != 0U && (uint32_t)(now - lastWebWatchdogCheckMs_) < checkPeriodMs) {
+        return;
+    }
+    lastWebWatchdogCheckMs_ = now;
+
+    const uint32_t bootGraceMs =
+        (cfgData_.webWatchdogBootGraceMs > (int32_t)kWebWatchdogMinBootGraceMs)
+            ? (uint32_t)cfgData_.webWatchdogBootGraceMs
+            : kWebWatchdogMinBootGraceMs;
+    if (now < bootGraceMs) {
+        webWatchdogConsecutiveFailures_ = 0U;
+        webWatchdogRebootIssued_ = false;
+        return;
+    }
+
+    if (!services_) return;
+    if (!netAccessSvc_) {
+        netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
+    }
+    if (!webInterfaceSvc_) {
+        webInterfaceSvc_ = services_->get<WebInterfaceService>(ServiceId::WebInterface);
+    }
+    if (!cmdSvc_) {
+        cmdSvc_ = services_->get<CommandService>(ServiceId::Command);
+    }
+    if (!webInterfaceSvc_ || !webInterfaceSvc_->getHealth) return;
+
+    NetworkAccessMode mode = NetworkAccessMode::None;
+    bool webReachable = false;
+    if (netAccessSvc_) {
+        if (netAccessSvc_->mode) mode = netAccessSvc_->mode(netAccessSvc_->ctx);
+        if (netAccessSvc_->isWebReachable) {
+            webReachable = netAccessSvc_->isWebReachable(netAccessSvc_->ctx);
+        } else {
+            webReachable = (mode != NetworkAccessMode::None);
+        }
+    }
+    if (!webReachable || mode == NetworkAccessMode::None) {
+        webWatchdogConsecutiveFailures_ = 0U;
+        webWatchdogRebootIssued_ = false;
+        return;
+    }
+
+    WebInterfaceHealth health{};
+    if (!webInterfaceSvc_->getHealth(webInterfaceSvc_->ctx, &health)) return;
+
+    if (!health.started || health.paused) {
+        webWatchdogConsecutiveFailures_ = 0U;
+        webWatchdogRebootIssued_ = false;
+        return;
+    }
+
+    const uint32_t staleMs =
+        (cfgData_.webWatchdogStaleMs > (int32_t)kWebWatchdogMinStaleMs)
+            ? (uint32_t)cfgData_.webWatchdogStaleMs
+            : kWebWatchdogMinStaleMs;
+    const uint32_t loopAgeMs = (health.lastLoopMs > 0U) ? (uint32_t)(now - health.lastLoopMs) : UINT32_MAX;
+    const bool loopStale = (health.lastLoopMs == 0U) || (loopAgeMs > staleMs);
+
+    const uint16_t activeClients = (uint16_t)(health.wsSerialClients + health.wsLogClients);
+    uint32_t lastClientActivityMs = health.lastWsActivityMs;
+    if (health.lastHttpActivityMs > lastClientActivityMs) {
+        lastClientActivityMs = health.lastHttpActivityMs;
+    }
+    const uint32_t clientIdleMs =
+        (activeClients == 0U)
+            ? 0U
+            : ((lastClientActivityMs > 0U) ? (uint32_t)(now - lastClientActivityMs) : UINT32_MAX);
+    const bool clientsStale =
+        (activeClients > 0U) && ((lastClientActivityMs == 0U) || (clientIdleMs > (staleMs * kWebWatchdogClientIdleFactor)));
+
+    if (!loopStale && !clientsStale) {
+        if (webWatchdogConsecutiveFailures_ > 0U) {
+            LOGI("Web watchdog recovered failures=%u loop_age=%lu clients=%u",
+                 (unsigned)webWatchdogConsecutiveFailures_,
+                 (unsigned long)loopAgeMs,
+                 (unsigned)activeClients);
+        }
+        webWatchdogConsecutiveFailures_ = 0U;
+        webWatchdogRebootIssued_ = false;
+        return;
+    }
+
+    if (webWatchdogConsecutiveFailures_ < 0xFFU) {
+        ++webWatchdogConsecutiveFailures_;
+    }
+
+    const uint8_t maxFailuresCfg =
+        (cfgData_.webWatchdogMaxFailures > 0) ? (uint8_t)cfgData_.webWatchdogMaxFailures : 1U;
+    const uint8_t maxFailures =
+        (maxFailuresCfg < kWebWatchdogMaxFailuresCap) ? maxFailuresCfg : kWebWatchdogMaxFailuresCap;
+
+    LOGW("Web watchdog fail=%u/%u loop_stale=%d loop_age=%lu stale=%lu clients=%u client_idle=%lu ws_ms=%lu http_ms=%lu",
+         (unsigned)webWatchdogConsecutiveFailures_,
+         (unsigned)maxFailures,
+         (int)loopStale,
+         (unsigned long)loopAgeMs,
+         (unsigned long)staleMs,
+         (unsigned)activeClients,
+         (unsigned long)clientIdleMs,
+         (unsigned long)health.lastWsActivityMs,
+         (unsigned long)health.lastHttpActivityMs);
+
+    if (webWatchdogConsecutiveFailures_ < maxFailures) return;
+    if (!cfgData_.webWatchdogAutoReboot) {
+        LOGE("Web watchdog reached threshold but auto-reboot is disabled");
+        return;
+    }
+    if (webWatchdogRebootIssued_) return;
+    webWatchdogRebootIssued_ = true;
+
+    LOGE("Web watchdog threshold reached, reboot requested");
+    if (cmdSvc_ && cmdSvc_->execute) {
+        char reply[160] = {0};
+        (void)cmdSvc_->execute(cmdSvc_->ctx, "system.reboot", "{}", nullptr, reply, sizeof(reply));
+    }
+    vTaskDelay(pdMS_TO_TICKS(150));
+    esp_restart();
+}
+
 void SystemMonitorModule::buildHealthJson(char* out, size_t outLen) {
     SystemStatsSnapshot snap{};
     SystemStats::collect(snap);
@@ -613,6 +761,7 @@ void SystemMonitorModule::loop() {
     if (cfgStore_) {
         cfgStore_->logNvsWriteSummaryIfDue(now, 60000U);
     }
+    pollWebWatchdog_(now);
 
     const uint32_t periodMs = (cfgData_.tracePeriodMs > 0) ? (uint32_t)cfgData_.tracePeriodMs : 5000U;
     const uint32_t heapOffsetMs = periodMs / 3U;

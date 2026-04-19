@@ -193,7 +193,11 @@ void WebInterfaceModule::flushLocalLogQueue_()
         const AsyncWebSocket::SendStatus status = wsLog_.textAll(text);
         if (status == AsyncWebSocket::ENQUEUED) {
             ++wsLogSentCount_;
+            noteWsActivity_();
             return true;
+        }
+        if (status == AsyncWebSocket::PARTIALLY_ENQUEUED) {
+            noteWsActivity_();
         }
         ++wsLogDropCount_;
         ++wsLogCoalescedCount_;

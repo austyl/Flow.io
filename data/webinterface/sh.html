@@ -17,6 +17,7 @@
       </div>
       <nav class="menu-group">
         <button class="menu-item active" data-page="page-pool-measures"><span class="ico icon-measures" aria-hidden="true"></span><span class="label">Mesures</span></button>
+        <button class="menu-item" data-page="page-calibration"><span class="ico icon-calibration" aria-hidden="true"></span><span class="label">Étalonnage</span></button>
         <button class="menu-item" data-page="page-terminal"><span class="ico icon-terminal" aria-hidden="true"></span><span class="label">Journaux</span></button>
         <button class="menu-item" data-page="page-system"><span class="ico icon-system" aria-hidden="true"></span><span class="label">Mises à Jour</span></button>
         <button class="menu-item" data-page="page-control"><span class="ico icon-flowcfg" aria-hidden="true"></span><span class="label">Configuration</span></button>
@@ -257,6 +258,108 @@
               <button id="applyWifiCfg" class="btn-primary">Appliquer WiFi</button>
             </div>
             <div id="wifiConfigStatus" class="config-status">Configuration WiFi prête.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-calibration" class="page">
+        <div class="topbar">
+          <h1>Calibration</h1>
+          <div class="topbar-actions">
+            <span id="calibrationStatusChip" class="status-chip">Prêt</span>
+          </div>
+        </div>
+        <div class="card calibration-card">
+          <div class="control-shell calibration-shell">
+            <section class="cfg-pane calibration-pane">
+              <div class="control-section-title">Assistant</div>
+              <p class="calibration-intro">
+                Calibrez les sondes piscine en calculant automatiquement les coefficients <b>C0</b> et <b>C1</b> selon la formule
+                <code>valeur = C0 * input + C1</code>.
+              </p>
+
+              <div class="calibration-grid">
+                <div class="field">
+                  <label for="calibrationSensorSelect">Sonde</label>
+                  <select id="calibrationSensorSelect">
+                    <option value="ph">pH (2 points)</option>
+                    <option value="orp">ORP (2 points)</option>
+                    <option value="psi">Pression PSI (2 points)</option>
+                    <option value="water_temp">Température eau (1 point)</option>
+                    <option value="air_temp">Température air (1 point)</option>
+                  </select>
+                </div>
+                <div class="field calibration-actions-field">
+                  <label>&nbsp;</label>
+                  <div class="btn-row calibration-actions-row">
+                    <button id="calibrationLoadBtn" class="btn-tonal">Charger la sonde</button>
+                    <button id="calibrationPrefillBtn" class="btn-tonal">Préremplir mesure live</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="calibration-summary-grid">
+                <div class="calibration-summary-card">
+                  <span class="calibration-summary-label">Module IO</span>
+                  <span id="calibrationIoModule" class="calibration-summary-value">-</span>
+                </div>
+                <div class="calibration-summary-card">
+                  <span class="calibration-summary-label">C0 actuel</span>
+                  <span id="calibrationC0Current" class="calibration-summary-value">-</span>
+                </div>
+                <div class="calibration-summary-card">
+                  <span class="calibration-summary-label">C1 actuel</span>
+                  <span id="calibrationC1Current" class="calibration-summary-value">-</span>
+                </div>
+              </div>
+
+              <div id="calibrationModeHint" class="config-status config-status-muted">Mode 2 points actif.</div>
+
+              <div id="calibrationTwoPointFields" class="calibration-fields-shell">
+                <div class="calibration-fields-title">Calibration 2 points</div>
+                <div class="calibration-grid calibration-grid-points">
+                  <div class="field">
+                    <label for="calibrationPoint1Measured">Point 1 - Mesure affichée</label>
+                    <input id="calibrationPoint1Measured" inputmode="decimal" placeholder="ex: 7.42" />
+                  </div>
+                  <div class="field">
+                    <label for="calibrationPoint1Reference">Point 1 - Référence connue (solution tampon, manomètre, etc.)</label>
+                    <input id="calibrationPoint1Reference" inputmode="decimal" placeholder="ex: 7.00" />
+                  </div>
+                  <div class="field">
+                    <label for="calibrationPoint2Measured">Point 2 - Mesure affichée</label>
+                    <input id="calibrationPoint2Measured" inputmode="decimal" placeholder="ex: 9.68" />
+                  </div>
+                  <div class="field">
+                    <label for="calibrationPoint2Reference">Point 2 - Référence connue (solution tampon, manomètre, etc.)</label>
+                    <input id="calibrationPoint2Reference" inputmode="decimal" placeholder="ex: 10.00" />
+                  </div>
+                </div>
+              </div>
+
+              <div id="calibrationOnePointFields" class="calibration-fields-shell" hidden>
+                <div class="calibration-fields-title">Calibration 1 point (offset)</div>
+                <div class="calibration-grid calibration-grid-points">
+                  <div class="field">
+                    <label for="calibrationSingleMeasured">Mesure affichée</label>
+                    <input id="calibrationSingleMeasured" inputmode="decimal" placeholder="ex: 24.4" />
+                  </div>
+                  <div class="field">
+                    <label for="calibrationSingleReference">Référence connue (solution tampon, manomètre, etc.)</label>
+                    <input id="calibrationSingleReference" inputmode="decimal" placeholder="ex: 25.0" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="btn-row calibration-main-actions">
+                <button id="calibrationComputeBtn" class="btn-tonal">Calculer C0/C1</button>
+                <button id="calibrationApplyBtn" class="btn-primary" disabled>Appliquer sur Flow.io</button>
+              </div>
+
+              <div id="calibrationPreview" class="calibration-preview" hidden></div>
+              <div id="calibrationChecks" class="calibration-checks" hidden></div>
+              <div id="calibrationStatus" class="config-status">Calibration prête.</div>
+            </section>
           </div>
         </div>
       </section>

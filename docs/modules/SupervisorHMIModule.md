@@ -22,26 +22,57 @@ Interface HMI locale du firmware Supervisor:
 - extinction backlight après timeout d'inactivité PIR
 - rallumage du backlight sur détection de présence par le capteur PIR
 - backlight forcé ON pendant update firmware
-- appui long sur l'entrée `wifiResetPin` (3s par défaut dans le profil Supervisor): reset `wifi.ssid`/`wifi.pass`, notification provisioning, reboot
+- appui long sur l'entrée `factoryResetPin` (5s par défaut dans le profil Supervisor): reset `wifi.ssid`/`wifi.pass`, notification provisioning, reboot
 
-## Brochage et timings
+## Source de vérité et priorité des valeurs (important)
 
-Les valeurs viennent maintenant de la single source of truth Supervisor:
+Quand plusieurs valeurs semblent définies à plusieurs endroits, l'ordre réel est:
 
-- hardware: `src/Board/SupervisorBoardRev1.h`
-- timings runtime: `src/Profiles/Supervisor/SupervisorProfile.cpp`
+1. `src/Board/SupervisorBoardRev1.h` (`kSupervisorBoardRev1Display`, `kSupervisorBoardRev1Inputs`, `kSupervisorBoardRev1Update`)  
+   C'est la source de vérité hardware pour le profil Supervisor.
+2. `src/Profiles/Supervisor/SupervisorProfile.cpp` (`runtimeOptions`)  
+   C'est la source de vérité des timings runtime (timeout PIR, durée appui long reset).
+3. `src/Modules/SupervisorHMIModule/SupervisorHMIModule.cpp` (`makeDriverConfig_`)  
+   Le module copie ces valeurs board/profile vers `St7789SupervisorDriverConfig` avant de créer le driver.
+4. `src/Modules/SupervisorHMIModule/SupervisorHMIModule.cpp` (`kFallback`)  
+   Utilisé uniquement si `board.supervisor == nullptr` (mode secours/compatibilité).
+5. `src/Modules/SupervisorHMIModule/Drivers/St7789SupervisorDriver.h` (`St7789SupervisorDriverConfig`)  
+   Ce sont des valeurs par défaut de structure C++, pas la config effective du profil Supervisor.
 
-Valeurs actuelles:
+## Clarification SDA/SCL vs MOSI/SCLK (LCD)
 
-- TFT backlight: `14`
-- TFT CS: `15`
-- TFT DC: `2`
-- TFT RST: `4`
-- TFT MOSI: `19`
-- TFT SCLK: `18`
-- PIR: `36`
-- bouton reset WiFi: `disabled`
-- timeout extinction backlight: `10000 ms`
-- appui long reset WiFi: `3000 ms`
+Le ST7789 est utilisé en SPI.  
+Sur certains modules TFT, les broches sont sérigraphiées `SDA/SCL`, mais ici cela correspond à:
 
-Dans l'état actuel de `src/Board/SupervisorBoardRev1.h`, `wifiResetPin = -1`. Le comportement d'appui long est donc présent dans le module, mais aucun bouton matériel n'est défini par défaut sur cette révision de carte.
+- `SDA` du TFT -> `MOSI` (champ `mosiPin`)
+- `SCL` du TFT -> `SCLK` (champ `sclkPin`)
+
+Ce n'est pas le bus I2C `SDA/SCL` interlink.
+
+## Où sont les defaults I2C interlink (ce n'est pas le LCD)
+
+Source de vérité unique: `Board`.
+
+- `FlowIO`: `src/Board/FlowIODINBoards.h` -> bus I2C `interlink` (`SDA=5`, `SCL=15`, `400000 Hz`)
+- `Supervisor`: `src/Board/SupervisorBoardRev1.h` -> bus I2C `interlink` (`SDA=27`, `SCL=13`, `400000 Hz`)
+- `i2ccfg.server` et `i2ccfg.client` lisent ce bus `interlink` au constructeur pour initialiser `cfgData_.sda/scl/freq_hz`
+- `sda/scl/freq_hz` ne sont plus des variables de config persistantes de `elink/server` et `elink/client` (pas d'override NVS concurrent)
+- si le bus `interlink` n'existe pas dans la board, le module logue une erreur explicite et ne démarre pas le lien
+
+## Valeurs effectives actuelles (profil Supervisor)
+
+Référence: `src/Board/SupervisorBoardRev1.h` + `src/Profiles/Supervisor/SupervisorProfile.cpp`
+
+- TFT: `resX=240`, `resY=320`, `rotation=1`, `colStart=0`, `rowStart=0`
+- TFT GPIO: `backlight=14`, `cs=15`, `dc=4`, `rst=5`, `miso=35`, `mosi=18`, `sclk=19`
+- TFT rendu: `swapColorBytes=false`, `invertColors=true`, `spiHz=8000000`, `minRenderGapMs=80`
+- Entrées Supervisor: `pirPin=36`, `pirDebounceMs=120`, `pirActiveHigh=true`, `factoryResetPin=23`, `factoryResetDebounceMs=40`
+- Pilotage update: `flowIoEnablePin=25`, `flowIoBootPin=26`, `nextionRebootPin=12`, `nextionUploadBaud=115200`
+- Interlink I2C (defaults `elink/client` injectés depuis Board): `sda=27`, `scl=13`, `freq_hz=400000`
+- Timings runtime: `pirTimeoutMs=60000`, `factoryResetHoldMs=5000`
+
+## Où modifier quoi
+
+- Changer le câblage TFT/PIR/bouton/update: `src/Board/SupervisorBoardRev1.h`
+- Changer timeout rétroéclairage ou durée appui long: `src/Profiles/Supervisor/SupervisorProfile.cpp`
+- Ne pas utiliser `kFallback` ou les defaults de `St7789SupervisorDriverConfig` pour un changement board normal.

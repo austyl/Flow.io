@@ -38,7 +38,7 @@ struct ModuleInstances {
     WifiModule wifiModule{};
     WifiProvisioningModule wifiProvisioningModule{};
     TimeModule timeModule{};
-    I2CCfgClientModule i2cCfgClientModule{};
+    I2CCfgClientModule i2cCfgClientModule;
     WebInterfaceModule webInterfaceModule;
     FirmwareUpdateModule firmwareUpdateModule;
     SystemModule systemModule{};

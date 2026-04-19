@@ -74,12 +74,22 @@ private:
 
     struct SystemMonitorConfig {
         int32_t tracePeriodMs = 5000;
+        bool webWatchdogEnabled = true;
+        int32_t webWatchdogCheckPeriodMs = 2000;
+        int32_t webWatchdogStaleMs = 5000;
+        int32_t webWatchdogBootGraceMs = 60000;
+        int32_t webWatchdogMaxFailures = 3;
+        bool webWatchdogAutoReboot = true;
     };
 
     ModuleManager* moduleManager = nullptr;
     ConfigStore* cfgStore_ = nullptr;
+    ServiceRegistry* services_ = nullptr;
 
     const WifiService* wifiSvc = nullptr;
+    const NetworkAccessService* netAccessSvc_ = nullptr;
+    const WebInterfaceService* webInterfaceSvc_ = nullptr;
+    const CommandService* cmdSvc_ = nullptr;
     const ConfigStoreService* cfgSvc = nullptr;
     const LogHubService* logHub = nullptr;
     const HAService* haSvc_ = nullptr;
@@ -93,13 +103,16 @@ private:
     uint32_t heapWatchTriggerMinFreeBytes_ = 0;
     uint32_t heapWatchTriggerLargestFreeBlock_ = 0;
     uint32_t traceCycleStartMs_ = 0;
+    uint32_t lastWebWatchdogCheckMs_ = 0;
     size_t heapWatchWriteIndex_ = 0;
     size_t heapWatchCount_ = 0;
     size_t heapWatchFrozenWriteIndex_ = 0;
     size_t heapWatchFrozenCount_ = 0;
+    uint8_t webWatchdogConsecutiveFailures_ = 0;
     bool bootInfoLogged_ = false;
     bool heapWatchTripActive_ = false;
     bool heapWatchDumpPending_ = false;
+    bool webWatchdogRebootIssued_ = false;
     bool stackLoggedThisCycle_ = false;
     bool heapLoggedThisCycle_ = false;
     bool buffersLoggedThisCycle_ = false;
@@ -121,6 +134,7 @@ private:
     void dumpHeapWatch_();
     void dumpHeapWatchWindow_() const;
     void logPendingHeapAllocFailure_();
+    void pollWebWatchdog_(uint32_t now);
 #ifdef CONFIG_HEAP_TASK_TRACKING
     void captureHeapWatchTaskTotals_();
     void dumpHeapWatchTaskTotals_() const;
@@ -135,5 +149,35 @@ private:
     ConfigVariable<int32_t,0> tracePeriodVar_{
         NVS_KEY(NvsKeys::SystemMonitor::TracePeriodMs), "trace_period_ms", "sysmon", ConfigType::Int32,
         &cfgData_.tracePeriodMs, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web activé","help":"Active la surveillance du serveur web supervisor."}
+    ConfigVariable<bool,0> webWatchdogEnabledVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogEnabled), "web_watchdog_enabled", "sysmon", ConfigType::Bool,
+        &cfgData_.webWatchdogEnabled, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web période check (ms)","help":"Intervalle entre deux vérifications du serveur web.","unit":"ms"}
+    ConfigVariable<int32_t,0> webWatchdogCheckPeriodVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogCheckPeriodMs), "web_watchdog_check_period_ms", "sysmon", ConfigType::Int32,
+        &cfgData_.webWatchdogCheckPeriodMs, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web seuil blocage (ms)","help":"Âge max toléré du heartbeat web avant échec watchdog.","unit":"ms"}
+    ConfigVariable<int32_t,0> webWatchdogStaleVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogStaleMs), "web_watchdog_stale_ms", "sysmon", ConfigType::Int32,
+        &cfgData_.webWatchdogStaleMs, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web grâce boot (ms)","help":"Délai de grâce après boot avant d'activer la surveillance web.","unit":"ms"}
+    ConfigVariable<int32_t,0> webWatchdogBootGraceVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogBootGraceMs), "web_watchdog_boot_grace_ms", "sysmon", ConfigType::Int32,
+        &cfgData_.webWatchdogBootGraceMs, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web échecs max","help":"Nombre d'échecs consécutifs avant action watchdog."}
+    ConfigVariable<int32_t,0> webWatchdogMaxFailuresVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogMaxFailures), "web_watchdog_max_failures", "sysmon", ConfigType::Int32,
+        &cfgData_.webWatchdogMaxFailures, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Watchdog Web reboot auto","help":"Autorise le reboot automatique quand le watchdog détecte un blocage web persistant."}
+    ConfigVariable<bool,0> webWatchdogAutoRebootVar_{
+        NVS_KEY(NvsKeys::SystemMonitor::WebWatchdogAutoReboot), "web_watchdog_auto_reboot", "sysmon", ConfigType::Bool,
+        &cfgData_.webWatchdogAutoReboot, ConfigPersistence::Persistent, 0
     };
 };

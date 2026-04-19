@@ -60,10 +60,20 @@ bool NextionDriver::begin()
     delay(30);
     started_ = true;
     pageReady_ = false;
+    versionDetected_ = false;
+    displayVersion_ = 0U;
     lastRenderMs_ = 0;
     customFrameActive_ = false;
     customExpectedLen_ = 0;
     customLen_ = 0;
+
+    if (cfg_.displayVersionExpr && cfg_.displayVersionExpr[0] != '\0') {
+        uint32_t detected = 0U;
+        if (readNumber_(cfg_.displayVersionExpr, detected, cfg_.displayVersionReadTimeoutMs)) {
+            displayVersion_ = detected;
+            versionDetected_ = true;
+        }
+    }
     return true;
 }
 

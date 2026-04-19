@@ -10,6 +10,7 @@
 #include "Core/EventBus/EventPayloads.h"
 #include "Core/ModuleLog.h"
 #include "Modules/Network/WifiModule/WifiRuntime.h"
+#include <Arduino.h>
 #include <esp_heap_caps.h>
 
 bool WebInterfaceModule::setPaused_(bool paused)
@@ -18,12 +19,87 @@ bool WebInterfaceModule::setPaused_(bool paused)
     if (paused) {
         lineLen_ = 0;
     }
+    const uint32_t nowMs = millis();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.paused = uartPaused_;
+    portEXIT_CRITICAL(&healthMux_);
     return true;
 }
 
 bool WebInterfaceModule::isPaused_() const
 {
     return uartPaused_;
+}
+
+bool WebInterfaceModule::getHealth_(WebInterfaceHealth* out) const
+{
+    if (!out) return false;
+    portENTER_CRITICAL(&healthMux_);
+    *out = health_;
+    portEXIT_CRITICAL(&healthMux_);
+    return true;
+}
+
+void WebInterfaceModule::noteLoopActivity_()
+{
+    const uint32_t nowMs = millis();
+    const uint16_t wsSerialClients = (uint16_t)ws_.count();
+    const uint16_t wsLogClients = (uint16_t)wsLog_.count();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.lastLoopMs = nowMs;
+    health_.started = started_;
+    health_.paused = uartPaused_;
+    health_.wsSerialClients = wsSerialClients;
+    health_.wsLogClients = wsLogClients;
+    portEXIT_CRITICAL(&healthMux_);
+}
+
+void WebInterfaceModule::noteHttpActivity_()
+{
+    const uint32_t nowMs = millis();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.lastHttpActivityMs = nowMs;
+    health_.started = started_;
+    health_.paused = uartPaused_;
+    portEXIT_CRITICAL(&healthMux_);
+}
+
+void WebInterfaceModule::noteWsActivity_()
+{
+    const uint32_t nowMs = millis();
+    const uint16_t wsSerialClients = (uint16_t)ws_.count();
+    const uint16_t wsLogClients = (uint16_t)wsLog_.count();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.lastWsActivityMs = nowMs;
+    health_.started = started_;
+    health_.paused = uartPaused_;
+    health_.wsSerialClients = wsSerialClients;
+    health_.wsLogClients = wsLogClients;
+    portEXIT_CRITICAL(&healthMux_);
+}
+
+void WebInterfaceModule::noteServerStarted_()
+{
+    const uint32_t nowMs = millis();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.lastLoopMs = nowMs;
+    health_.started = true;
+    health_.paused = uartPaused_;
+    health_.wsSerialClients = 0U;
+    health_.wsLogClients = 0U;
+    portEXIT_CRITICAL(&healthMux_);
+}
+
+void WebInterfaceModule::onHttpActivityHook_(void* ctx)
+{
+    WebInterfaceModule* self = static_cast<WebInterfaceModule*>(ctx);
+    if (!self) return;
+    self->noteHttpActivity_();
 }
 
 void WebInterfaceModule::onEventStatic_(const Event& e, void* user)
@@ -45,6 +121,8 @@ void WebInterfaceModule::onEvent_(const Event& e)
 
 void WebInterfaceModule::loop()
 {
+    noteLoopActivity_();
+
     if (!netAccessSvc_ && services_) {
         netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
     }

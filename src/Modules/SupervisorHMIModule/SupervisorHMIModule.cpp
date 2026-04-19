@@ -31,6 +31,8 @@ static constexpr uint32_t kWifiRssiRefreshMs = 3000U;
 
 const SupervisorBoardSpec& supervisorBoardSpec_(const BoardSpec& board)
 {
+    // Safety fallback used only when the selected BoardSpec does not expose
+    // a supervisor extension block (board.supervisor == nullptr).
     static constexpr SupervisorBoardSpec kFallback{
         {
             240,
@@ -87,6 +89,8 @@ SupervisorHMIModule::SupervisorHMIModule(const BoardSpec& board, const Superviso
 St7789SupervisorDriverConfig SupervisorHMIModule::makeDriverConfig_(const BoardSpec& board)
 {
     const SupervisorBoardSpec& boardCfg = supervisorBoardSpec_(board);
+    // We intentionally overwrite every field from BoardSpec so driver-side
+    // struct defaults are not used in the normal Supervisor profile path.
     St7789SupervisorDriverConfig cfg{};
     cfg.resX = boardCfg.display.resX;
     cfg.resY = boardCfg.display.resY;

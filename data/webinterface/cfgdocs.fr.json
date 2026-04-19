@@ -557,34 +557,6 @@
       "var": "enabledVar_",
       "source": "cfgdoc"
     },
-    "elink/client/freq_hz": {
-      "module": "elink/client",
-      "name": "freq_hz",
-      "type": "Int32",
-      "label": "Frequence eLink",
-      "help": "Frequence du bus eLink en hertz.",
-      "var": "freqVar_",
-      "source": "cfgdoc",
-      "unit": "Hz"
-    },
-    "elink/client/scl": {
-      "module": "elink/client",
-      "name": "scl",
-      "type": "Int32",
-      "label": "GPIO SCL interlink",
-      "help": "GPIO utilise pour la ligne SCL du bus interlink Supervisor -> Flow.io.",
-      "var": "sclVar_",
-      "source": "cfgdoc"
-    },
-    "elink/client/sda": {
-      "module": "elink/client",
-      "name": "sda",
-      "type": "Int32",
-      "label": "GPIO SDA interlink",
-      "help": "GPIO utilise pour la ligne SDA du bus interlink Supervisor -> Flow.io.",
-      "var": "sdaVar_",
-      "source": "cfgdoc"
-    },
     "elink/client/target_addr": {
       "module": "elink/client",
       "name": "target_addr",
@@ -916,34 +888,6 @@
       "label": "Serveur eLink actif",
       "help": "Active le serveur eLink cote Flow.io pour repondre au Supervisor.",
       "var": "enabledVar_",
-      "source": "cfgdoc"
-    },
-    "elink/server/freq_hz": {
-      "module": "elink/server",
-      "name": "freq_hz",
-      "type": "Int32",
-      "label": "Frequence eLink",
-      "help": "Frequence du bus eLink en hertz.",
-      "var": "freqVar_",
-      "source": "cfgdoc",
-      "unit": "Hz"
-    },
-    "elink/server/scl": {
-      "module": "elink/server",
-      "name": "scl",
-      "type": "Int32",
-      "label": "GPIO SCL interlink",
-      "help": "GPIO utilise pour la ligne SCL du bus interlink Flow.io <-> Supervisor.",
-      "var": "sclVar_",
-      "source": "cfgdoc"
-    },
-    "elink/server/sda": {
-      "module": "elink/server",
-      "name": "sda",
-      "type": "Int32",
-      "label": "GPIO SDA interlink",
-      "help": "GPIO utilise pour la ligne SDA du bus interlink Flow.io <-> Supervisor.",
-      "var": "sdaVar_",
       "source": "cfgdoc"
     },
     "fwupdate/cfgdocs_path": {
@@ -3968,6 +3912,63 @@
       "label": "Période trace système (ms)",
       "help": "Période entre deux traces système.",
       "var": "tracePeriodVar_",
+      "source": "cfgdoc",
+      "unit": "ms"
+    },
+    "sysmon/web_watchdog_auto_reboot": {
+      "module": "sysmon",
+      "name": "web_watchdog_auto_reboot",
+      "type": "Bool",
+      "label": "Watchdog Web reboot auto",
+      "help": "Autorise le reboot automatique quand le watchdog détecte un blocage web persistant.",
+      "var": "webWatchdogAutoRebootVar_",
+      "source": "cfgdoc"
+    },
+    "sysmon/web_watchdog_boot_grace_ms": {
+      "module": "sysmon",
+      "name": "web_watchdog_boot_grace_ms",
+      "type": "Int32",
+      "label": "Watchdog Web grâce boot (ms)",
+      "help": "Délai de grâce après boot avant d'activer la surveillance web.",
+      "var": "webWatchdogBootGraceVar_",
+      "source": "cfgdoc",
+      "unit": "ms"
+    },
+    "sysmon/web_watchdog_check_period_ms": {
+      "module": "sysmon",
+      "name": "web_watchdog_check_period_ms",
+      "type": "Int32",
+      "label": "Watchdog Web période check (ms)",
+      "help": "Intervalle entre deux vérifications du serveur web.",
+      "var": "webWatchdogCheckPeriodVar_",
+      "source": "cfgdoc",
+      "unit": "ms"
+    },
+    "sysmon/web_watchdog_enabled": {
+      "module": "sysmon",
+      "name": "web_watchdog_enabled",
+      "type": "Bool",
+      "label": "Watchdog Web activé",
+      "help": "Active la surveillance du serveur web supervisor.",
+      "var": "webWatchdogEnabledVar_",
+      "source": "cfgdoc"
+    },
+    "sysmon/web_watchdog_max_failures": {
+      "module": "sysmon",
+      "name": "web_watchdog_max_failures",
+      "type": "Int32",
+      "label": "Watchdog Web échecs max",
+      "help": "Nombre d'échecs consécutifs avant action watchdog.",
+      "var": "webWatchdogMaxFailuresVar_",
+      "source": "cfgdoc"
+    },
+    "sysmon/web_watchdog_stale_ms": {
+      "module": "sysmon",
+      "name": "web_watchdog_stale_ms",
+      "type": "Int32",
+      "label": "Watchdog Web seuil blocage (ms)",
+      "help": "Âge max toléré du heartbeat web avant échec watchdog.",
+      "var": "webWatchdogStaleVar_",
       "source": "cfgdoc",
       "unit": "ms"
     },

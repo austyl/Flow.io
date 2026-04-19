@@ -423,6 +423,8 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     lastRtcPushAttemptMs_ = 0;
     lastRtcPushDayStamp_ = kInvalidClockStamp;
     rtcFallbackCompleted_ = false;
+    nextionVersionDetected_ = false;
+    nextionVersion_ = 0U;
     phIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].ioId;
     orpIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].ioId;
     airTempIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].ioId;
@@ -1686,6 +1688,15 @@ void HMIModule::loop()
                 venice_.tick(millis(), ioSvc_, waterTempIoId_);
                 vTaskDelay(pdMS_TO_TICKS(500));
                 return;
+            }
+            if (driver_ == static_cast<IHmiDriver*>(&nextion_)) {
+                nextionVersionDetected_ = nextion_.hasDisplayVersion();
+                nextionVersion_ = nextion_.displayVersion();
+                if (nextionVersionDetected_) {
+                    LOGI("Ecran Nextion version %04lu detecte.", (unsigned long)nextionVersion_);
+                } else {
+                    LOGI("Ecran Nextion version non detectee.");
+                }
             }
             viewDirty_ = true;
             queueHomePublish_(kHomePublishAll);

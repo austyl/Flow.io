@@ -4,6 +4,7 @@
  */
 
 #include "I2CCfgClientModule.h"
+#include "Board/BoardSpec.h"
 #include "Core/ErrorCodes.h"
 #include "Core/Generated/RuntimeUiManifest_Generated.h"
 #include "Modules/Network/I2CCfgClientModule/I2CCfgClientRuntime.h"
@@ -12,6 +13,7 @@
 
 #include <ArduinoJson.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -317,15 +319,29 @@ bool writeApplyStatusError_(char* out, size_t outLen, const char* step, uint8_t 
 
 }  // namespace
 
+I2CCfgClientModule::I2CCfgClientModule(const BoardSpec& board)
+{
+    applyBoardDefaults_(board);
+}
+
+void I2CCfgClientModule::applyBoardDefaults_(const BoardSpec& board)
+{
+    const I2cBusSpec* interlink = boardFindI2cBus(board, "interlink");
+    if (!interlink) return;
+
+    cfgData_.sda = interlink->sdaPin;
+    cfgData_.scl = interlink->sclPin;
+    cfgData_.freqHz = (interlink->frequencyHz > (uint32_t)INT32_MAX)
+        ? INT32_MAX
+        : (int32_t)interlink->frequencyHz;
+}
+
 void I2CCfgClientModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::I2cCfg;
     constexpr uint8_t kCfgBranchId = kI2cClientCfgBranch;
 
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(sdaVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(sclVar_, kCfgModuleId, kCfgBranchId);
-    cfg.registerVar(freqVar_, kCfgModuleId, kCfgBranchId);
     cfg.registerVar(addrVar_, kCfgModuleId, kCfgBranchId);
     for (uint8_t i = 0; i < kDashboardSlotCount; ++i) {
         DashboardSlotConfig& slotCfg = dashboardCfg_[i];
@@ -441,6 +457,14 @@ void I2CCfgClientModule::startLink_()
     invalidateRuntimeCache_();
     if (!cfgData_.enabled) {
         LOGI("I2C cfg client disabled");
+        return;
+    }
+    if (cfgData_.sda < 0 || cfgData_.scl < 0) {
+        LOGE("I2C cfg client start failed: interlink GPIO defaults are not defined in BoardSpec");
+        return;
+    }
+    if (cfgData_.freqHz <= 0) {
+        LOGE("I2C cfg client start failed: interlink frequency is not defined in BoardSpec");
         return;
     }
 

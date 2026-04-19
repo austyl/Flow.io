@@ -88,7 +88,10 @@ ANALOG_KEY_RE = re.compile(r"^a(?P<idx>[0-9]+)_(?P<field>name|source|channel|bin
 DIGITAL_INPUT_KEY_RE = re.compile(r"^i(?P<idx>[0-9]+)_(?P<field>name|binding_port|mode|active_high|pull_mode|edge_mode|c0|prec)$")
 DIGITAL_OUTPUT_KEY_RE = re.compile(r"^d(?P<idx>[0-9]+)_(?P<field>name|pin|binding_port|active_high|initial_on|momentary|pulse_ms)$")
 ANALOG_MODULE_RE = re.compile(r"^io/input/a(?P<idx>[0-9]+)$")
-PORT_ENUM_RE = re.compile(r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,\s*$", re.M)
+PORT_ENUM_RE = re.compile(
+    r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,(?:\s*//.*)?\s*$",
+    re.M,
+)
 BINDING_ENTRY_RE = re.compile(
     r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
     re.S,
@@ -97,7 +100,9 @@ BOARD_IO_POINT_RE = re.compile(
     r'\{\s*"(?P<name>[^"]+)"\s*,\s*IoCapability::(?P<cap>[A-Za-z0-9_]+)\s*,\s*BoardSignal::(?P<signal>[A-Za-z0-9_]+)\s*,\s*(?P<pin>-?\d+)\s*,',
     re.S,
 )
-BOARD_PIN_REF_RE = re.compile(r"BoardProfiles::kFlowIOBoardRev1IoPoints\[(?P<idx>\d+)\]\.pin")
+BOARD_PIN_REF_RE = re.compile(
+    r"BoardProfiles::(?:kFlowIODINv1IoPoints|kFlowIODINv2IoPoints|kFlowIOBoardRev1IoPoints)\[(?P<idx>\d+)\]\.pin"
+)
 POOL_DEVICE_PRESET_RE = re.compile(
     r'\{\s*DomainRole::(?P<role>[A-Za-z0-9_]+)\s*,\s*"(?P<object>[^"]+)"\s*,\s*"(?P<display>[^"]+)"\s*,\s*"(?P<icon>[^"]+)"\s*,\s*(?P<slot>\d+)\s*,',
     re.S,
@@ -199,7 +204,7 @@ def _apply_doc_extras(item: dict, module_name: str, json_name: str) -> None:
 
 
 def _load_flowio_board_points(src_root: Path) -> List[dict]:
-    path = src_root / "Board" / "FlowIOBoardRev1.h"
+    path = src_root / "Board" / "FlowIODINBoards.h"
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8", errors="ignore")

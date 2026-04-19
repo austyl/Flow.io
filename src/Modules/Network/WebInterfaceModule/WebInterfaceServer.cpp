@@ -131,6 +131,8 @@ constexpr uint32_t kHttpLatencyFlowCfgInfoMs = 200U;
 constexpr uint32_t kHttpLatencyFlowCfgWarnMs = 900U;
 constexpr uint32_t kHeapGuardAssetFreeBytesMinor = 12288U;
 constexpr uint32_t kHeapGuardAssetFreeBytesMajor = 15360U;
+void (*gHttpActivityHook)(void*) = nullptr;
+void* gHttpActivityHookCtx = nullptr;
 
 const char* httpMethodName_(uint8_t method);
 void addNoCacheHeaders_(AsyncWebServerResponse* response);
@@ -992,6 +994,9 @@ struct HttpLatencyScope {
           infoMs(infoThresholdMs),
           warnMs((warnThresholdMs > infoThresholdMs) ? warnThresholdMs : (infoThresholdMs + 1U))
     {
+        if (gHttpActivityHook) {
+            gHttpActivityHook(gHttpActivityHookCtx);
+        }
 #if FLOW_WEB_HEAP_FORENSICS
         startHeap = captureHeapForensicSnapshot_();
 #endif
@@ -1082,6 +1087,18 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     uart_.begin(uartBaud_, SERIAL_8N1, uartRxPin_, uartTxPin_);
     netReady_ = dataStore_ ? wifiReady(*dataStore_) : false;
 
+    const uint32_t nowMs = millis();
+    portENTER_CRITICAL(&healthMux_);
+    health_.snapshotMs = nowMs;
+    health_.lastLoopMs = nowMs;
+    health_.lastHttpActivityMs = 0U;
+    health_.lastWsActivityMs = 0U;
+    health_.wsSerialClients = 0U;
+    health_.wsLogClients = 0U;
+    health_.started = started_;
+    health_.paused = uartPaused_;
+    portEXIT_CRITICAL(&healthMux_);
+
     if (!localLogQueue_) {
         localLogQueue_ = xQueueCreate(kLocalLogQueueLen, kLocalLogLineMax);
         if (!localLogQueue_) {
@@ -1108,6 +1125,8 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 void WebInterfaceModule::startServer_()
 {
     if (started_) return;
+    gHttpActivityHook = &WebInterfaceModule::onHttpActivityHook_;
+    gHttpActivityHookCtx = this;
 
     spiffsReady_ = SPIFFS.begin(false);
     if (!spiffsReady_) {
@@ -1315,6 +1334,7 @@ void WebInterfaceModule::startServer_()
         });
     };
     registerWebSvgRoute("/webinterface/i/m.svg");
+    registerWebSvgRoute("/webinterface/i/c.svg");
     registerWebSvgRoute("/webinterface/i/t.svg");
     registerWebSvgRoute("/webinterface/i/s.svg");
     registerWebSvgRoute("/webinterface/i/d.svg");
@@ -1427,10 +1447,12 @@ void WebInterfaceModule::startServer_()
         request->redirect(webInterfaceLandingUrl());
     });
 
-    server_.on("/webinterface/health", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server_.on("/webinterface/health", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        noteHttpActivity_();
         request->send(200, "text/plain", "ok");
     });
-    server_.on("/webserial/health", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server_.on("/webserial/health", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        noteHttpActivity_();
         request->redirect("/webinterface/health");
     });
     server_.on("/api/network/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -2529,7 +2551,8 @@ void WebInterfaceModule::startServer_()
         handleUpdateRequest_(request, FirmwareUpdateTarget::Spiffs);
     });
 
-    server_.onNotFound([webInterfaceLandingUrl](AsyncWebServerRequest* request) {
+    server_.onNotFound([this, webInterfaceLandingUrl](AsyncWebServerRequest* request) {
+        noteHttpActivity_();
         request->redirect(webInterfaceLandingUrl());
     });
 
@@ -2554,6 +2577,7 @@ void WebInterfaceModule::startServer_()
     server_.addHandler(&wsLog_);
     server_.begin();
     started_ = true;
+    noteServerStarted_();
     LOGI("WebInterface server started, listening on 0.0.0.0:%d", kServerPort);
 
     char ip[16] = {0};

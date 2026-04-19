@@ -49,9 +49,8 @@ Scripts de pré-build actuellement exécutés par `platformio.ini`:
 
 Références:
 
-- `src/Board/FlowIOBoardRev1.h`
+- `src/Board/FlowIODINBoards.h`
 - `src/Board/BoardSerialMap.h`
-- `src/Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h`
 
 ### Sorties digitales
 
@@ -84,7 +83,7 @@ Références:
 | 1-Wire `temp_probe_2` | 18 |
 | Nextion UART2 | RX 16, TX 17 |
 | Console série UART0 | TX 1, RX 3 |
-| I2C interlink par défaut | SDA 12, SCL 14 |
+| I2C interlink | SDA 5, SCL 15 |
 
 Le port Nextion peut être échangé avec le port de logs via la macro `FLOW_SWAP_LOG_HMI_SERIAL`.
 
@@ -94,7 +93,6 @@ Références:
 
 - `src/Board/SupervisorBoardRev1.h`
 - `src/Profiles/Supervisor/SupervisorProfile.cpp`
-- `src/Modules/Network/I2CCfgClientModule/I2CCfgClientModule.h`
 
 ### TFT ST7789
 
@@ -102,10 +100,11 @@ Références:
 |---|---:|
 | Backlight | 14 |
 | CS | 15 |
-| DC | 2 |
-| RST | 4 |
-| MOSI/SDA | 19 |
-| SCLK/SCL | 18 |
+| DC | 4 |
+| RST | 5 |
+| MISO | 35 |
+| MOSI/SDA | 18 |
+| SCLK/SCL | 19 |
 
 ### Nextion et pont série
 
@@ -113,28 +112,27 @@ Références:
 |---|---|
 | UART `bridge` vers `FlowIO` | RX 16, TX 17 |
 | UART `panel` Nextion | RX 33, TX 32 |
-| reboot matériel Nextion | 13 |
+| reboot matériel Nextion | 12 |
 
 ### Interlink et pilotage du `FlowIO`
 
 | Fonction | GPIO |
 |---|---:|
-| I2C interlink SDA | 21 |
-| I2C interlink SCL | 22 |
+| I2C interlink SDA | 27 |
+| I2C interlink SCL | 13 |
 | `flowIoEnablePin` | 25 |
 | `flowIoBootPin` | 26 |
 | PIR écran | 36 |
 
 Valeurs runtime actuelles du profil Supervisor:
 
-- extinction backlight: `10000 ms`
-- appui long reset Wi-Fi: `3000 ms`
+- extinction backlight: `60000 ms`
+- appui long reset Wi-Fi: `5000 ms`
 
 Comportement actuel:
 
 - l'écran TFT se rallume lors d'une détection de présence par le capteur PIR raccordé sur GPIO `36`
-- le reset Wi-Fi par appui long correspond au bouton `wifiResetPin` du Supervisor
-- dans l'état actuel de `src/Board/SupervisorBoardRev1.h`, ce bouton est désactivé (`pin = -1`), donc aucun bouton matériel de reset Wi-Fi n'est câblé par défaut
+- le reset Wi-Fi par appui long correspond au bouton `factoryResetPin=23` du Supervisor
 
 ## 5. Vérifications au premier démarrage
 

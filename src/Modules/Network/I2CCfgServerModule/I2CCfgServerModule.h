@@ -17,8 +17,12 @@
 #include "Core/NvsKeys.h"
 #include "Core/Services/Services.h"
 
+struct BoardSpec;
+
 class I2CCfgServerModule : public ModulePassive, public IRuntimeUiValueProvider {
 public:
+    explicit I2CCfgServerModule(const BoardSpec& board);
+
     ModuleId moduleId() const override { return ModuleId::I2cCfgServer; }
     ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
 
@@ -42,9 +46,9 @@ public:
 private:
     struct ConfigData {
         bool enabled = true;
-        int32_t sda = 5;
-        int32_t scl = 15;
-        int32_t freqHz = 100000;
+        int32_t sda = -1;      // Injected from BoardSpec interlink bus in constructor.
+        int32_t scl = -1;      // Injected from BoardSpec interlink bus in constructor.
+        int32_t freqHz = 0;    // Injected from BoardSpec interlink bus in constructor.
         uint8_t address = 0x42;
     } cfgData_{};
 
@@ -53,21 +57,7 @@ private:
         NVS_KEY(NvsKeys::I2cCfg::ServerEnabled), "enabled", "elink/server",
         ConfigType::Bool, &cfgData_.enabled, ConfigPersistence::Persistent, 0
     };
-    // CFGDOC: {"label":"GPIO SDA interlink", "help":"GPIO utilise pour la ligne SDA du bus interlink Flow.io <-> Supervisor."}
-    ConfigVariable<int32_t, 0> sdaVar_{
-        NVS_KEY(NvsKeys::I2cCfg::ServerSda), "sda", "elink/server",
-        ConfigType::Int32, &cfgData_.sda, ConfigPersistence::Persistent, 0
-    };
-    // CFGDOC: {"label":"GPIO SCL interlink", "help":"GPIO utilise pour la ligne SCL du bus interlink Flow.io <-> Supervisor."}
-    ConfigVariable<int32_t, 0> sclVar_{
-        NVS_KEY(NvsKeys::I2cCfg::ServerScl), "scl", "elink/server",
-        ConfigType::Int32, &cfgData_.scl, ConfigPersistence::Persistent, 0
-    };
-    // CFGDOC: {"label":"Frequence eLink", "help":"Frequence du bus eLink en hertz.", "unit":"Hz"}
-    ConfigVariable<int32_t, 0> freqVar_{
-        NVS_KEY(NvsKeys::I2cCfg::ServerFreq), "freq_hz", "elink/server",
-        ConfigType::Int32, &cfgData_.freqHz, ConfigPersistence::Persistent, 0
-    };
+    // Interlink wiring comes strictly from BoardSpec ("interlink" bus).
     // CFGDOC: {"label":"Adresse locale Flow.io", "help":"Adresse I2C locale du serveur de configuration Flow.io (mode esclave)."}
     ConfigVariable<uint8_t, 0> addrVar_{
         NVS_KEY(NvsKeys::I2cCfg::ServerAddr), "address", "elink/server",
@@ -134,6 +124,7 @@ private:
     size_t onRequest_(uint8_t* out, size_t maxLen);
 
     void startLink_();
+    void applyBoardDefaults_(const BoardSpec& board);
     void resetPatchState_();
     static bool isValidStatusDomain_(FlowStatusDomain domain);
     bool collectPoolModeFlags_(bool& hasModeOut,
