@@ -4336,15 +4336,36 @@
       if (!calibrationPreview) return;
       calibrationPreview.hidden = false;
       const modeLabel = model.mode === 'two' ? 'Étalonnage 2 points' : 'Étalonnage 1 point';
+      const rows = [];
+      if (model.mode === 'two') {
+        rows.push({
+          label: 'C0',
+          current: calibrationFormatNumber(model.oldC0, 6),
+          next: calibrationFormatNumber(model.newC0, 6)
+        });
+      }
+      rows.push({
+        label: 'C1',
+        current: calibrationFormatNumber(model.oldC1, 6),
+        next: calibrationFormatNumber(model.newC1, 6)
+      });
+      const rowsHtml = rows.map((row) =>
+        '<span class="calibration-preview-row-label">' + row.label + '</span>' +
+        '<span class="calibration-preview-value calibration-preview-value-current">' + row.current + '</span>' +
+        '<b class="calibration-preview-value calibration-preview-value-new">' + row.next + '</b>'
+      ).join('');
+      const noteHtml = model.mode === 'two'
+        ? ''
+        : '<div class="calibration-preview-note">C0 conservé en mode 1 point (offset).</div>';
       calibrationPreview.innerHTML =
         '<div class="calibration-preview-head">' + modeLabel + ' prête pour ' + model.sensorLabel + '</div>' +
         '<div class="calibration-preview-grid">' +
           '<span class="calibration-preview-col-head">Coefficient</span>' +
           '<span class="calibration-preview-col-head">Actuel</span>' +
           '<span class="calibration-preview-col-head">Nouveau</span>' +
-          '<span>C0</span><span>' + calibrationFormatNumber(model.oldC0, 6) + '</span><b>' + calibrationFormatNumber(model.newC0, 6) + '</b>' +
-          '<span>C1</span><span>' + calibrationFormatNumber(model.oldC1, 6) + '</span><b>' + calibrationFormatNumber(model.newC1, 6) + '</b>' +
-        '</div>';
+          rowsHtml +
+        '</div>' +
+        noteHtml;
     }
 
     function calibrationRenderChecks(checks) {
@@ -6482,10 +6503,21 @@
             .filter((entry) => entry.module.length > 0 && entry.key.length > 0)
         : [];
 
+      const failedModules = Array.isArray(store.failed_modules)
+        ? store.failed_modules
+            .filter((entry) => entry && typeof entry === 'object')
+            .map((entry) => ({
+              module: String(entry.module || '').trim(),
+              reason: String(entry.reason || '').trim()
+            }))
+            .filter((entry) => entry.module.length > 0)
+        : [];
+
       return {
         modules,
         truncated_modules: truncatedModules,
-        redacted_fields: redactedFields
+        redacted_fields: redactedFields,
+        failed_modules: failedModules
       };
     }
 
@@ -6604,12 +6636,14 @@
             supervisor: {
               modules: {},
               truncated_modules: [],
-              redacted_fields: []
+              redacted_fields: [],
+              failed_modules: []
             },
             flow: {
               modules: {},
               truncated_modules: [],
-              redacted_fields: []
+              redacted_fields: [],
+              failed_modules: []
             }
           }
         };
@@ -6641,7 +6675,18 @@
               'Export ' + storeLabel + ' : ' + moduleOrder + '/' + totalModuleCount + ' ' + moduleName + '...',
               'busy'
             );
-            const modulePayload = await flowCfgBackupFetchModule(storeName, moduleName);
+            let modulePayload = null;
+            try {
+              modulePayload = await flowCfgBackupFetchModule(storeName, moduleName);
+            } catch (err) {
+              backupDoc.stores[storeName].failed_modules.push({
+                module: moduleName,
+                reason: String(err || '').trim() || 'lecture module impossible'
+              });
+              exportedModuleCount += 1;
+              setFlowCfgBackupProgress((exportedModuleCount / totalModuleCount) * 100, true);
+              continue;
+            }
             if (modulePayload.truncated) {
               backupDoc.stores[storeName].truncated_modules.push(moduleName);
             }
@@ -6670,13 +6715,20 @@
           );
         }
 
+        const failedModuleErrors = []
+          .concat((backupDoc.stores.supervisor.failed_modules || []).map((entry) => 'Supervisor/' + entry.module))
+          .concat((backupDoc.stores.flow.failed_modules || []).map((entry) => 'Flow.io/' + entry.module));
+
         const serialized = JSON.stringify(backupDoc, null, 2);
         const fileName = 'flowio-configstore-backup-' + flowCfgBackupIsoDateForFile(createdAt) + '.json';
         flowCfgBackupDownloadText(fileName, serialized);
         const durationMs = Date.now() - startedAt;
         setFlowCfgBackupProgress(100, true);
+        const failedSummary = failedModuleErrors.length > 0
+          ? ' Modules ignorés: ' + failedModuleErrors.length + ' (' + failedModuleErrors.join(', ') + ').'
+          : '';
         setFlowCfgBackupStatus(
-          'Export terminé (' + fileName + ', ' + Math.max(1, Math.round(durationMs / 1000)) + ' s).',
+          'Export terminé (' + fileName + ', ' + Math.max(1, Math.round(durationMs / 1000)) + ' s).' + failedSummary,
           'ok'
         );
       } catch (err) {

@@ -1972,15 +1972,10 @@
     }
     .calibration-preview-grid {
       display: grid;
-      gap: 6px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px 10px;
+      grid-template-columns: minmax(78px, auto) minmax(0, 1fr) minmax(0, 1fr);
       align-items: center;
       font-size: 12px;
-    }
-    .calibration-preview-grid b {
-      font-size: 13px;
-      color: #16384F;
-      text-align: right;
     }
     .calibration-preview-col-head {
       font-size: 11px;
@@ -1988,6 +1983,32 @@
       color: #5B748C;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    .calibration-preview-col-head:nth-child(2),
+    .calibration-preview-col-head:nth-child(3) {
+      text-align: right;
+    }
+    .calibration-preview-row-label {
+      font-weight: 700;
+      color: #2A5D83;
+      letter-spacing: 0.01em;
+    }
+    .calibration-preview-value {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .calibration-preview-value-current {
+      color: #2C5575;
+    }
+    .calibration-preview-value-new {
+      font-size: 13px;
+      color: #16384F;
+    }
+    .calibration-preview-note {
+      font-size: 11px;
+      color: #577089;
+      border-top: 1px dashed rgba(43, 118, 180, 0.28);
+      padding-top: 6px;
     }
     .calibration-checks {
       margin-top: 8px;
@@ -2770,13 +2791,19 @@
         flex: 1 1 100%;
       }
       .calibration-preview-grid {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr);
+        gap: 5px 8px;
+        font-size: 11px;
       }
-      .calibration-preview-col-head:last-child {
-        text-align: right;
+      .calibration-preview-col-head {
+        font-size: 10px;
+        letter-spacing: 0.03em;
       }
-      .calibration-preview-grid b {
-        text-align: right;
+      .calibration-preview-value-new {
+        font-size: 12px;
+      }
+      .calibration-preview-note {
+        font-size: 10px;
       }
       .control-topbar-actions .btn-compact {
         min-height: 30px;
