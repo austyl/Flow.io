@@ -12,6 +12,7 @@
 #include "Modules/Logs/LogHubModule/LogHubModule.h"
 #include "Modules/Logs/LogSerialSinkModule/LogSerialSinkModule.h"
 #include "Modules/Network/HAModule/HAModule.h"
+#include "Modules/Network/HmiUdpServerModule/HmiUdpServerModule.h"
 #include "Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h"
 #include "Modules/Network/MQTTModule/MQTTModule.h"
 #include "Modules/Network/TimeModule/TimeModule.h"
@@ -32,7 +33,7 @@ namespace FlowIO {
 struct ModuleInstances {
     explicit ModuleInstances(const BoardSpec& board);
 
-    WifiModule wifiModule{};
+    WifiModule wifiModule;
     TimeModule timeModule{};
     I2CCfgServerModule i2cCfgServerModule;
     CommandModule commandModule{};
@@ -47,8 +48,9 @@ struct ModuleInstances {
     LogHubModule logHubModule{};
     EventBusModule eventBusModule{};
     AlarmModule alarmModule{};
+    HmiUdpServerModule hmiUdpServerModule{};
     HMIModule hmiModule{};
-    IOModule ioModule{};
+    IOModule ioModule;
     PoolDeviceModule poolDeviceModule{};
     PoolLogicModule poolLogicModule{};
     OneWireBus oneWireWater{19};

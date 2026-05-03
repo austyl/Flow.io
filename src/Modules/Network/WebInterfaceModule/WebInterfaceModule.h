@@ -29,19 +29,30 @@ public:
     uint8_t taskCount() const override { return 1; }
     const ModuleTaskSpec* taskSpecs() const override { return singleLoopTaskSpec(); }
 
-    uint8_t dependencyCount() const override { return 6; }
+    uint8_t dependencyCount() const override {
+#if defined(FLOW_PROFILE_MICRONOVA)
+        return 5;
+#else
+        return 6;
+#endif
+    }
     ModuleId dependency(uint8_t i) const override {
         if (i == 0) return ModuleId::LogHub;
         if (i == 1) return ModuleId::Wifi;
         if (i == 2) return ModuleId::EventBus;
         if (i == 3) return ModuleId::DataStore;
         if (i == 4) return ModuleId::Command;
+#if !defined(FLOW_PROFILE_MICRONOVA)
         if (i == 5) return ModuleId::I2cCfgClient;
+#endif
         return ModuleId::Unknown;
     }
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
-    uint32_t startDelayMs() const override { return Limits::Boot::WebInterfaceStartDelayMs; }
+    void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
+    uint32_t startDelayMs() const override {
+        return Limits::Boot::WebInterfaceStartDelayMs;
+    }
     void loop() override;
 
 private:
@@ -55,6 +66,7 @@ private:
 
     // Server and network integration
     void startServer_();
+    void startLocalRuntime_();
     void handleUpdateRequest_(AsyncWebServerRequest* request, FirmwareUpdateTarget target);
     bool isWebReachable_() const;
     bool getNetworkIp_(char* out, size_t len, NetworkAccessMode* modeOut) const;
@@ -128,9 +140,14 @@ private:
     ServiceRegistry* services_ = nullptr;
 
     static constexpr size_t kLocalLogLineMax = 192;
+#if defined(FLOW_PROFILE_MICRONOVA)
+    static constexpr UBaseType_t kLocalLogQueueLen = 6;
+    static constexpr size_t kRuntimeValuesBodyMax = 512U;
+#else
     static constexpr UBaseType_t kLocalLogQueueLen = 24;
-    QueueHandle_t localLogQueue_ = nullptr;
     static constexpr size_t kRuntimeValuesBodyMax = 2048U;
+#endif
+    QueueHandle_t localLogQueue_ = nullptr;
     static constexpr uint8_t kWsLogFlushBurstMax = 4U;
 
     char lineBuf_[kLineBufferSize] = {0};

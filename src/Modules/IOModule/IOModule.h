@@ -4,6 +4,7 @@
  * @brief Unified IO module with endpoint registry and scheduler.
  */
 
+#include "Board/BoardSpec.h"
 #include "Core/Module.h"
 #include "Core/NvsKeys.h"
 #include "Core/RuntimeUi.h"
@@ -39,6 +40,9 @@ class OneWireBus;
 
 class IOModule : public Module, public IRuntimeSnapshotProvider, public IRuntimeUiValueProvider {
 public:
+    IOModule() = default;
+    explicit IOModule(const BoardSpec& board);
+
     ModuleId moduleId() const override { return ModuleId::Io; }
     ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
     const char* taskName() const override { return "io"; }
@@ -66,7 +70,9 @@ public:
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore&, ServiceRegistry&) override;
+    void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
+    uint32_t startDelayMs() const override { return Limits::Boot::IoStartDelayMs; }
 
     void setOneWireBuses(OneWireBus* water, OneWireBus* air);
     void setBindingPorts(const IOBindingPortSpec* ports, uint8_t count);
@@ -171,6 +177,7 @@ private:
     bool ensureDigitalCounterConfigState_();
     bool ensureLastCycleState_();
     bool endpointIndexFromId_(const char* id, uint8_t& idxOut) const;
+    void configureRuntimeAfterConfig_();
     bool digitalLogicalUsed_(uint8_t kind, uint8_t logicalIdx) const;
     bool findDigitalSlotByLogical_(uint8_t kind, uint8_t logicalIdx, uint8_t& slotIdxOut) const;
     bool findDigitalSlotByIoId_(IoId id, uint8_t& slotIdxOut) const;
@@ -182,6 +189,7 @@ private:
     void beginIoCycle_(uint32_t nowMs);
     void markIoCycleChanged_(IoId id);
     static bool writeDigitalOut_(void* ctx, bool on);
+    void applyBoardDefaults_(const BoardSpec& board);
     void pollPulseOutputs_(uint32_t nowMs);
     AnalogSensorEndpoint* allocAnalogEndpoint_(const char* endpointId);
     DigitalSensorEndpoint* allocDigitalSensorEndpoint_(const char* endpointId, uint8_t valueType);
@@ -204,12 +212,13 @@ private:
     IMaskOutputDriver* allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address);
     Pcf8574MaskEndpoint* allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx);
 
-    static constexpr uint8_t MAX_ANALOG_ENDPOINTS = 17;
-    static constexpr uint8_t MAX_DIGITAL_INPUTS = 5;
-    static constexpr uint8_t MAX_DIGITAL_OUTPUTS = 10;
+    static constexpr uint8_t MAX_ANALOG_ENDPOINTS = Limits::Io::MaxAnalogEndpoints;
+    static constexpr uint8_t MAX_DIGITAL_INPUTS = Limits::Io::MaxDigitalInputs;
+    static constexpr uint8_t MAX_DIGITAL_OUTPUTS = Limits::Io::MaxDigitalOutputs;
     static constexpr uint8_t MAX_DIGITAL_SLOTS = MAX_DIGITAL_INPUTS + MAX_DIGITAL_OUTPUTS;
-    static constexpr uint8_t ANALOG_CFG_SLOTS = MAX_ANALOG_ENDPOINTS;
-    static constexpr uint8_t DIGITAL_CFG_SLOTS = MAX_DIGITAL_OUTPUTS;
+    static constexpr uint8_t ANALOG_CFG_SLOTS = Limits::Io::AnalogConfigSlots;
+    static constexpr uint8_t DIGITAL_INPUT_CFG_SLOTS = Limits::Io::DigitalInputConfigSlots;
+    static constexpr uint8_t DIGITAL_CFG_SLOTS = Limits::Io::DigitalOutputConfigSlots;
     /** End-exclusive upper bounds for each static id range. */
     static constexpr IoId IO_ID_DO_MAX = IO_ID_DO_BASE + MAX_DIGITAL_OUTPUTS;
     static constexpr IoId IO_ID_DI_MAX = IO_ID_DI_BASE + MAX_DIGITAL_INPUTS;
@@ -421,7 +430,7 @@ private:
 
     IOModuleConfig cfgData_{};
     IOAnalogSlotConfig analogCfg_[ANALOG_CFG_SLOTS]{};
-    IODigitalInputSlotConfig digitalInCfg_[MAX_DIGITAL_INPUTS]{};
+    IODigitalInputSlotConfig digitalInCfg_[DIGITAL_INPUT_CFG_SLOTS]{};
     IODigitalOutputSlotConfig digitalCfg_[DIGITAL_CFG_SLOTS]{};
     const IOBindingPortSpec* bindingPorts_ = nullptr;
     uint8_t bindingPortCount_ = 0;

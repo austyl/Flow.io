@@ -28,7 +28,12 @@ enum class ModuleId : uint8_t {
     PoolDevice,
     PoolLogic,
     Hmi,
+    HmiUdpServer,
+    DisplayUdpClient,
     SupervisorHmi,
+    MicronovaBus,
+    MicronovaBoiler,
+    MicronovaMqttBridge,
     Count
 };
 
@@ -71,7 +76,12 @@ constexpr const char* toString(ModuleId id)
         case ModuleId::PoolDevice: return "pooldev";
         case ModuleId::PoolLogic: return "poollogic";
         case ModuleId::Hmi: return "hmi";
+        case ModuleId::HmiUdpServer: return "hmi.udp.server";
+        case ModuleId::DisplayUdpClient: return "display.udp.client";
         case ModuleId::SupervisorHmi: return "hmi.supervisor";
+        case ModuleId::MicronovaBus: return "micronova.bus";
+        case ModuleId::MicronovaBoiler: return "micronova.boiler";
+        case ModuleId::MicronovaMqttBridge: return "micronova.mqtt";
         case ModuleId::Unknown:
         case ModuleId::Count:
         default:

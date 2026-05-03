@@ -92,6 +92,9 @@ PORT_ENUM_RE = re.compile(
     r"^\s*(?P<name>Port[A-Za-z0-9_]+)\s*=\s*(?P<value>\d+)\s*,(?:\s*//.*)?\s*$",
     re.M,
 )
+MICRONOVA_PORT_CONST_RE = re.compile(
+    r"constexpr\s+PhysicalPortId\s+(?P<name>kMicronova[A-Za-z0-9_]+Port)\s*=\s*(?P<value>\d+)\s*;"
+)
 BINDING_ENTRY_RE = re.compile(
     r"\{\s*(?P<port>Port[A-Za-z0-9_]+)\s*,\s*(?P<kind>IO_PORT_KIND_[A-Z0-9_]+)\s*,\s*(?P<param0>[^,]+)\s*,\s*(?P<param1>[^}]+)\}",
     re.S,
@@ -109,6 +112,9 @@ POOL_DEVICE_PRESET_RE = re.compile(
 )
 IO_BASE_RE = re.compile(r"constexpr\s+IoId\s+(?P<name>IO_ID_(?:DI|AI)_BASE)\s*=\s*(?P<value>\d+)\s*;")
 IO_COUNT_RE = re.compile(r"static\s+constexpr\s+uint8_t\s+(?P<name>MAX_(?:DIGITAL_INPUTS|ANALOG_ENDPOINTS))\s*=\s*(?P<value>\d+)\s*;")
+SYSTEM_LIMIT_DEFINE_RE = re.compile(
+    r"#define\s+(?P<name>FLOW_IO_MAX_(?:DIGITAL_INPUTS|ANALOG_ENDPOINTS))\s+(?P<value>\d+)"
+)
 
 FLOWIO_BINDING_SET_ANALOG = "flowio_binding_port_analog"
 FLOWIO_BINDING_SET_DIGITAL_INPUT = "flowio_binding_port_digital_input"
@@ -219,6 +225,70 @@ def _load_flowio_board_points(src_root: Path) -> List[dict]:
     return points
 
 
+def _load_micronova_board_points(src_root: Path) -> List[dict]:
+    path = src_root / "Board" / "MicronovaBoard.h"
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    points: List[dict] = []
+    for m in BOARD_IO_POINT_RE.finditer(text):
+        points.append({
+            "name": m.group("name").strip(),
+            "cap": m.group("cap").strip(),
+            "signal": m.group("signal").strip(),
+            "pin": int(m.group("pin")),
+        })
+    return points
+
+
+def _append_unique_enum_entry(entries: List[dict], value: int, label: str) -> None:
+    if any(int(item.get("value", -1)) == value for item in entries):
+        return
+    entries.append({"value": value, "label": f"{label} [{value}]"})
+
+
+def _append_micronova_binding_enum_entries(src_root: Path, enum_sets: Dict[str, List[dict]]) -> None:
+    assembly_path = src_root / "Profiles" / "Micronova" / "MicronovaIoAssembly.cpp"
+    if not assembly_path.exists():
+        return
+    text = assembly_path.read_text(encoding="utf-8", errors="ignore")
+    port_ids = {m.group("name").strip(): int(m.group("value")) for m in MICRONOVA_PORT_CONST_RE.finditer(text)}
+    board_points = _load_micronova_board_points(src_root)
+
+    relay = next((p for p in board_points if p["cap"] == "DigitalOut" and p["signal"] == "Relay1"), None)
+    temp = next((p for p in board_points if p["cap"] == "OneWireTemp" and p["signal"] == "TempProbe1"), None)
+
+    aux_port = port_ids.get("kMicronovaAuxOutputPort")
+    if aux_port is not None and relay is not None:
+        _append_unique_enum_entry(
+            enum_sets[FLOWIO_BINDING_SET_DIGITAL_OUTPUT],
+            aux_port,
+            f"Micronova {relay['name']} - Relais GPIO - GPIO{relay['pin']}",
+        )
+
+    temp_port = port_ids.get("kMicronovaTemperaturePort")
+    if temp_port is not None and temp is not None:
+        _append_unique_enum_entry(
+            enum_sets[FLOWIO_BINDING_SET_ANALOG],
+            temp_port,
+            f"Micronova {temp['name']} - DS18B20 - GPIO{temp['pin']}",
+        )
+
+
+def _load_default_io_counts(src_root: Path) -> Dict[str, int]:
+    path = src_root.parent / "include" / "Core" / "SystemLimits.h"
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    macro_values = {m.group("name").strip(): int(m.group("value")) for m in SYSTEM_LIMIT_DEFINE_RE.finditer(text)}
+    out: Dict[str, int] = {}
+    if "FLOW_IO_MAX_ANALOG_ENDPOINTS" in macro_values:
+        out["MAX_ANALOG_ENDPOINTS"] = macro_values["FLOW_IO_MAX_ANALOG_ENDPOINTS"]
+    if "FLOW_IO_MAX_DIGITAL_INPUTS" in macro_values:
+        out["MAX_DIGITAL_INPUTS"] = macro_values["FLOW_IO_MAX_DIGITAL_INPUTS"]
+    return out
+
+
 def _binding_kind_group(kind: str) -> Optional[str]:
     if kind in (
         "IO_PORT_KIND_ADS_INTERNAL_SINGLE",
@@ -309,6 +379,8 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
     io_counts: Dict[str, int] = {}
     for m in IO_COUNT_RE.finditer(io_module_text):
         io_counts[m.group("name").strip()] = int(m.group("value"))
+    for name, value in _load_default_io_counts(src_root).items():
+        io_counts.setdefault(name, value)
 
     enum_sets: Dict[str, List[dict]] = {
         FLOWIO_BINDING_SET_ANALOG: [],
@@ -364,6 +436,10 @@ def _build_flowio_binding_enum_sets(src_root: Path) -> Dict[str, List[dict]]:
             "value": port_id,
             "label": f"{_binding_label(kind, port_name, param0, board_points)} [{port_id}]",
         })
+
+    _append_micronova_binding_enum_entries(src_root, enum_sets)
+    for entries in enum_sets.values():
+        entries.sort(key=lambda item: int(item.get("value", 0)))
 
     for m in POOL_DEVICE_PRESET_RE.finditer(pool_domain_text):
         slot = int(m.group("slot"))

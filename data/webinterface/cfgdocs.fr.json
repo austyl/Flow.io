@@ -1,9 +1,9 @@
 {
   "_meta": {
     "generated": true,
-    "total": 394,
-    "decl_total": 221,
-    "decl_with_cfgdoc": 122,
+    "total": 396,
+    "decl_total": 224,
+    "decl_with_cfgdoc": 125,
     "missing_cfgdoc_count": 99,
     "manual_overrides_total": 23,
     "manual_overrides_applied": 5
@@ -11,6 +11,10 @@
   "meta": {
     "enum_sets": {
       "flowio_binding_port_analog": [
+        {
+          "value": 2,
+          "label": "Micronova temperature - DS18B20 - GPIO18 [2]"
+        },
         {
           "value": 100,
           "label": "PortADSInternal0 - ADS1115 Interne - Canal 0 [100]"
@@ -115,6 +119,10 @@
         }
       ],
       "flowio_binding_port_digital_output": [
+        {
+          "value": 1,
+          "label": "Micronova aux_output - Relais GPIO - GPIO19 [1]"
+        },
         {
           "value": 300,
           "label": "PortRelay1 - relay1 - GPIO32 [300]"
@@ -1046,6 +1054,24 @@
       "label": "Nextion actif",
       "help": "Autorise le HMIModule a envoyer le rendu et les commandes vers l'ecran Nextion local.",
       "var": "nextionEnabledVar_",
+      "source": "cfgdoc"
+    },
+    "hmi/remote_udp/enabled": {
+      "module": "hmi/remote_udp",
+      "name": "enabled",
+      "type": "Bool",
+      "label": "Display UDP actif",
+      "help": "Utilise un ESP32 Display distant via UDP a la place du Nextion local.",
+      "var": "remoteUdpEnabledVar_",
+      "source": "cfgdoc"
+    },
+    "hmi/remote_udp/token": {
+      "module": "hmi/remote_udp",
+      "name": "token",
+      "type": "CharArray",
+      "label": "Token Display UDP",
+      "help": "Token partage optionnel. Si renseigne, le Display doit envoyer le meme token sous forme CRC.",
+      "var": "tokenVar_",
       "source": "cfgdoc"
     },
     "hmi/venice/enabled": {

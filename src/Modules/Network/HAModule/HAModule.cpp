@@ -381,7 +381,7 @@ bool HAModule::buildObjectId(const char* suffix, char* out, size_t outLen) const
 {
     if (!suffix || !out || outLen == 0) return false;
     char raw[256] = {0};
-    snprintf(raw, sizeof(raw), "fio%02u_%s", (unsigned)entityHash2_, suffix);
+    snprintf(raw, sizeof(raw), "%s%02u_%s", objectPrefix_, (unsigned)entityHash2_, suffix);
     sanitizeId(raw, out, outLen);
     return out[0] != '\0';
 }
@@ -464,13 +464,13 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
     if (!formatChecked(buildCtx.payload, buildCtx.payloadCapacity,
              "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\","
              "\"stat_t\":\"%s\",\"val_tpl\":\"%s\"%s%s%s%s%s%s,"
-             "\"o\":{\"name\":\"Flow.io\"},"
+             "\"o\":{\"name\":\"%s\"},"
              "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
              "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
              name, objectId, defaultEntityId, uniqueId,
              stateTopic, valueTemplate,
              stateClassField, entityCategoryField, iconField, unitField, hasEntityNameField, availabilityField,
-             deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+             originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
         LOGW("HA sensor payload truncated object=%s", objectId);
         return false;
     }
@@ -511,12 +511,12 @@ bool HAModule::publishBinarySensor(const char* objectId, const char* name,
              "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\","
              "\"stat_t\":\"%s\",\"val_tpl\":\"%s\",\"pl_on\":\"True\",\"pl_off\":\"False\","
              "\"has_entity_name\":false%s%s%s%s,"
-             "\"o\":{\"name\":\"Flow.io\"},"
+             "\"o\":{\"name\":\"%s\"},"
              "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
              "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
              name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
              deviceClassField, entityCategoryField, iconField, availabilityField,
-             deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+             originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
         LOGW("HA binary_sensor payload truncated object=%s", objectId);
         return false;
     }
@@ -552,13 +552,13 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
                  "\"val_tpl\":\"%s\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\","
                  "\"cmd_t\":\"%s\",\"pl_on\":\"%s\",\"pl_off\":\"%s\","
                  "\"ic\":\"%s\"%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
                  commandTopic, payloadOn, payloadOff, icon,
                  entityCategoryField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA switch payload truncated object=%s", objectId);
             return false;
         }
@@ -567,12 +567,12 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
                  "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\",\"stat_t\":\"%s\","
                  "\"val_tpl\":\"%s\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\","
                  "\"cmd_t\":\"%s\",\"pl_on\":\"%s\",\"pl_off\":\"%s\"%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
                  commandTopic, payloadOn, payloadOff, entityCategoryField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA switch payload truncated object=%s", objectId);
             return false;
         }
@@ -616,12 +616,12 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
                  "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\",\"stat_t\":\"%s\","
                  "\"val_tpl\":\"%s\",\"cmd_t\":\"%s\",\"cmd_tpl\":\"%s\","
                  "%s,\"mode\":\"%s\",\"ic\":\"%s\"%s%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate, commandTopic, commandTemplate,
                  rangeField, mode ? mode : "slider", icon, entityCategoryField, unitField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA number payload truncated object=%s", objectId);
             return false;
         }
@@ -630,12 +630,12 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
                  "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\",\"stat_t\":\"%s\","
                  "\"val_tpl\":\"%s\",\"cmd_t\":\"%s\",\"cmd_tpl\":\"%s\","
                  "%s,\"mode\":\"%s\"%s%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate, commandTopic, commandTemplate,
                  rangeField, mode ? mode : "slider", entityCategoryField, unitField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA number payload truncated object=%s", objectId);
             return false;
         }
@@ -666,13 +666,13 @@ bool HAModule::publishButton(const char* objectId, const char* name,
         if (!formatChecked(buildCtx.payload, buildCtx.payloadCapacity,
                  "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\","
                  "\"cmd_t\":\"%s\",\"pl_prs\":\"%s\",\"ic\":\"%s\"%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId,
                  commandTopic, payloadPress, icon,
                  entityCategoryField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA button payload truncated object=%s", objectId);
             return false;
         }
@@ -680,13 +680,13 @@ bool HAModule::publishButton(const char* objectId, const char* name,
         if (!formatChecked(buildCtx.payload, buildCtx.payloadCapacity,
                  "{\"name\":\"%s\",\"obj_id\":\"%s\",\"def_ent_id\":\"%s\",\"uniq_id\":\"%s\","
                  "\"cmd_t\":\"%s\",\"pl_prs\":\"%s\"%s%s,"
-                 "\"o\":{\"name\":\"Flow.io\"},"
+                 "\"o\":{\"name\":\"%s\"},"
                  "\"dev\":{\"ids\":[\"%s\"],\"name\":\"%s\","
                  "\"mf\":\"%s\",\"mdl\":\"%s\",\"sw\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId,
                  commandTopic, payloadPress,
                  entityCategoryField, availabilityField,
-                 deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
+                 originName_, deviceIdent_, cfgData_.vendor, cfgData_.vendor, cfgData_.model, FirmwareVersion::Full)) {
             LOGW("HA button payload truncated object=%s", objectId);
             return false;
         }
@@ -700,6 +700,27 @@ void HAModule::setStartupReady(bool ready)
     startupReady_ = ready;
     if (ready) {
         (void)enqueuePending_(MqttPublishPriority::Low);
+    }
+}
+
+void HAModule::setBranding(const char* objectPrefix,
+                           const char* originName,
+                           const char* vendor,
+                           const char* model)
+{
+    if (objectPrefix && objectPrefix[0] != '\0') {
+        snprintf(objectPrefix_, sizeof(objectPrefix_), "%s", objectPrefix);
+        sanitizeId(objectPrefix_, objectPrefix_, sizeof(objectPrefix_));
+        if (objectPrefix_[0] == '\0') snprintf(objectPrefix_, sizeof(objectPrefix_), "fio");
+    }
+    if (originName && originName[0] != '\0') {
+        snprintf(originName_, sizeof(originName_), "%s", originName);
+    }
+    if (vendor && vendor[0] != '\0') {
+        snprintf(cfgData_.vendor, sizeof(cfgData_.vendor), "%s", vendor);
+    }
+    if (model && model[0] != '\0') {
+        snprintf(cfgData_.model, sizeof(cfgData_.model), "%s", model);
     }
 }
 

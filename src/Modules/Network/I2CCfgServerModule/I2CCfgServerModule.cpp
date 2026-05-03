@@ -659,12 +659,14 @@ bool I2CCfgServerModule::buildRuntimeStatusI2cJson_(bool& truncatedOut)
     if (!appendFormat_(statusJson_,
                        sizeof(statusJson_),
                        pos,
-                       "{\"ok\":true,\"i2c\":{\"ena\":%s,\"sta\":%s,\"adr\":%u,\"req\":%lu,\"breq\":%lu,\"seen\":%s,\"ago\":%lu,\"lnk\":%s}}",
+                       "{\"ok\":true,\"i2c\":{\"ena\":%s,\"sta\":%s,\"adr\":%u,\"req\":%lu,\"breq\":%lu,\"bcrc\":%lu,\"bfmt\":%lu,\"seen\":%s,\"ago\":%lu,\"lnk\":%s}}",
                        cfgData_.enabled ? "true" : "false",
                        started_ ? "true" : "false",
                        (unsigned)cfgData_.address,
                        (unsigned long)reqCount_,
                        (unsigned long)badReqCount_,
+                       (unsigned long)badReqCrcCount_,
+                       (unsigned long)badReqFormatCount_,
                        hasSupervisorSeen ? "true" : "false",
                        (unsigned long)lastReqAgoMs,
                        supervisorLinkOk ? "true" : "false")) return false;
@@ -887,20 +889,41 @@ void I2CCfgServerModule::onReceive_(const uint8_t* data, size_t len)
     if (!data || len < I2cCfgProtocol::ReqHeaderSize) return;
     if (data[0] != I2cCfgProtocol::ReqMagic || data[1] != I2cCfgProtocol::Version) {
         ++badReqCount_;
-        buildResponse_(0, 0, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+        ++badReqFormatCount_;
+        buildResponse_(0, 0, I2cCfgProtocol::StatusFrameFormat, nullptr, 0);
         return;
     }
 
     const uint8_t op = data[2];
     const uint8_t seq = data[3];
     const size_t payloadLen = data[4];
-    if (payloadLen > I2cCfgProtocol::MaxPayload || len != (I2cCfgProtocol::ReqHeaderSize + payloadLen)) {
+    const size_t reqBaseLen = I2cCfgProtocol::ReqHeaderSize + payloadLen;
+    bool hasFrameCrc = false;
+    if (payloadLen > I2cCfgProtocol::MaxPayload) {
         ++badReqCount_;
-        buildResponse_(op, seq, I2cCfgProtocol::StatusBadRequest, nullptr, 0);
+        ++badReqFormatCount_;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusFrameFormat, nullptr, 0);
+        return;
+    }
+    if (len == (reqBaseLen + I2cCfgProtocol::FrameCrcSize)) {
+        hasFrameCrc = true;
+        const uint16_t gotCrc = I2cCfgProtocol::readFrameCrcLe(data, len);
+        const uint16_t calcCrc = I2cCfgProtocol::crc16Ccitt(data, reqBaseLen);
+        if (gotCrc != calcCrc) {
+            ++badReqCount_;
+            ++badReqCrcCount_;
+            buildResponse_(op, seq, I2cCfgProtocol::StatusFrameCrc, nullptr, 0);
+            return;
+        }
+    } else if (len != reqBaseLen) {
+        ++badReqCount_;
+        ++badReqFormatCount_;
+        buildResponse_(op, seq, I2cCfgProtocol::StatusFrameFormat, nullptr, 0);
         return;
     }
     ++reqCount_;
     lastReqMs_ = millis();
+    rxFrameCrcEnabled_ = hasFrameCrc;
     handleRequest_(op, seq, data + I2cCfgProtocol::ReqHeaderSize, payloadLen);
 }
 
@@ -923,7 +946,8 @@ void I2CCfgServerModule::buildResponse_(uint8_t op,
                                         size_t payloadLen)
 {
     if (payloadLen > I2cCfgProtocol::MaxPayload) payloadLen = I2cCfgProtocol::MaxPayload;
-    const size_t total = I2cCfgProtocol::RespHeaderSize + payloadLen;
+    const size_t baseTotal = I2cCfgProtocol::RespHeaderSize + payloadLen;
+    size_t total = baseTotal;
     portENTER_CRITICAL(&txMux_);
     txFrame_[0] = I2cCfgProtocol::RespMagic;
     txFrame_[1] = I2cCfgProtocol::Version;
@@ -935,6 +959,12 @@ void I2CCfgServerModule::buildResponse_(uint8_t op,
         payloadLen > 0 &&
         payload != (txFrame_ + I2cCfgProtocol::RespHeaderSize)) {
         memcpy(txFrame_ + I2cCfgProtocol::RespHeaderSize, payload, payloadLen);
+    }
+    if (rxFrameCrcEnabled_) {
+        const uint16_t crc = I2cCfgProtocol::crc16Ccitt(txFrame_, baseTotal);
+        txFrame_[baseTotal] = (uint8_t)(crc & 0xFFu);
+        txFrame_[baseTotal + 1U] = (uint8_t)((crc >> 8) & 0xFFu);
+        total += I2cCfgProtocol::FrameCrcSize;
     }
     txFrameLen_ = total;
     portEXIT_CRITICAL(&txMux_);
@@ -969,7 +999,7 @@ void I2CCfgServerModule::handleRequest_(uint8_t op, uint8_t seq, const uint8_t* 
     }
 
     if (op == I2cCfgProtocol::OpPing) {
-        const uint8_t pong[2] = {1, (uint8_t)cfgData_.address};
+        const uint8_t pong[2] = {I2cCfgProtocol::CapabilityVersionFrameCrc, (uint8_t)cfgData_.address};
         buildResponse_(op, seq, I2cCfgProtocol::StatusOk, pong, sizeof(pong));
         return;
     }

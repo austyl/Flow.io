@@ -8,6 +8,9 @@ assets=(
   "data/webinterface/sh.html"
   "data/webinterface/app.css"
   "data/webinterface/app.js"
+  "data/webinterface/light.html"
+  "data/webinterface/light.css"
+  "data/webinterface/light.js"
   "data/webinterface/runtimeui.json"
 )
 

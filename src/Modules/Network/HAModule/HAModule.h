@@ -38,6 +38,10 @@ public:
     void loop() override;
     uint32_t startDelayMs() const override { return Limits::Boot::HaStartDelayMs; }
     void setStartupReady(bool ready);
+    void setBranding(const char* objectPrefix,
+                     const char* originName,
+                     const char* vendor,
+                     const char* model);
 
 private:
     static constexpr uint8_t ProducerId = 32;
@@ -75,6 +79,8 @@ private:
     char deviceId_[32] = {0};
     char deviceIdent_[64] = {0};
     char nodeTopicId_[32] = {0};
+    char objectPrefix_[8] = "fio";
+    char originName_[32] = "Flow.io";
     uint16_t entityHash2_ = 0;
 
     char stateTopicBuf_[96] = {0};

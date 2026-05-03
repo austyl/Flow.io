@@ -368,6 +368,8 @@ constexpr char EvalPeriodMs[] = "al_epms"; // Alarm module persisted key for fie
 namespace Hmi {
 constexpr char LedsEnabled[] = "hmi_leds"; // HMI module persisted key for logical LED-panel writes enable.
 constexpr char NextionEnabled[] = "hmi_nxen"; // HMI module persisted key for Nextion output enable.
+constexpr char RemoteUdpEnabled[] = "hmi_udpen"; // HMI module persisted key for remote UDP display driver enable.
+constexpr char RemoteUdpToken[] = "hmi_udptk"; // Shared token for remote UDP display pairing.
 constexpr char VeniceEnabled[] = "hmi_vcen"; // HMI module persisted key for Venice RF433 output enable.
 constexpr char VeniceTxGpio[] = "hmi_vcgp"; // HMI module persisted key for Venice RF433 TX GPIO.
 }  // namespace Hmi

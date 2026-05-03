@@ -35,7 +35,7 @@ struct ModuleInstances {
     CommandModule commandModule{};
     AlarmModule alarmModule{};
     LogAlarmSinkModule logAlarmSinkModule{};
-    WifiModule wifiModule{};
+    WifiModule wifiModule;
     WifiProvisioningModule wifiProvisioningModule{};
     TimeModule timeModule{};
     I2CCfgClientModule i2cCfgClientModule;

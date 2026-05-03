@@ -660,6 +660,7 @@ void AlarmModule::registerHaEntities_(ServiceRegistry& services)
         }
     }
 
+#if !defined(FLOW_PROFILE_MICRONOVA)
     if (haSvc_->addBinarySensor) {
         const HABinarySensorEntry waterLevelLow{
             "alarms",
@@ -677,6 +678,7 @@ void AlarmModule::registerHaEntities_(ServiceRegistry& services)
             LOGW("HA registration failed: alm_wlvl_low");
         }
     }
+#endif
 
     if (haSvc_->addButton) {
         const HAButtonEntry resetAll{

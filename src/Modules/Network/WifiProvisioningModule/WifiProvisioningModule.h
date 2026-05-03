@@ -29,7 +29,9 @@ public:
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
+    void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
+    uint32_t startDelayMs() const override { return Limits::Boot::WifiProvisioningStartDelayMs; }
 
 private:
     enum class PortalReason : uint8_t {

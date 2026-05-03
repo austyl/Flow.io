@@ -6,11 +6,18 @@
 #include "WebInterfaceModule.h"
 
 #include "Board/BoardSpec.h"
+#include "App/BuildFlags.h"
 #include "Core/FirmwareVersion.h"
 #include "Core/Generated/RuntimeUiManifest_Generated.h"
 #include "Core/I2cCfgProtocol.h"
 #include "Core/SystemLimits.h"
+#include "Core/SystemStats.h"
+#if !defined(FLOW_PROFILE_MICRONOVA)
 #include "Modules/Network/I2CCfgClientModule/I2CCfgClientRuntime.h"
+#else
+#include "Modules/Micronova/MicronovaBoilerModule/MicronovaBoilerModuleDataModel.h"
+#include "Modules/Network/MQTTModule/MQTTRuntime.h"
+#endif
 
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::WebInterfaceModule)
 #include "Core/ModuleLog.h"
@@ -20,6 +27,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <Arduino.h>
+#include <WiFi.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <FS.h>
@@ -133,12 +141,13 @@ constexpr uint32_t kHttpLatencyInfoMs = 40U;
 constexpr uint32_t kHttpLatencyWarnMs = 120U;
 constexpr uint32_t kHttpLatencyFlowCfgInfoMs = 200U;
 constexpr uint32_t kHttpLatencyFlowCfgWarnMs = 900U;
+constexpr uint32_t kHeapGuardAssetFreeBytesLight = 8192U;
 constexpr uint32_t kHeapGuardAssetFreeBytesMinor = 12288U;
 constexpr uint32_t kHeapGuardAssetFreeBytesMajor = 15360U;
 void (*gHttpActivityHook)(void*) = nullptr;
 void* gHttpActivityHookCtx = nullptr;
 
-const char* httpMethodName_(uint8_t method);
+const char* httpMethodName_(uint32_t method);
 void addNoCacheHeaders_(AsyncWebServerResponse* response);
 
 size_t tokenLenToSlash_(const char* s)
@@ -229,14 +238,31 @@ bool isMinorWebAssetPath_(const char* path)
     return hasPathSuffix_(path, ".svg") || hasPathSuffix_(path, ".png") || hasPathSuffix_(path, ".ico");
 }
 
+bool isLightWebAssetPath_(const char* path)
+{
+    return path && strstr(path, "/webinterface/light.") != nullptr;
+}
+
 bool shouldRejectAssetByFreeHeap_(const char* assetPath, uint32_t* freeBytesOut = nullptr)
 {
     const uint32_t freeBytes = (uint32_t)ESP.getFreeHeap();
     if (freeBytesOut) *freeBytesOut = freeBytes;
-    const uint32_t minFreeBytes = isMinorWebAssetPath_(assetPath)
+    const uint32_t minFreeBytes = isLightWebAssetPath_(assetPath)
+        ? kHeapGuardAssetFreeBytesLight
+        : isMinorWebAssetPath_(assetPath)
         ? kHeapGuardAssetFreeBytesMinor
         : kHeapGuardAssetFreeBytesMajor;
     return freeBytes < minFreeBytes;
+}
+
+void buildProvisioningApSsid_(char* out, size_t outLen)
+{
+    if (!out || outLen == 0U) return;
+    const uint64_t chipId = ESP.getEfuseMac();
+    const uint8_t b0 = (uint8_t)(chipId >> 16);
+    const uint8_t b1 = (uint8_t)(chipId >> 8);
+    const uint8_t b2 = (uint8_t)(chipId >> 0);
+    snprintf(out, outLen, "FlowIO-%s-%02X%02X%02X", FLOW_BUILD_PROFILE_NAME, b0, b1, b2);
 }
 
 void appendJsonFieldName_(Print& out, const char* key)
@@ -516,7 +542,7 @@ bool parseFlowStatusDomainParam_(const char* raw, FlowStatusDomain& domainOut)
     return false;
 }
 
-const char* httpMethodName_(uint8_t method)
+const char* httpMethodName_(uint32_t method)
 {
     switch (method) {
     case HTTP_GET: return "GET";
@@ -766,6 +792,200 @@ bool appendRuntimeUiJsonValuesToStream_(Print& out, const uint8_t* payload, size
 
 constexpr size_t kMaxRuntimeHttpIds = 48U;
 
+#if defined(FLOW_PROFILE_MICRONOVA)
+constexpr RuntimeUiId kMicronovaRuntimeIdOnline = makeRuntimeUiId(ModuleId::MicronovaBoiler, 1);
+constexpr RuntimeUiId kMicronovaRuntimeIdStateCode = makeRuntimeUiId(ModuleId::MicronovaBoiler, 2);
+constexpr RuntimeUiId kMicronovaRuntimeIdStateText = makeRuntimeUiId(ModuleId::MicronovaBoiler, 3);
+constexpr RuntimeUiId kMicronovaRuntimeIdPowerState = makeRuntimeUiId(ModuleId::MicronovaBoiler, 4);
+constexpr RuntimeUiId kMicronovaRuntimeIdPowerLevel = makeRuntimeUiId(ModuleId::MicronovaBoiler, 5);
+constexpr RuntimeUiId kMicronovaRuntimeIdFanSpeed = makeRuntimeUiId(ModuleId::MicronovaBoiler, 6);
+constexpr RuntimeUiId kMicronovaRuntimeIdTargetTemp = makeRuntimeUiId(ModuleId::MicronovaBoiler, 7);
+constexpr RuntimeUiId kMicronovaRuntimeIdRoomTemp = makeRuntimeUiId(ModuleId::MicronovaBoiler, 8);
+constexpr RuntimeUiId kMicronovaRuntimeIdFumesTemp = makeRuntimeUiId(ModuleId::MicronovaBoiler, 9);
+constexpr RuntimeUiId kMicronovaRuntimeIdWaterTemp = makeRuntimeUiId(ModuleId::MicronovaBoiler, 10);
+constexpr RuntimeUiId kMicronovaRuntimeIdWaterPressure = makeRuntimeUiId(ModuleId::MicronovaBoiler, 11);
+constexpr RuntimeUiId kMicronovaRuntimeIdAlarmCode = makeRuntimeUiId(ModuleId::MicronovaBoiler, 12);
+constexpr RuntimeUiId kMicronovaRuntimeIdLastUpdateMs = makeRuntimeUiId(ModuleId::MicronovaBoiler, 13);
+constexpr RuntimeUiId kMicronovaRuntimeIdLastCommand = makeRuntimeUiId(ModuleId::MicronovaBoiler, 14);
+
+const char kMicronovaRuntimeManifestJson[] PROGMEM = R"json({
+  "ok": true,
+  "values": [
+    {"id":2901,"runtimeId":2901,"moduleId":29,"module":"micronova.boiler","valueId":1,"key":"micronova.online","label":"Connexion chaudière","type":"bool","domain":"micronova","group":"Chaudière","unit":null,"decimals":null,"order":10,"display":"boolean"},
+    {"id":2902,"runtimeId":2902,"moduleId":29,"module":"micronova.boiler","valueId":2,"key":"micronova.stove_state_code","label":"Code état","type":"int32","domain":"micronova","group":"Chaudière","unit":null,"decimals":0,"order":20},
+    {"id":2903,"runtimeId":2903,"moduleId":29,"module":"micronova.boiler","valueId":3,"key":"micronova.stove_state_text","label":"État","type":"string","domain":"micronova","group":"Chaudière","unit":null,"decimals":null,"order":30,"display":"badge"},
+    {"id":2904,"runtimeId":2904,"moduleId":29,"module":"micronova.boiler","valueId":4,"key":"micronova.power_state","label":"Marche","type":"string","domain":"micronova","group":"Chaudière","unit":null,"decimals":null,"order":40,"display":"badge"},
+    {"id":2905,"runtimeId":2905,"moduleId":29,"module":"micronova.boiler","valueId":5,"key":"micronova.power_level","label":"Puissance","type":"int32","domain":"micronova","group":"Commandes","unit":null,"decimals":0,"order":50},
+    {"id":2906,"runtimeId":2906,"moduleId":29,"module":"micronova.boiler","valueId":6,"key":"micronova.fan_speed","label":"Ventilation","type":"int32","domain":"micronova","group":"Commandes","unit":null,"decimals":0,"order":60},
+    {"id":2907,"runtimeId":2907,"moduleId":29,"module":"micronova.boiler","valueId":7,"key":"micronova.target_temperature","label":"Consigne","type":"int32","domain":"micronova","group":"Températures","unit":"°C","decimals":0,"order":70},
+    {"id":2908,"runtimeId":2908,"moduleId":29,"module":"micronova.boiler","valueId":8,"key":"micronova.room_temperature","label":"Température ambiante","type":"float","domain":"micronova","group":"Températures","unit":"°C","decimals":1,"order":80},
+    {"id":2909,"runtimeId":2909,"moduleId":29,"module":"micronova.boiler","valueId":9,"key":"micronova.fumes_temperature","label":"Température fumées","type":"float","domain":"micronova","group":"Températures","unit":"°C","decimals":1,"order":90},
+    {"id":2910,"runtimeId":2910,"moduleId":29,"module":"micronova.boiler","valueId":10,"key":"micronova.water_temperature","label":"Température eau","type":"float","domain":"micronova","group":"Hydraulique","unit":"°C","decimals":1,"order":100},
+    {"id":2911,"runtimeId":2911,"moduleId":29,"module":"micronova.boiler","valueId":11,"key":"micronova.water_pressure","label":"Pression eau","type":"float","domain":"micronova","group":"Hydraulique","unit":"bar","decimals":2,"order":110},
+    {"id":2912,"runtimeId":2912,"moduleId":29,"module":"micronova.boiler","valueId":12,"key":"micronova.alarm_code","label":"Code alarme","type":"int32","domain":"micronova","group":"Alarmes","unit":null,"decimals":0,"order":120},
+    {"id":2913,"runtimeId":2913,"moduleId":29,"module":"micronova.boiler","valueId":13,"key":"micronova.last_update_ms","label":"Dernière lecture","type":"uint32","domain":"micronova","group":"Chaudière","unit":"ms","decimals":0,"order":130},
+    {"id":2914,"runtimeId":2914,"moduleId":29,"module":"micronova.boiler","valueId":14,"key":"micronova.last_command","label":"Dernière commande","type":"string","domain":"micronova","group":"Commandes","unit":null,"decimals":null,"order":140,"display":"badge"},
+    {"id":2001,"runtimeId":2001,"moduleId":20,"module":"mqtt","valueId":1,"key":"mqtt.ready","label":"MQTT connecté","type":"bool","domain":"mqtt","group":"MQTT","unit":null,"decimals":null,"order":10,"display":"boolean"},
+    {"id":2003,"runtimeId":2003,"moduleId":20,"module":"mqtt","valueId":3,"key":"mqtt.rx_drop","label":"Messages ignorés","type":"uint32","domain":"mqtt","group":"MQTT","unit":null,"decimals":0,"order":30},
+    {"id":2004,"runtimeId":2004,"moduleId":20,"module":"mqtt","valueId":4,"key":"mqtt.parse_fail","label":"Payloads invalides","type":"uint32","domain":"mqtt","group":"MQTT","unit":null,"decimals":0,"order":40},
+    {"id":2005,"runtimeId":2005,"moduleId":20,"module":"mqtt","valueId":5,"key":"mqtt.handler_fail","label":"Commandes refusées","type":"uint32","domain":"mqtt","group":"MQTT","unit":null,"decimals":0,"order":50},
+    {"id":2006,"runtimeId":2006,"moduleId":20,"module":"mqtt","valueId":6,"key":"mqtt.oversize_drop","label":"Messages trop grands","type":"uint32","domain":"mqtt","group":"MQTT","unit":null,"decimals":0,"order":60},
+    {"id":1701,"runtimeId":1701,"moduleId":17,"module":"system","valueId":1,"key":"system.firmware","label":"Firmware","type":"string","domain":"system","group":"Système","unit":null,"decimals":null,"order":10},
+    {"id":1702,"runtimeId":1702,"moduleId":17,"module":"system","valueId":2,"key":"system.uptime_ms","label":"Uptime","type":"uint32","domain":"system","group":"Système","unit":"ms","decimals":0,"order":20},
+    {"id":1703,"runtimeId":1703,"moduleId":17,"module":"system","valueId":3,"key":"system.heap_free","label":"Heap libre","type":"uint32","domain":"system","group":"Mémoire","unit":"B","decimals":0,"order":30},
+    {"id":1704,"runtimeId":1704,"moduleId":17,"module":"system","valueId":4,"key":"system.heap_min_free","label":"Heap minimum","type":"uint32","domain":"system","group":"Mémoire","unit":"B","decimals":0,"order":40},
+    {"id":1001,"runtimeId":1001,"moduleId":10,"module":"wifi","valueId":1,"key":"wifi.ready","label":"WiFi connecté","type":"bool","domain":"wifi","group":"WiFi","unit":null,"decimals":null,"order":10,"display":"boolean"},
+    {"id":1002,"runtimeId":1002,"moduleId":10,"module":"wifi","valueId":2,"key":"wifi.ip","label":"Adresse IP","type":"string","domain":"wifi","group":"WiFi","unit":null,"decimals":null,"order":20},
+    {"id":1003,"runtimeId":1003,"moduleId":10,"module":"wifi","valueId":3,"key":"wifi.rssi","label":"RSSI","type":"int32","domain":"wifi","group":"WiFi","unit":"dBm","decimals":0,"order":30}
+  ]
+})json";
+
+void printRuntimeValuePrefix_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, const char* type, const char* unit)
+{
+    if (!firstValue) out.print(',');
+    firstValue = false;
+    out.print("{\"id\":");
+    out.print((unsigned)id);
+    out.print(",\"key\":");
+    printJsonEscaped_(out, key);
+    out.print(",\"type\":");
+    printJsonEscaped_(out, type);
+    if (unit && unit[0] != '\0') {
+        out.print(",\"unit\":");
+        printJsonEscaped_(out, unit);
+    }
+}
+
+void printRuntimeBool_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, bool value)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, "bool", nullptr);
+    out.print(",\"value\":");
+    out.print(value ? "true" : "false");
+    out.print('}');
+}
+
+void printRuntimeI32_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, int32_t value, const char* unit = nullptr)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, "int32", unit);
+    out.print(",\"value\":");
+    out.print((int32_t)value);
+    out.print('}');
+}
+
+void printRuntimeU32_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, uint32_t value, const char* unit = nullptr)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, "uint32", unit);
+    out.print(",\"value\":");
+    out.print((unsigned long)value);
+    out.print('}');
+}
+
+void printRuntimeF32_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, float value, const char* unit = nullptr)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, "float", unit);
+    out.print(",\"value\":");
+    out.print(value, 3);
+    out.print('}');
+}
+
+void printRuntimeString_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, const char* value)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, "string", nullptr);
+    out.print(",\"value\":");
+    printJsonEscaped_(out, value ? value : "");
+    out.print('}');
+}
+
+void printRuntimeUnavailable_(Print& out, bool& firstValue, RuntimeUiId id, const char* key, const char* type)
+{
+    printRuntimeValuePrefix_(out, firstValue, id, key, type, nullptr);
+    out.print(",\"status\":\"unavailable\"}");
+}
+
+bool appendMicronovaLocalRuntimeValue_(Print& out, DataStore* dataStore, RuntimeUiId id, bool& firstValue)
+{
+    if (!dataStore) return false;
+    const RuntimeData& rt = dataStore->data();
+    const MicronovaRuntimeData& mn = rt.micronova;
+    switch (id) {
+        case kMicronovaRuntimeIdOnline: printRuntimeBool_(out, firstValue, id, "micronova.online", mn.online); return true;
+        case kMicronovaRuntimeIdStateCode: printRuntimeI32_(out, firstValue, id, "micronova.stove_state_code", mn.stoveStateCode); return true;
+        case kMicronovaRuntimeIdStateText: printRuntimeString_(out, firstValue, id, "micronova.stove_state_text", mn.stoveStateText); return true;
+        case kMicronovaRuntimeIdPowerState: printRuntimeString_(out, firstValue, id, "micronova.power_state", mn.powerState); return true;
+        case kMicronovaRuntimeIdPowerLevel: printRuntimeI32_(out, firstValue, id, "micronova.power_level", mn.powerLevel); return true;
+        case kMicronovaRuntimeIdFanSpeed: printRuntimeI32_(out, firstValue, id, "micronova.fan_speed", mn.fanSpeed); return true;
+        case kMicronovaRuntimeIdTargetTemp: printRuntimeI32_(out, firstValue, id, "micronova.target_temperature", mn.targetTemperature, "\xC2\xB0""C"); return true;
+        case kMicronovaRuntimeIdRoomTemp: printRuntimeF32_(out, firstValue, id, "micronova.room_temperature", mn.roomTemperature, "\xC2\xB0""C"); return true;
+        case kMicronovaRuntimeIdFumesTemp: printRuntimeF32_(out, firstValue, id, "micronova.fumes_temperature", mn.fumesTemperature, "\xC2\xB0""C"); return true;
+        case kMicronovaRuntimeIdWaterTemp: printRuntimeF32_(out, firstValue, id, "micronova.water_temperature", mn.waterTemperature, "\xC2\xB0""C"); return true;
+        case kMicronovaRuntimeIdWaterPressure: printRuntimeF32_(out, firstValue, id, "micronova.water_pressure", mn.waterPressure, "bar"); return true;
+        case kMicronovaRuntimeIdAlarmCode: printRuntimeI32_(out, firstValue, id, "micronova.alarm_code", mn.alarmCode); return true;
+        case kMicronovaRuntimeIdLastUpdateMs: printRuntimeU32_(out, firstValue, id, "micronova.last_update_ms", mn.lastUpdateMs, "ms"); return true;
+        case kMicronovaRuntimeIdLastCommand: printRuntimeString_(out, firstValue, id, "micronova.last_command", mn.lastCommand); return true;
+        case makeRuntimeUiId(ModuleId::Mqtt, 1): printRuntimeBool_(out, firstValue, id, "mqtt.ready", mqttReady(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::Mqtt, 3): printRuntimeU32_(out, firstValue, id, "mqtt.rx_drop", mqttRxDrop(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::Mqtt, 4): printRuntimeU32_(out, firstValue, id, "mqtt.parse_fail", mqttParseFail(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::Mqtt, 5): printRuntimeU32_(out, firstValue, id, "mqtt.handler_fail", mqttHandlerFail(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::Mqtt, 6): printRuntimeU32_(out, firstValue, id, "mqtt.oversize_drop", mqttOversizeDrop(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::System, 1): printRuntimeString_(out, firstValue, id, "system.firmware", FirmwareVersion::Full); return true;
+        case makeRuntimeUiId(ModuleId::System, 2): {
+            SystemStatsSnapshot snap{};
+            SystemStats::collect(snap);
+            printRuntimeU32_(out, firstValue, id, "system.uptime_ms", snap.uptimeMs, "ms");
+            return true;
+        }
+        case makeRuntimeUiId(ModuleId::System, 3): {
+            SystemStatsSnapshot snap{};
+            SystemStats::collect(snap);
+            printRuntimeU32_(out, firstValue, id, "system.heap_free", snap.heap.freeBytes, "B");
+            return true;
+        }
+        case makeRuntimeUiId(ModuleId::System, 4): {
+            SystemStatsSnapshot snap{};
+            SystemStats::collect(snap);
+            printRuntimeU32_(out, firstValue, id, "system.heap_min_free", snap.heap.minFreeBytes, "B");
+            return true;
+        }
+        case makeRuntimeUiId(ModuleId::Wifi, 1): printRuntimeBool_(out, firstValue, id, "wifi.ready", wifiReady(*dataStore)); return true;
+        case makeRuntimeUiId(ModuleId::Wifi, 2): {
+            const IpV4 ip = wifiIp(*dataStore);
+            char ipText[16] = {0};
+            snprintf(ipText, sizeof(ipText), "%u.%u.%u.%u", (unsigned)ip.b[0], (unsigned)ip.b[1], (unsigned)ip.b[2], (unsigned)ip.b[3]);
+            printRuntimeString_(out, firstValue, id, "wifi.ip", ipText);
+            return true;
+        }
+        case makeRuntimeUiId(ModuleId::Wifi, 3): printRuntimeI32_(out, firstValue, id, "wifi.rssi", WiFi.isConnected() ? (int32_t)WiFi.RSSI() : 0, "dBm"); return true;
+        default:
+            printRuntimeUnavailable_(out, firstValue, id, "", "unknown");
+            return true;
+    }
+}
+
+void sendMicronovaLocalRuntimeValuesResponse_(AsyncWebServerRequest* request,
+                                              DataStore* dataStore,
+                                              const RuntimeUiId* ids,
+                                              size_t idCount)
+{
+    if (!request || !dataStore) {
+        if (request) request->send(503, "application/json", "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"runtime.values.local\"}}");
+        return;
+    }
+    if (!ids || idCount == 0U) {
+        request->send(400, "application/json", "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"runtime.values.ids\"}}");
+        return;
+    }
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    addNoCacheHeaders_(response);
+    response->print("{\"ok\":true,\"values\":[");
+    bool firstValue = true;
+    for (size_t i = 0U; i < idCount; ++i) {
+        (void)appendMicronovaLocalRuntimeValue_(*response, dataStore, ids[i], firstValue);
+    }
+    response->print("]}");
+    request->send(response);
+}
+#endif
+
 bool parseRuntimeUiIdsCsv_(const char* raw, RuntimeUiId* idsOut, size_t capacity, size_t& countOut)
 {
     countOut = 0U;
@@ -882,6 +1102,7 @@ bool dashboardSlotDegreeCUnit_(const char* unit)
     return (uint8_t)unit[0] == 0xC2 && (uint8_t)unit[1] == 0xB0 && unit[2] == 'C' && unit[3] == '\0';
 }
 
+#if !defined(FLOW_PROFILE_MICRONOVA)
 void dashboardSlotBgColorHex_(uint16_t color565, char* out, size_t outLen)
 {
     if (!out || outLen < 8U) return;
@@ -977,6 +1198,7 @@ void formatDashboardSlotValueText_(const FlowRemoteDashboardSlotRuntime& slot, c
             return;
     }
 }
+#endif
 
 struct HttpLatencyScope {
     AsyncWebServerRequest* req;
@@ -1038,7 +1260,7 @@ struct HttpLatencyScope {
 
 const UartSpec& webBridgeUartSpec_(const BoardSpec& board)
 {
-    static constexpr UartSpec kFallback{"bridge", 2, 16, 17, 115200, false};
+    static constexpr UartSpec kFallback{"bridge", 2, 16, 17, 115200, false, -1};
     const UartSpec* spec = boardFindUart(board, "bridge");
     return spec ? *spec : kFallback;
 }
@@ -1087,8 +1309,6 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         LOGE("service registration failed: %s", toString(ServiceId::WebInterface));
     }
 
-    uart_.setRxBufferSize(kUartRxBufferSize);
-    uart_.begin(uartBaud_, SERIAL_8N1, uartRxPin_, uartTxPin_);
     netReady_ = dataStore_ ? wifiReady(*dataStore_) : false;
 
     const uint32_t nowMs = millis();
@@ -1102,6 +1322,25 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     health_.started = started_;
     health_.paused = uartPaused_;
     portEXIT_CRITICAL(&healthMux_);
+
+#if defined(FLOW_PROFILE_MICRONOVA)
+    LOGI("WebInterface local runtime deferred (server deferred)");
+#else
+    startLocalRuntime_();
+#endif
+}
+
+void WebInterfaceModule::onStart(ConfigStore&, ServiceRegistry&)
+{
+#if defined(FLOW_PROFILE_MICRONOVA)
+    startLocalRuntime_();
+#endif
+}
+
+void WebInterfaceModule::startLocalRuntime_()
+{
+    uart_.setRxBufferSize(kUartRxBufferSize);
+    uart_.begin(uartBaud_, SERIAL_8N1, uartRxPin_, uartTxPin_);
 
     if (!localLogQueue_) {
         localLogQueue_ = xQueueCreate(kLocalLogQueueLen, kLocalLogLineMax);
@@ -1118,7 +1357,7 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
     }
 
-    LOGI("WebInterface init uart=Serial2 baud=%lu rx=%d tx=%d line_buf=%u rx_buf=%u (server deferred)",
+    LOGI("WebInterface local runtime uart=Serial2 baud=%lu rx=%d tx=%d line_buf=%u rx_buf=%u",
          (unsigned long)uartBaud_,
          uartRxPin_,
          uartTxPin_,
@@ -1271,19 +1510,8 @@ void WebInterfaceModule::startServer_()
         request->redirect(redirectPath);
 #endif
     });
-    auto webInterfaceLandingUrl = [this]() -> const char* {
-        NetworkAccessMode mode = NetworkAccessMode::None;
-        if (!netAccessSvc_ && services_) {
-            netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
-        }
-        if (netAccessSvc_ && netAccessSvc_->mode) {
-            mode = netAccessSvc_->mode(netAccessSvc_->ctx);
-        } else if (wifiSvc_ && wifiSvc_->isConnected && wifiSvc_->isConnected(wifiSvc_->ctx)) {
-            mode = NetworkAccessMode::Station;
-        }
-        return (mode == NetworkAccessMode::AccessPoint)
-            ? "/webinterface?page=page-wifi"
-            : "/webinterface";
+    auto webInterfaceLandingUrl = []() -> const char* {
+        return "/webinterface";
     };
 
     server_.on("/", HTTP_GET, [webInterfaceLandingUrl](AsyncWebServerRequest* request) {
@@ -1317,6 +1545,28 @@ void WebInterfaceModule::startServer_()
         bool heapRejected = false;
         AsyncWebServerResponse* response =
             beginSpiffsAssetResponse(request, "/webinterface/app.js", "application/javascript", true, nullptr, &forensicMeta, &heapRejected);
+        if (!response) {
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
+            return;
+        }
+        sendPreparedAssetResponse(request, response, &forensicMeta);
+    });
+    server_.on("/webinterface/light.css", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
+        SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
+        AsyncWebServerResponse* response =
+            beginSpiffsAssetResponse(request, "/webinterface/light.css", "text/css", true, nullptr, &forensicMeta, &heapRejected);
+        if (!response) {
+            request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
+            return;
+        }
+        sendPreparedAssetResponse(request, response, &forensicMeta);
+    });
+    server_.on("/webinterface/light.js", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
+        SpiffsAssetForensicMeta forensicMeta{};
+        bool heapRejected = false;
+        AsyncWebServerResponse* response =
+            beginSpiffsAssetResponse(request, "/webinterface/light.js", "application/javascript", true, nullptr, &forensicMeta, &heapRejected);
         if (!response) {
             request->send(heapRejected ? 503 : 404, "text/plain", heapRejected ? "Busy" : "Not found");
             return;
@@ -1401,19 +1651,35 @@ void WebInterfaceModule::startServer_()
     });
     server_.on("/api/web/meta", HTTP_GET, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/web/meta");
-        StaticJsonDocument<320> doc;
+        StaticJsonDocument<448> doc;
         doc["ok"] = true;
         doc["web_asset_version"] = webAssetVersion_();
         doc["firmware_version"] = FirmwareVersion::Full;
+        doc["profile"] = FLOW_BUILD_PROFILE_NAME;
+        doc["profile_name"] = FLOW_BUILD_PROFILE_NAME;
+#if defined(FLOW_PROFILE_MICRONOVA)
+        doc["local_runtime"] = true;
+        doc["local_config_label"] = "Config Store Micronova";
+        doc["remote_config_enabled"] = false;
+#else
+        doc["local_runtime"] = false;
+        doc["local_config_label"] = "Config Store Supervisor";
+        doc["remote_config_enabled"] = true;
+#endif
         doc["hide_menu_svg"] = (FLOW_WEB_HIDE_MENU_SVG != 0);
         doc["unify_status_card_icons"] = (FLOW_WEB_UNIFY_STATUS_CARD_ICONS != 0);
         doc["disable_icons"] = (FLOW_WEB_DISABLE_ICONS != 0);
-        doc["upms"] = (uint32_t)millis();
-        JsonObject heap = doc.createNestedObject("heap");
-        heap["free"] = (uint32_t)ESP.getFreeHeap();
-        heap["min_free"] = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+        SystemStatsSnapshot snap{};
+        SystemStats::collect(snap);
 
-        char out[320] = {0};
+        doc["upms"] = snap.uptimeMs;
+        JsonObject heap = doc.createNestedObject("heap");
+        heap["free"] = snap.heap.freeBytes;
+        heap["min_free"] = snap.heap.minFreeBytes;
+        heap["largest"] = snap.heap.largestFreeBlock;
+        heap["frag"] = snap.heap.fragPercent;
+
+        char out[512] = {0};
         const size_t n = serializeJson(doc, out, sizeof(out));
         if (n == 0 || n >= sizeof(out)) {
             request->send(500, "application/json",
@@ -1427,17 +1693,46 @@ void WebInterfaceModule::startServer_()
     });
     server_.on("/webinterface", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/webinterface");
+        NetworkAccessMode mode = NetworkAccessMode::None;
+        if (!netAccessSvc_ && services_) {
+            netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
+        }
+        if (netAccessSvc_ && netAccessSvc_->mode) {
+            mode = netAccessSvc_->mode(netAccessSvc_->ctx);
+        } else if (wifiSvc_ && wifiSvc_->isConnected && wifiSvc_->isConnected(wifiSvc_->ctx)) {
+            mode = NetworkAccessMode::Station;
+        }
+        const bool useLightUi =
+            !request->hasParam("full") &&
+            (mode == NetworkAccessMode::AccessPoint
+#if defined(FLOW_PROFILE_MICRONOVA)
+             || true
+#endif
+            );
+        if (useLightUi) {
+            if (spiffsReady_ && SPIFFS.exists("/webinterface/light.html")) {
+                SpiffsAssetForensicMeta forensicMeta{};
+                bool heapRejected = false;
+                AsyncWebServerResponse* response =
+                    beginSpiffsAssetResponse(request, "/webinterface/light.html", "text/html", true, nullptr, &forensicMeta, &heapRejected);
+                if (!response) {
+                    request->send(heapRejected ? 503 : 500,
+                                  "text/plain",
+                                  heapRejected ? "Busy" : "Failed to load light web interface");
+                    return;
+                }
+                sendPreparedAssetResponse(request, response, &forensicMeta);
+                return;
+            }
+            request->send(503, "text/plain", "Light web interface missing");
+            return;
+        }
         if (!request->hasParam("page")) {
-            NetworkAccessMode mode = NetworkAccessMode::None;
-            if (!netAccessSvc_ && services_) {
-                netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
-            }
-            if (netAccessSvc_ && netAccessSvc_->mode) {
-                mode = netAccessSvc_->mode(netAccessSvc_->ctx);
-            } else if (wifiSvc_ && wifiSvc_->isConnected && wifiSvc_->isConnected(wifiSvc_->ctx)) {
-                mode = NetworkAccessMode::Station;
-            }
             if (mode == NetworkAccessMode::AccessPoint) {
+                if (request->hasParam("full")) {
+                    request->redirect("/webinterface?full=1&page=page-wifi");
+                    return;
+                }
                 request->redirect("/webinterface?page=page-wifi");
                 return;
             }
@@ -1669,6 +1964,111 @@ void WebInterfaceModule::startServer_()
         request->send(200, "application/json", out);
     });
 
+    server_.on("/api/wifi/ap", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/wifi/ap");
+
+        NetworkAccessMode mode = NetworkAccessMode::None;
+        char ip[24] = {0};
+        if (!netAccessSvc_ && services_) {
+            netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
+        }
+        if (netAccessSvc_ && netAccessSvc_->mode) {
+            mode = netAccessSvc_->mode(netAccessSvc_->ctx);
+        }
+        if (netAccessSvc_ && netAccessSvc_->getIP) {
+            (void)netAccessSvc_->getIP(netAccessSvc_->ctx, ip, sizeof(ip));
+        }
+        if (ip[0] == '\0' && mode == NetworkAccessMode::AccessPoint) {
+            const IPAddress apIp = WiFi.softAPIP();
+            snprintf(ip, sizeof(ip), "%u.%u.%u.%u", apIp[0], apIp[1], apIp[2], apIp[3]);
+        }
+
+        char ssid[48] = {0};
+        buildProvisioningApSsid_(ssid, sizeof(ssid));
+        sanitizeJsonString_(ssid);
+        sanitizeJsonString_(ip);
+
+        char out[256] = {0};
+        const char* modeTxt = "none";
+        if (mode == NetworkAccessMode::Station) modeTxt = "sta";
+        else if (mode == NetworkAccessMode::AccessPoint) modeTxt = "ap";
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":true,\"active\":%s,\"mode\":\"%s\",\"ssid\":\"%s\",\"pass\":\"flowio1234\",\"ip\":\"%s\",\"clients\":%u}",
+                               mode == NetworkAccessMode::AccessPoint ? "true" : "false",
+                               modeTxt,
+                               ssid,
+                               ip,
+                               (unsigned)WiFi.softAPgetStationNum());
+        request->send(200,
+                      "application/json",
+                      (n > 0 && (size_t)n < sizeof(out))
+                          ? out
+                          : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.ap\"}}");
+    });
+
+    server_.on("/api/mqtt/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/mqtt/config");
+        if (!cfgStore_) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"mqtt.config.get\"}}");
+            return;
+        }
+
+        char mqttJson[512] = {0};
+        if (!cfgStore_->toJsonModule("mqtt", mqttJson, sizeof(mqttJson), nullptr, false)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"mqtt.config.get\"}}");
+            return;
+        }
+
+        StaticJsonDocument<512> doc;
+        const DeserializationError err = deserializeJson(doc, mqttJson);
+        if (err || !doc.is<JsonObjectConst>()) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"InvalidData\",\"where\":\"mqtt.config.get\"}}");
+            return;
+        }
+
+        JsonObjectConst root = doc.as<JsonObjectConst>();
+        const bool enabled = root["enabled"] | false;
+        const int32_t port = root["port"] | Limits::Mqtt::Defaults::Port;
+        char host[96] = {0};
+        char user[64] = {0};
+        char pass[64] = {0};
+        char baseTopic[48] = {0};
+        char topicDeviceId[48] = {0};
+        snprintf(host, sizeof(host), "%s", root["host"] | "");
+        snprintf(user, sizeof(user), "%s", root["user"] | "");
+        snprintf(pass, sizeof(pass), "%s", root["pass"] | "");
+        snprintf(baseTopic, sizeof(baseTopic), "%s", root["baseTopic"] | "flowio");
+        snprintf(topicDeviceId, sizeof(topicDeviceId), "%s", root["topicDeviceId"] | "");
+        sanitizeJsonString_(host);
+        sanitizeJsonString_(user);
+        sanitizeJsonString_(pass);
+        sanitizeJsonString_(baseTopic);
+        sanitizeJsonString_(topicDeviceId);
+
+        char out[512] = {0};
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":true,\"enabled\":%s,\"host\":\"%s\",\"port\":%ld,"
+                               "\"user\":\"%s\",\"pass\":\"%s\",\"baseTopic\":\"%s\","
+                               "\"topicDeviceId\":\"%s\"}",
+                               enabled ? "true" : "false",
+                               host,
+                               (long)port,
+                               user,
+                               pass,
+                               baseTopic,
+                               topicDeviceId);
+        request->send(200,
+                      "application/json",
+                      (n > 0 && (size_t)n < sizeof(out))
+                          ? out
+                          : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"mqtt.config.get\"}}");
+    });
+
     server_.on("/api/wifi/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/wifi/config");
         if (!cfgStore_) {
@@ -1746,13 +2146,11 @@ void WebInterfaceModule::startServer_()
             } else {
                 snprintf(flowSyncErr, sizeof(flowSyncErr), "flowcfg.patch serialize failed");
             }
-        } else {
-            snprintf(flowSyncErr, sizeof(flowSyncErr), "flowcfg service unavailable");
         }
 
         if (flowSyncAttempted && flowSyncOk) {
             LOGI("WiFi config synced to Flow.io");
-        } else {
+        } else if (flowSyncAttempted) {
             LOGW("WiFi config sync to Flow.io skipped/failed attempted=%d err=%s",
                  (int)flowSyncAttempted,
                  flowSyncErr[0] ? flowSyncErr : "none");
@@ -1805,6 +2203,65 @@ void WebInterfaceModule::startServer_()
             return;
         }
         request->send(200, "application/json", out);
+    });
+
+    server_.on("/api/mqtt/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/mqtt/config");
+        if (!cfgStore_) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"mqtt.config.set\"}}");
+            return;
+        }
+
+        char enabledStr[8] = {0};
+        char host[96] = {0};
+        char portStr[12] = {0};
+        char user[64] = {0};
+        char pass[64] = {0};
+        char baseTopic[48] = {0};
+        char topicDeviceId[48] = {0};
+        copyRequestParamValue_(request, "enabled", true, enabledStr, sizeof(enabledStr), "0");
+        copyRequestParamValue_(request, "host", true, host, sizeof(host), "");
+        copyRequestParamValue_(request, "port", true, portStr, sizeof(portStr), "1883");
+        copyRequestParamValue_(request, "user", true, user, sizeof(user), "");
+        copyRequestParamValue_(request, "pass", true, pass, sizeof(pass), "");
+        copyRequestParamValue_(request, "baseTopic", true, baseTopic, sizeof(baseTopic), "flowio");
+        copyRequestParamValue_(request, "topicDeviceId", true, topicDeviceId, sizeof(topicDeviceId), "");
+
+        const bool enabled = parseBoolParam_(enabledStr, false);
+        int32_t port = (int32_t)atoi(portStr);
+        if (port <= 0 || port > 65535) port = Limits::Mqtt::Defaults::Port;
+        sanitizeJsonString_(host);
+        sanitizeJsonString_(user);
+        sanitizeJsonString_(pass);
+        sanitizeJsonString_(baseTopic);
+        sanitizeJsonString_(topicDeviceId);
+
+        char patchJson[512] = {0};
+        const int n = snprintf(patchJson,
+                               sizeof(patchJson),
+                               "{\"mqtt\":{\"enabled\":%s,\"host\":\"%s\",\"port\":%ld,"
+                               "\"user\":\"%s\",\"pass\":\"%s\",\"baseTopic\":\"%s\","
+                               "\"topicDeviceId\":\"%s\"}}",
+                               enabled ? "true" : "false",
+                               host,
+                               (long)port,
+                               user,
+                               pass,
+                               baseTopic,
+                               topicDeviceId);
+        if (n <= 0 || (size_t)n >= sizeof(patchJson)) {
+            request->send(400, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"ArgsTooLarge\",\"where\":\"mqtt.config.set\"}}");
+            return;
+        }
+
+        if (!cfgStore_->applyJson(patchJson)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"mqtt.config.set\"}}");
+            return;
+        }
+        request->send(200, "application/json", "{\"ok\":true}");
     });
 
     server_.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -1921,6 +2378,15 @@ void WebInterfaceModule::startServer_()
 
     server_.on("/api/runtime/manifest", HTTP_GET, [this, beginSpiffsAssetResponse, sendPreparedAssetResponse](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/runtime/manifest");
+#if defined(FLOW_PROFILE_MICRONOVA)
+        AsyncWebServerResponse* response =
+            request->beginResponse(200,
+                                   "application/json",
+                                   reinterpret_cast<const uint8_t*>(kMicronovaRuntimeManifestJson),
+                                   sizeof(kMicronovaRuntimeManifestJson) - 1U);
+        addNoCacheHeaders_(response);
+        request->send(response);
+#else
         SpiffsAssetForensicMeta forensicMeta{};
         bool heapRejected = false;
         AsyncWebServerResponse* response =
@@ -1934,6 +2400,7 @@ void WebInterfaceModule::startServer_()
             return;
         }
         sendPreparedAssetResponse(request, response, &forensicMeta);
+#endif
     });
 
     server_.on("/api/runtime/alarms", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -1951,6 +2418,7 @@ void WebInterfaceModule::startServer_()
         addNoCacheHeaders_(response);
         response->print("{\"ok\":true,\"slots\":[");
         bool first = true;
+#if !defined(FLOW_PROFILE_MICRONOVA)
         if (dataStore_) {
             const FlowRemoteRuntimeData& flow = flowRemoteRuntime(*dataStore_);
             for (uint8_t i = 0U; i < kFlowRemoteDashboardSlotCount; ++i) {
@@ -1986,6 +2454,9 @@ void WebInterfaceModule::startServer_()
                 first = false;
             }
         }
+#else
+        (void)first;
+#endif
         response->print("]}");
         request->send(response);
     });
@@ -2014,7 +2485,11 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
+#if defined(FLOW_PROFILE_MICRONOVA)
+        sendMicronovaLocalRuntimeValuesResponse_(request, dataStore_, ids, idCount);
+#else
         sendRuntimeUiValuesResponse_(request, flowCfgSvc_, ids, idCount);
+#endif
     });
 
     server_.on(
@@ -2072,7 +2547,11 @@ void WebInterfaceModule::startServer_()
                 return;
             }
 
+#if defined(FLOW_PROFILE_MICRONOVA)
+            sendMicronovaLocalRuntimeValuesResponse_(request, dataStore_, ids, idCount);
+#else
             sendRuntimeUiValuesResponse_(request, flowCfgSvc_, ids, idCount);
+#endif
         },
         nullptr,
         [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
@@ -2113,12 +2592,6 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.modules\"}}");
             return;
         }
-        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.modules.link\"}}");
-            return;
-        }
-
         char out[Limits::Mqtt::Buffers::Ack] = {0};
         if (!flowCfgSvc_->listModulesJson(flowCfgSvc_->ctx, out, sizeof(out))) {
             if (out[0] != '\0') {
@@ -2147,12 +2620,6 @@ void WebInterfaceModule::startServer_()
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.children\"}}");
             return;
         }
-        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.children.link\"}}");
-            return;
-        }
-
         char prefix[128] = {0};
         copyRequestParamValue_(request, "prefix", false, prefix, sizeof(prefix), "");
         char out[Limits::Mqtt::Buffers::Ack] = {0};
@@ -2180,11 +2647,6 @@ void WebInterfaceModule::startServer_()
         if (!flowCfgSvc_ || !flowCfgSvc_->getModuleJson) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.module\"}}");
-            return;
-        }
-        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.module.link\"}}");
             return;
         }
         if (!request->hasParam("name")) {
@@ -2241,11 +2703,6 @@ void WebInterfaceModule::startServer_()
         if (!flowCfgSvc_ || !flowCfgSvc_->applyPatchJson) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.apply\"}}");
-            return;
-        }
-        if (flowCfgSvc_->isReady && !flowCfgSvc_->isReady(flowCfgSvc_->ctx)) {
-            request->send(503, "application/json",
-                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"flowcfg.apply.link\"}}");
             return;
         }
         if (!request->hasParam("patch", true)) {

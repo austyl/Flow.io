@@ -8,10 +8,10 @@ inline constexpr uint32_t kSupervisorBoardRev1UartBaud = 115200U;
 inline constexpr uint32_t kSupervisorBoardRev1InterlinkI2cHz = 400000U;
 
 inline constexpr UartSpec kSupervisorBoardRev1Uarts[] = {
-    // {name, uartIndex, rxPin, txPin, baud, primary}
-    {"log", 0, -1, -1, kSupervisorBoardRev1UartBaud, true}, // USB serial logs (UART0 default pins).
-    {"bridge", 2, 16, 17, kSupervisorBoardRev1UartBaud, false}, // FlowIO bridge UART (RX=GPIO16, TX=GPIO17).
-    {"panel", 2, 33, 32, kSupervisorBoardRev1UartBaud, false}, // Nextion panel UART (RX=GPIO33, TX=GPIO32).
+    // {name, uartIndex, rxPin, txPin, baud, primary, enableRxPin}
+    {"log", 0, -1, -1, kSupervisorBoardRev1UartBaud, true, -1}, // USB serial logs (UART0 default pins).
+    {"bridge", 2, 16, 17, kSupervisorBoardRev1UartBaud, false, -1}, // FlowIO bridge UART (RX=GPIO16, TX=GPIO17).
+    {"panel", 2, 33, 32, kSupervisorBoardRev1UartBaud, false, -1}, // Nextion panel UART (RX=GPIO33, TX=GPIO32).
 };
 
 inline constexpr I2cBusSpec kSupervisorBoardRev1I2c[] = {
@@ -61,6 +61,7 @@ inline constexpr SupervisorBoardSpec kSupervisorBoardRev1Supervisor{
 
 inline constexpr BoardSpec kSupervisorBoardRev1{
     "SupervisorBoardRev1",
+    "flowio",
     kSupervisorBoardRev1Uarts,
     (uint8_t)(sizeof(kSupervisorBoardRev1Uarts) / sizeof(kSupervisorBoardRev1Uarts[0])),
     kSupervisorBoardRev1I2c,
@@ -69,6 +70,7 @@ inline constexpr BoardSpec kSupervisorBoardRev1{
     0,
     nullptr,
     0,
+    {0, 0, 0},
     &kSupervisorBoardRev1Supervisor
 };
 

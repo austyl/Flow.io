@@ -27,6 +27,7 @@ constexpr size_t kRuntimeStatusDomainBufSize = 640;
 constexpr uint32_t kRuntimeCacheTtlMs = 5000U;
 constexpr uint32_t kRemoteRetryCooldownMs = 3000U;
 constexpr uint32_t kPriorityI2cHoldMs = 1500U;
+constexpr uint32_t kGetModuleRetryBudgetMs = 120000U;
 constexpr uint16_t kCfgMsgDashboardSlotBase = 16U;
 constexpr uint16_t rgb565_(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -205,7 +206,31 @@ const char* statusName(uint8_t st)
         case I2cCfgProtocol::StatusRange: return "range";
         case I2cCfgProtocol::StatusOverflow: return "overflow";
         case I2cCfgProtocol::StatusFailed: return "failed";
+        case I2cCfgProtocol::StatusFrameCrc: return "frame_crc";
+        case I2cCfgProtocol::StatusFrameFormat: return "frame_format";
         default: return "unknown";
+    }
+}
+
+uint32_t getModuleRetryDelayMs_(uint32_t attempt)
+{
+    if (attempt <= 3U) return 120U * attempt;
+    if (attempt <= 8U) return 500U + ((attempt - 3U) * 250U);
+    return 2000U;
+}
+
+bool isRetryableGetModuleStatus_(uint8_t status)
+{
+    switch (status) {
+        case I2cCfgProtocol::StatusNotReady:
+        case I2cCfgProtocol::StatusBadRequest:
+        case I2cCfgProtocol::StatusRange:
+        case I2cCfgProtocol::StatusFailed:
+        case I2cCfgProtocol::StatusFrameCrc:
+        case I2cCfgProtocol::StatusFrameFormat:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -276,6 +301,12 @@ bool writeApplyStatusError_(char* out, size_t outLen, const char* step, uint8_t 
     const char* where = "flowcfg.apply";
     ErrorCode code = ErrorCode::Failed;
 
+    if (status == I2cCfgProtocol::StatusFrameCrc || status == I2cCfgProtocol::StatusFrameFormat) {
+        code = ErrorCode::IoError;
+        where = (status == I2cCfgProtocol::StatusFrameCrc)
+                    ? "flowcfg.apply.frame_crc"
+                    : "flowcfg.apply.frame_format";
+    } else
     if (strcmp(step, "begin") == 0) {
         where = "flowcfg.apply.begin";
         if (status == I2cCfgProtocol::StatusOverflow) {
@@ -351,6 +382,14 @@ bool writeGetModuleStatusError_(char* out, size_t outLen, const char* step, bool
             if (isBegin) return writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.begin.failed");
             if (isChunk) return writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.chunk.failed");
             return writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.failed");
+        case I2cCfgProtocol::StatusFrameCrc:
+            if (isBegin) return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.begin.frame_crc");
+            if (isChunk) return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.chunk.frame_crc");
+            return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.frame_crc");
+        case I2cCfgProtocol::StatusFrameFormat:
+            if (isBegin) return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.begin.frame_format");
+            if (isChunk) return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.chunk.frame_format");
+            return writeErrorJson(out, outLen, ErrorCode::IoError, "flowcfg.get.frame_format");
         default:
             if (isBegin) return writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.begin.status");
             if (isChunk) return writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.chunk.status");
@@ -493,6 +532,7 @@ void I2CCfgClientModule::startLink_()
          ready_ ? "true" : "false");
     ready_ = false;
     reachable_ = false;
+    frameCrcEnabled_ = false;
     retryAfterMs_ = 0;
     nextRuntimeCacheRefreshAtMs_ = 0;
     invalidateRuntimeCache_();
@@ -1148,7 +1188,9 @@ bool I2CCfgClientModule::pingFlow_(uint8_t& statusOut)
     if (ok && statusOut == I2cCfgProtocol::StatusOk) {
         const unsigned protoVer = (respLen > 0) ? (unsigned)resp[0] : 0U;
         const unsigned echoAddr = (respLen > 1) ? (unsigned)resp[1] : 0U;
+        frameCrcEnabled_ = (protoVer >= (unsigned)I2cCfgProtocol::CapabilityVersionFrameCrc);
         LOGI("I2C cfg ping reply ver=%u addr=0x%02X len=%u", protoVer, echoAddr, (unsigned)respLen);
+        LOGI("I2C cfg frame CRC %s", frameCrcEnabled_ ? "enabled" : "disabled");
     }
     return ok;
 }
@@ -1201,6 +1243,14 @@ bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
     tx[3] = seq;
     tx[4] = (uint8_t)reqLen;
     if (reqPayload && reqLen > 0) memcpy(tx + I2cCfgProtocol::ReqHeaderSize, reqPayload, reqLen);
+    size_t txLen = I2cCfgProtocol::ReqHeaderSize + reqLen;
+    const bool useFrameCrc = frameCrcEnabled_;
+    if (useFrameCrc) {
+        const uint16_t reqCrc = I2cCfgProtocol::crc16Ccitt(tx, txLen);
+        tx[txLen] = (uint8_t)(reqCrc & 0xFFu);
+        tx[txLen + 1U] = (uint8_t)((reqCrc >> 8) & 0xFFu);
+        txLen += I2cCfgProtocol::FrameCrcSize;
+    }
 
     constexpr uint8_t kMaxAttempts = 3;
     uint8_t rx[128] = {0};
@@ -1208,7 +1258,7 @@ bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
     for (uint8_t attempt = 0; attempt < kMaxAttempts; ++attempt) {
         memset(rx, 0, sizeof(rx));
         rxLen = 0;
-        if (!link_.transfer(cfgData_.targetAddr, tx, I2cCfgProtocol::ReqHeaderSize + reqLen, rx, sizeof(rx), rxLen)) {
+        if (!link_.transfer(cfgData_.targetAddr, tx, txLen, rx, sizeof(rx), rxLen)) {
             if (attempt + 1 < kMaxAttempts) {
                 delay(2);
                 continue;
@@ -1218,7 +1268,7 @@ bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
                  opName(op),
                  (unsigned)seq,
                  (unsigned)cfgData_.targetAddr,
-                 (unsigned)(I2cCfgProtocol::ReqHeaderSize + reqLen));
+                 (unsigned)txLen);
             LOGW("I2C link cfg bus=%u sda=%ld scl=%ld freq=%ld",
                  (unsigned)kInterlinkBus,
                  (long)cfgData_.sda,
@@ -1265,6 +1315,24 @@ bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
             return false;
         }
 
+        if (rxLen >= I2cCfgProtocol::RespHeaderSize) {
+            const uint8_t frameStatus = rx[4];
+            if (frameStatus == I2cCfgProtocol::StatusFrameCrc ||
+                frameStatus == I2cCfgProtocol::StatusFrameFormat) {
+                if (attempt + 1 < kMaxAttempts) {
+                    delay(2);
+                    continue;
+                }
+                markRemoteUnavailable_();
+                LOGW("I2C frame status retry exhausted op=%s seq=%u status=%u (%s)",
+                     opName(op),
+                     (unsigned)seq,
+                     (unsigned)frameStatus,
+                     statusName(frameStatus));
+                return false;
+            }
+        }
+
         break;
     }
 
@@ -1280,17 +1348,41 @@ bool I2CCfgClientModule::transactUnlocked_(uint8_t op,
              (unsigned)payloadLen);
         return false;
     }
-    if (rxLen < (I2cCfgProtocol::RespHeaderSize + payloadLen)) {
-        markRemoteUnavailable_();
-        LOGW("I2C truncated response op=%s seq=%u rx_len=%u expected=%u",
-             opName(op),
-             (unsigned)seq,
-             (unsigned)rxLen,
-             (unsigned)(I2cCfgProtocol::RespHeaderSize + payloadLen));
-        return false;
-    }
+        const size_t baseRespLen = I2cCfgProtocol::RespHeaderSize + payloadLen;
+        if (rxLen < baseRespLen) {
+            markRemoteUnavailable_();
+            LOGW("I2C truncated response op=%s seq=%u rx_len=%u expected=%u",
+                 opName(op),
+                 (unsigned)seq,
+                 (unsigned)rxLen,
+                 (unsigned)baseRespLen);
+            return false;
+        }
+        if (useFrameCrc) {
+            const size_t expectedWithCrc = baseRespLen + I2cCfgProtocol::FrameCrcSize;
+            if (rxLen < expectedWithCrc) {
+                markRemoteUnavailable_();
+                LOGW("I2C missing frame CRC op=%s seq=%u rx_len=%u expected=%u",
+                     opName(op),
+                     (unsigned)seq,
+                     (unsigned)rxLen,
+                     (unsigned)expectedWithCrc);
+                return false;
+            }
+            const uint16_t gotCrc = I2cCfgProtocol::readFrameCrcLe(rx, expectedWithCrc);
+            const uint16_t calcCrc = I2cCfgProtocol::crc16Ccitt(rx, baseRespLen);
+            if (gotCrc != calcCrc) {
+                markRemoteUnavailable_();
+                LOGW("I2C frame CRC mismatch op=%s seq=%u got=0x%04X calc=0x%04X",
+                     opName(op),
+                     (unsigned)seq,
+                     (unsigned)gotCrc,
+                     (unsigned)calcCrc);
+                return false;
+            }
+        }
 
-    if (respPayload && respPayloadMax > 0 && payloadLen > 0) {
+        if (respPayload && respPayloadMax > 0 && payloadLen > 0) {
         const size_t n = (payloadLen < respPayloadMax) ? payloadLen : respPayloadMax;
         memcpy(respPayload, rx + I2cCfgProtocol::RespHeaderSize, n);
         respLenOut = n;
@@ -1546,102 +1638,148 @@ bool I2CCfgClientModule::getModuleJson_(const char* module, char* out, size_t ou
     }
     LOGI("flowcfg.get begin module=%s", module);
 
-    uint8_t status = 0;
-    uint8_t resp[96] = {0};
-    size_t respLen = 0;
-    const bool okBegin = transact_(I2cCfgProtocol::OpGetModuleBegin,
-                   (const uint8_t*)module,
-                   moduleLen,
-                   status,
-                   resp,
-                   sizeof(resp),
-                   respLen);
-    if (!okBegin || status != I2cCfgProtocol::StatusOk) {
-        LOGW("getModule failed module=%s step=begin transport=%s status=%u (%s) resp_len=%u",
-             module,
-             okBegin ? "ok" : "failed",
-             (unsigned)status,
-             statusName(status),
-             (unsigned)respLen);
-        (void)writeGetModuleStatusError_(out, outLen, "begin", okBegin, status);
-        endRequestSession_();
-        return false;
-    }
-    if (respLen < 3) {
-        LOGW("getModule failed module=%s step=begin invalid_reply resp_len=%u",
-             module,
-             (unsigned)respLen);
-        (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.begin.reply");
-        endRequestSession_();
-        return false;
-    }
+    const uint32_t retryStartMs = millis();
+    uint32_t retryAttempt = 0U;
+    while (true) {
+        ++retryAttempt;
 
-    const size_t totalLen = (size_t)resp[0] | ((size_t)resp[1] << 8);
-    const bool isTruncated = (resp[2] & 0x02u) != 0;
-    if (truncated) *truncated = isTruncated;
-    LOGI("flowcfg.get info module=%s total=%u truncated=%s",
-         module,
-         (unsigned)totalLen,
-         isTruncated ? "true" : "false");
+        uint8_t status = 0;
+        uint8_t resp[96] = {0};
+        size_t respLen = 0;
+        bool retryableFailure = false;
+        bool transportLocked = false;
+        if (transportMutex_ && xSemaphoreTake(transportMutex_, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            transportLocked = true;
+        } else {
+            (void)writeErrorJson(out, outLen, ErrorCode::NotReady, "flowcfg.get.transport_busy");
+            retryableFailure = true;
+        }
 
-    if (totalLen + 1 > outLen) {
-        (void)writeErrorJson(out, outLen, ErrorCode::ArgsTooLarge, "flowcfg.get.reply.overflow");
-        endRequestSession_();
-        return false;
-    }
-
-    size_t written = 0;
-    uint16_t chunkCount = 0;
-    while (written < totalLen) {
-        const size_t remain = totalLen - written;
-        const uint8_t want = (uint8_t)((remain > I2cCfgProtocol::MaxPayload) ? I2cCfgProtocol::MaxPayload : remain);
-        const uint8_t req[3] = {
-            (uint8_t)(written & 0xFFu),
-            (uint8_t)((written >> 8) & 0xFFu),
-            want
-        };
-        memset(resp, 0, sizeof(resp));
-        respLen = 0;
-        const bool okChunk = transact_(I2cCfgProtocol::OpGetModuleChunk, req, sizeof(req), status, resp, sizeof(resp), respLen);
-        if (!okChunk || status != I2cCfgProtocol::StatusOk) {
-            LOGW("getModule failed module=%s step=chunk off=%u want=%u transport=%s status=%u (%s) resp_len=%u",
+        const bool okBegin = transportLocked
+                                 ? transactUnlocked_(I2cCfgProtocol::OpGetModuleBegin,
+                                                     (const uint8_t*)module,
+                                                     moduleLen,
+                                                     status,
+                                                     resp,
+                                                     sizeof(resp),
+                                                     respLen)
+                                 : false;
+        if (!okBegin || status != I2cCfgProtocol::StatusOk) {
+            LOGW("getModule failed module=%s step=begin transport=%s status=%u (%s) resp_len=%u",
                  module,
-                 (unsigned)written,
-                 (unsigned)want,
-                 okChunk ? "ok" : "failed",
+                 okBegin ? "ok" : "failed",
                  (unsigned)status,
                  statusName(status),
                  (unsigned)respLen);
-            (void)writeGetModuleStatusError_(out, outLen, "chunk", okChunk, status);
-            endRequestSession_();
-            return false;
-        }
-        if (respLen == 0 || (written + respLen) > totalLen) {
-            LOGW("getModule invalid chunk module=%s off=%u resp_len=%u total=%u",
+            (void)writeGetModuleStatusError_(out, outLen, "begin", okBegin, status);
+            retryableFailure = (!okBegin) || isRetryableGetModuleStatus_(status);
+        } else if (respLen < 3) {
+            LOGW("getModule failed module=%s step=begin invalid_reply resp_len=%u",
                  module,
-                 (unsigned)written,
-                 (unsigned)respLen,
-                 (unsigned)totalLen);
-            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.chunk.reply");
+                 (unsigned)respLen);
+            (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.begin.reply");
+            retryableFailure = true;
+        } else {
+            const size_t totalLen = (size_t)resp[0] | ((size_t)resp[1] << 8);
+            const bool isTruncated = (resp[2] & 0x02u) != 0;
+            if (truncated) *truncated = isTruncated;
+            LOGI("flowcfg.get info module=%s total=%u truncated=%s",
+                 module,
+                 (unsigned)totalLen,
+                 isTruncated ? "true" : "false");
+
+            if (totalLen + 1 > outLen) {
+                (void)writeErrorJson(out, outLen, ErrorCode::ArgsTooLarge, "flowcfg.get.reply.overflow");
+                if (transportLocked) xSemaphoreGive(transportMutex_);
+                endRequestSession_();
+                return false;
+            }
+
+            size_t written = 0;
+            uint16_t chunkCount = 0;
+            while (written < totalLen) {
+                const size_t remain = totalLen - written;
+                const uint8_t want = (uint8_t)((remain > I2cCfgProtocol::MaxPayload) ? I2cCfgProtocol::MaxPayload : remain);
+                const uint8_t req[3] = {
+                    (uint8_t)(written & 0xFFu),
+                    (uint8_t)((written >> 8) & 0xFFu),
+                    want
+                };
+                memset(resp, 0, sizeof(resp));
+                respLen = 0;
+                const bool okChunk = transactUnlocked_(I2cCfgProtocol::OpGetModuleChunk, req, sizeof(req), status, resp, sizeof(resp), respLen);
+                if (!okChunk || status != I2cCfgProtocol::StatusOk) {
+                    LOGW("getModule failed module=%s step=chunk off=%u want=%u transport=%s status=%u (%s) resp_len=%u",
+                         module,
+                         (unsigned)written,
+                         (unsigned)want,
+                         okChunk ? "ok" : "failed",
+                         (unsigned)status,
+                         statusName(status),
+                         (unsigned)respLen);
+                    (void)writeGetModuleStatusError_(out, outLen, "chunk", okChunk, status);
+                    retryableFailure = (!okChunk) || isRetryableGetModuleStatus_(status);
+                    break;
+                }
+                if (respLen == 0 || (written + respLen) > totalLen) {
+                    LOGW("getModule invalid chunk module=%s off=%u resp_len=%u total=%u",
+                         module,
+                         (unsigned)written,
+                         (unsigned)respLen,
+                         (unsigned)totalLen);
+                    (void)writeErrorJson(out, outLen, ErrorCode::Failed, "flowcfg.get.chunk.reply");
+                    retryableFailure = true;
+                    break;
+                }
+                LOGD("flowcfg.get chunk module=%s off=%u got=%u remain=%u",
+                     module,
+                     (unsigned)written,
+                     (unsigned)respLen,
+                     (unsigned)(totalLen - (written + respLen)));
+                memcpy(out + written, resp, respLen);
+                written += respLen;
+                ++chunkCount;
+            }
+            if (!retryableFailure && written >= totalLen) {
+                out[written] = '\0';
+                LOGI("flowcfg.get done module=%s bytes=%u chunks=%u attempt=%lu",
+                     module,
+                     (unsigned)written,
+                     (unsigned)chunkCount,
+                     (unsigned long)retryAttempt);
+                if (transportLocked) xSemaphoreGive(transportMutex_);
+                endRequestSession_();
+                return true;
+            }
+        }
+
+        if (transportLocked) xSemaphoreGive(transportMutex_);
+
+        const uint32_t elapsedMs = millis() - retryStartMs;
+        if (!retryableFailure || elapsedMs >= kGetModuleRetryBudgetMs) {
+            LOGW("getModule give up module=%s attempts=%lu elapsed=%lu retryable=%s",
+                 module,
+                 (unsigned long)retryAttempt,
+                 (unsigned long)elapsedMs,
+                 retryableFailure ? "true" : "false");
             endRequestSession_();
             return false;
         }
-        LOGD("flowcfg.get chunk module=%s off=%u got=%u remain=%u",
+
+        uint32_t retryDelayMs = getModuleRetryDelayMs_(retryAttempt);
+        const uint32_t remainingBudgetMs = (kGetModuleRetryBudgetMs > elapsedMs) ? (kGetModuleRetryBudgetMs - elapsedMs) : 0U;
+        if (remainingBudgetMs == 0U) {
+            endRequestSession_();
+            return false;
+        }
+        if (retryDelayMs > remainingBudgetMs) retryDelayMs = remainingBudgetMs;
+        LOGW("getModule retry module=%s attempt=%lu delay=%lu remaining_budget=%lu",
              module,
-             (unsigned)written,
-             (unsigned)respLen,
-             (unsigned)(totalLen - (written + respLen)));
-        memcpy(out + written, resp, respLen);
-        written += respLen;
-        ++chunkCount;
+             (unsigned long)retryAttempt,
+             (unsigned long)retryDelayMs,
+             (unsigned long)remainingBudgetMs);
+        delay(retryDelayMs);
     }
-    out[written] = '\0';
-    LOGI("flowcfg.get done module=%s bytes=%u chunks=%u",
-         module,
-         (unsigned)written,
-         (unsigned)chunkCount);
-    endRequestSession_();
-    return true;
 }
 
 bool I2CCfgClientModule::applyPatchJson_(const char* patch, char* out, size_t outLen)
@@ -2220,5 +2358,5 @@ bool I2CCfgClientModule::cmdFlowFactoryReset_(void* userCtx, const CommandReques
 
 bool I2CCfgClientModule::isReadySvc_()
 {
-    return ensureReady_();
+    return isReady_();
 }

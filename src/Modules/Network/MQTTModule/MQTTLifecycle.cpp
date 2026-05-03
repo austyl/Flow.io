@@ -131,6 +131,24 @@ bool MQTTModule::allocateScratchBuffers_()
     return true;
 }
 
+bool MQTTModule::allocateRxQueue_()
+{
+    if (rxQ_) return true;
+
+    const size_t rxItemSize = sizeof(RxMsg);
+    const size_t rxQueueStorageLen = ((size_t)Limits::Mqtt::Capacity::RxQueueLen) * rxItemSize;
+    rxQueueStorage_ = static_cast<uint8_t*>(heap_caps_malloc(rxQueueStorageLen, MALLOC_CAP_8BIT));
+    if (rxQueueStorage_) {
+        rxQ_ = xQueueCreateStatic(Limits::Mqtt::Capacity::RxQueueLen,
+                                  rxItemSize,
+                                  rxQueueStorage_,
+                                  &rxQueueStruct_);
+    } else {
+        rxQ_ = nullptr;
+    }
+    return rxQ_ != nullptr;
+}
+
 void MQTTModule::refreshTopicDeviceId_()
 {
     if (cfgData_.topicDeviceId[0] == '\0') {
@@ -325,19 +343,12 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services)
     makeDeviceId(deviceId_, sizeof(deviceId_));
     buildTopics_();
 
+#if defined(FLOW_PROFILE_MICRONOVA)
+    LOGI("mqtt heap buffers deferred until startup release");
+#else
     (void)allocateScratchBuffers_();
-
-    const size_t rxItemSize = sizeof(RxMsg);
-    const size_t rxQueueStorageLen = ((size_t)Limits::Mqtt::Capacity::RxQueueLen) * rxItemSize;
-    rxQueueStorage_ = static_cast<uint8_t*>(heap_caps_malloc(rxQueueStorageLen, MALLOC_CAP_8BIT));
-    if (rxQueueStorage_) {
-        rxQ_ = xQueueCreateStatic(Limits::Mqtt::Capacity::RxQueueLen,
-                                  rxItemSize,
-                                  rxQueueStorage_,
-                                  &rxQueueStruct_);
-    } else {
-        rxQ_ = nullptr;
-    }
+    (void)allocateRxQueue_();
+#endif
 
     netReady_ = dataStore_ ? wifiReady(*dataStore_) : false;
     netReadyTs_ = millis();
@@ -363,9 +374,21 @@ void MQTTModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
     runtimeProducerCore_.rebuildRoutes();
 }
 
+void MQTTModule::onStart(ConfigStore&, ServiceRegistry&)
+{
+#if defined(FLOW_PROFILE_MICRONOVA)
+    (void)allocateScratchBuffers_();
+    (void)allocateRxQueue_();
+#endif
+}
+
 void MQTTModule::loop()
 {
     if (!scratch_ && !allocateScratchBuffers_()) {
+        vTaskDelay(pdMS_TO_TICKS(Limits::Mqtt::Timing::DisabledDelayMs));
+        return;
+    }
+    if (!rxQ_ && !allocateRxQueue_()) {
         vTaskDelay(pdMS_TO_TICKS(Limits::Mqtt::Timing::DisabledDelayMs));
         return;
     }

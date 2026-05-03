@@ -79,8 +79,10 @@ Réactions:
 - build topic/payload discovery à la demande via `MqttBuildContext` (buffer central MQTT)
 - construit topics discovery:
   - `<discoveryPrefix>/<component>/<nodeTopicId>/<objectId>/config`
-- préfixe `object_id` de type `flowioNNN_*`:
-  - `NNN` dérive du `deviceId` MQTT effectif (`mqtt.topicDeviceId` / `mq_tid` si défini, sinon fallback auto)
+- préfixe `object_id` configurable par profil:
+  - défaut `fioNN_*`
+  - profil `Micronova`: `pioNN_*`
+  - `NN` dérive du `deviceId` MQTT effectif (`mqtt.topicDeviceId` / `mq_tid` si défini, sinon fallback auto)
 - payloads incluent:
   - device metadata
   - `device.identifiers[0] = <vendor>-<mqttDeviceIdEffectif>` (donc suit `mqtt.topicDeviceId` / `mq_tid` si défini)

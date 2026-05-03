@@ -44,3 +44,13 @@ inline const SupervisorBoardSpec* boardSupervisorConfig(const BoardSpec& board)
 {
     return board.supervisor;
 }
+
+inline const char* boardMdnsHost(const BoardSpec& board)
+{
+    return board.mdnsHost;
+}
+
+inline IoCapacitySpec boardIoCapacity(const BoardSpec& board)
+{
+    return board.ioCapacity;
+}

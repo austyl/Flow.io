@@ -3,6 +3,7 @@
  * @file WifiModule.h
  * @brief WiFi connectivity module.
  */
+#include "Board/BoardSpec.h"
 #include "Core/Module.h"
 #include "Core/RuntimeUi.h"
 #include "Core/ServiceBinding.h"
@@ -23,6 +24,10 @@ struct WifiConfig {
     char mdns[33] = "flowio";
 #elif defined(FLOW_PROFILE_FLOWIO)
     char mdns[33] = "flowio-core";
+#elif defined(FLOW_PROFILE_DISPLAY)
+    char mdns[33] = "flowio-display";
+#elif defined(FLOW_PROFILE_MICRONOVA)
+    char mdns[33] = "micronova";
 #else
     char mdns[33] = "flowio";
 #endif
@@ -33,6 +38,9 @@ struct WifiConfig {
  */
 class WifiModule : public Module, public IRuntimeUiValueProvider {
 public:
+    WifiModule() = default;
+    explicit WifiModule(const BoardSpec& board);
+
     /** @brief Module id. */
     ModuleId moduleId() const override { return ModuleId::Wifi; }
     ModuleId runtimeUiProviderModuleId() const override { return moduleId(); }
@@ -105,6 +113,7 @@ private:
     wifi_event_id_t wifiEventHandlerId_ = 0;
     uint32_t lastEmptySsidLogMs = 0;
     char mdnsApplied[sizeof(cfgData.mdns)] = {0};
+    char boardMdnsHost_[sizeof(cfgData.mdns)] = {0};
     volatile bool scanRequested_ = false;
     volatile bool scanRunning_ = false;
     bool scanHasResults_ = false;
@@ -177,7 +186,8 @@ private:
     void startConnect();
     void stopMdns_();
     void syncMdns_();
-    void applyProfileMdnsHost_();
+    void applyBoardDefaults_(const BoardSpec& board);
+    void applyBoardMdnsHost_();
     bool requestScan_(bool force);
     void processScan_();
     bool buildScanStatusJson_(char* out, size_t outLen);

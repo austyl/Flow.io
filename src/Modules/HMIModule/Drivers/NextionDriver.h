@@ -30,6 +30,15 @@ struct NextionDriverConfig {
     uint8_t configPageId = 10U;
 };
 
+struct NextionV2NeedlePublish {
+    bool ph = false;
+    bool orp = false;
+    bool psi = false;
+    int8_t phNeedle = 0;
+    int8_t orpNeedle = 0;
+    uint8_t psiNeedle = 0;
+};
+
 class NextionDriver final : public IHmiDriver {
 public:
     NextionDriver() = default;
@@ -50,6 +59,8 @@ public:
     bool refreshConfigMenuValues(const ConfigMenuView& view) override;
     bool hasDisplayVersion() const { return versionDetected_; }
     uint32_t displayVersion() const { return displayVersion_; }
+    bool isLegacyV2() const { return versionDetected_ && displayVersion_ == 2U; }
+    bool publishV2Needles(const NextionV2NeedlePublish& publish);
 
 private:
     static constexpr uint8_t CustomRxBufSize = 64;
@@ -72,6 +83,7 @@ private:
     bool sendCmd_(const char* cmd);
     bool sendCmdFmt_(const char* fmt, ...);
     bool sendNum_(const char* objectName, uint32_t value);
+    bool sendInt_(const char* objectName, int32_t value);
     bool sendText_(const char* objectName, const char* value);
     bool readNumber_(const char* expr, uint32_t& value, uint16_t timeoutMs);
     bool readNumberResponse_(uint32_t& value, uint16_t timeoutMs);

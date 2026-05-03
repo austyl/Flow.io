@@ -10,6 +10,14 @@
 #include "Profiles/Supervisor/SupervisorProfile.h"
 #endif
 
+#if FLOW_BUILD_IS_DISPLAY
+#include "Profiles/Display/DisplayProfile.h"
+#endif
+
+#if FLOW_BUILD_IS_MICRONOVA
+#include "Profiles/Micronova/MicronovaProfile.h"
+#endif
+
 namespace {
 
 AppContext gContext{};
@@ -21,6 +29,10 @@ const FirmwareProfile& resolveProfile()
     return Profiles::FlowIO::profile();
 #elif FLOW_BUILD_IS_SUPERVISOR
     return Profiles::Supervisor::profile();
+#elif FLOW_BUILD_IS_DISPLAY
+    return Profiles::Display::profile();
+#elif FLOW_BUILD_IS_MICRONOVA
+    return Profiles::Micronova::profile();
 #else
 #error "Unsupported build profile."
 #endif

@@ -28,15 +28,13 @@ const char* espErrName_(esp_err_t err)
     return n ? n : "?";
 }
 
-const char* profileMdnsHost_()
+bool isKnownDefaultMdnsHost_(const char* host)
 {
-#if defined(FLOW_PROFILE_SUPERVISOR)
-    return "flowio";
-#elif defined(FLOW_PROFILE_FLOWIO)
-    return "flowio-core";
-#else
-    return "flowio";
-#endif
+    if (!host || host[0] == '\0') return true;
+    return strcmp(host, "flowio") == 0 ||
+           strcmp(host, "flowio-core") == 0 ||
+           strcmp(host, "flowio-display") == 0 ||
+           strcmp(host, "flowio-micronova") == 0;
 }
 
 void formatStaMac_(char* out, size_t outLen)
@@ -54,6 +52,11 @@ void formatStaMac_(char* out, size_t outLen)
              (unsigned)mac[4],
              (unsigned)mac[5]);
 }
+}
+
+WifiModule::WifiModule(const BoardSpec& board)
+{
+    applyBoardDefaults_(board);
 }
 
 WifiState WifiModule::stateSvc_() const {
@@ -770,7 +773,7 @@ void WifiModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
     }
     registerHaEntities_(services);
 
-    applyProfileMdnsHost_();
+    applyBoardMdnsHost_();
     logConfigSummary_();
     if (!cfgData.enabled) {
         LOGW("WiFi disabled in config, disconnecting STA");
@@ -783,14 +786,23 @@ void WifiModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
     setState(WifiState::Idle);
 }
 
-void WifiModule::applyProfileMdnsHost_()
+void WifiModule::applyBoardDefaults_(const BoardSpec& board)
 {
-    const char* forcedHost = profileMdnsHost_();
-    if (!forcedHost || forcedHost[0] == '\0') return;
-    if (strncmp(cfgData.mdns, forcedHost, sizeof(cfgData.mdns)) == 0) return;
+    const char* host = boardMdnsHost(board);
+    if (!host || host[0] == '\0') return;
 
-    snprintf(cfgData.mdns, sizeof(cfgData.mdns), "%s", forcedHost);
-    LOGD("mDNS host forced by profile: %s", cfgData.mdns);
+    snprintf(boardMdnsHost_, sizeof(boardMdnsHost_), "%s", host);
+    snprintf(cfgData.mdns, sizeof(cfgData.mdns), "%s", host);
+}
+
+void WifiModule::applyBoardMdnsHost_()
+{
+    if (boardMdnsHost_[0] == '\0') return;
+    if (strncmp(cfgData.mdns, boardMdnsHost_, sizeof(cfgData.mdns)) == 0) return;
+    if (!isKnownDefaultMdnsHost_(cfgData.mdns)) return;
+
+    snprintf(cfgData.mdns, sizeof(cfgData.mdns), "%s", boardMdnsHost_);
+    LOGD("mDNS host defaulted by board: %s", cfgData.mdns);
 }
 
 void WifiModule::stopMdns_()

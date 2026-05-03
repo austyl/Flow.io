@@ -330,14 +330,22 @@ bool ModuleManager::tickStartup(ConfigStore& cfg, ServiceRegistry& services)
             continue;
         }
 
+        const bool wasStarted = (startupStartedMask_ & (1UL << i)) != 0U;
         if (!startModule_(i, cfg, services)) {
             startupFlags_ |= kStartupFailedFlag;
             startupFlags_ &= (uint8_t)~kStartupActiveFlag;
             return false;
         }
-        if ((startupStartedMask_ & (1UL << i)) == 0U) {
+        const bool nowStarted = (startupStartedMask_ & (1UL << i)) != 0U;
+        if (!nowStarted) {
             allStarted = false;
         }
+#if defined(FLOW_PROFILE_MICRONOVA)
+        if (!wasStarted && nowStarted) {
+            allStarted = false;
+            break;
+        }
+#endif
     }
 
     if (allStarted) {

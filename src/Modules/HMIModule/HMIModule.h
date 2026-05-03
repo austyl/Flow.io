@@ -13,7 +13,9 @@
 #include "Modules/HMIModule/ConfigMenuModel.h"
 #include "Modules/HMIModule/Drivers/HmiDriverTypes.h"
 #include "Modules/HMIModule/Drivers/NextionDriver.h"
+#include "Modules/HMIModule/Drivers/RemoteHmiUdpDriver.h"
 #include "Modules/HMIModule/Drivers/TfaVeniceRf433Sink.h"
+#include "Modules/Network/HmiUdpServerModule/HmiUdpServerModule.h"
 
 class HMIModule : public Module {
 public:
@@ -25,7 +27,7 @@ public:
     const ModuleTaskSpec* taskSpecs() const override { return singleLoopTaskSpec(); }
     uint32_t startDelayMs() const override { return 5000U; }
 
-    uint8_t dependencyCount() const override { return 9; }
+    uint8_t dependencyCount() const override { return 10; }
     ModuleId dependency(uint8_t i) const override {
         if (i == 0) return ModuleId::LogHub;
         if (i == 1) return ModuleId::ConfigStore;
@@ -36,17 +38,25 @@ public:
         if (i == 6) return ModuleId::Command;
         if (i == 7) return ModuleId::Time;
         if (i == 8) return ModuleId::Wifi;
+        if (i == 9) return ModuleId::HmiUdpServer;
         return ModuleId::Unknown;
     }
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
+    void setRemoteUdpServer(HmiUdpServerModule* server);
 
 private:
     struct ConfigData {
         bool ledsEnabled = true;
         bool nextionEnabled = true;
+        bool remoteUdpEnabled =
+#ifdef FLOW_HMI_REMOTE_UDP
+            (FLOW_HMI_REMOTE_UDP != 0);
+#else
+            false;
+#endif
         bool veniceEnabled = false;
         int32_t veniceTxGpio = 14;
     } cfgData_{};
@@ -60,6 +70,11 @@ private:
     ConfigVariable<bool,0> nextionEnabledVar_{
         NVS_KEY(NvsKeys::Hmi::NextionEnabled), "enabled", "hmi/nextion",
         ConfigType::Bool, &cfgData_.nextionEnabled, ConfigPersistence::Persistent, 0
+    };
+    // CFGDOC: {"label":"Display UDP actif", "help":"Utilise un ESP32 Display distant via UDP a la place du Nextion local."}
+    ConfigVariable<bool,0> remoteUdpEnabledVar_{
+        NVS_KEY(NvsKeys::Hmi::RemoteUdpEnabled), "enabled", "hmi/remote_udp",
+        ConfigType::Bool, &cfgData_.remoteUdpEnabled, ConfigPersistence::Persistent, 0
     };
     // CFGDOC: {"label":"Venice RF433 actif", "help":"Active l'emission periodique de la temperature d'eau vers un afficheur TFA Venice compatible."}
     ConfigVariable<bool,0> veniceEnabledVar_{
@@ -84,6 +99,8 @@ private:
 
     ConfigMenuModel menu_;
     NextionDriver nextion_;
+    RemoteHmiUdpDriver remoteUdp_;
+    HmiUdpServerModule* remoteUdpServer_ = nullptr;
     TfaVeniceRf433Sink venice_;
     IHmiDriver* driver_ = nullptr;
 
@@ -102,6 +119,7 @@ private:
     portMUX_TYPE homePublishMux_ = portMUX_INITIALIZER_UNLOCKED;
     IoId phIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].ioId;
     IoId orpIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].ioId;
+    IoId psiIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPsi].ioId;
     IoId airTempIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].ioId;
     IoId poolLevelIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPoolLevel].ioId;
     IoId waterTempIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].ioId;
@@ -114,6 +132,7 @@ private:
     uint8_t fillingDeviceSlot_ = PoolBinding::kDeviceSlotFillPump;
     uint8_t phRuntimeIndex_ = 0xFFU;
     uint8_t orpRuntimeIndex_ = 0xFFU;
+    uint8_t psiRuntimeIndex_ = 0xFFU;
     uint8_t waterTempRuntimeIndex_ = 0xFFU;
     uint8_t airTempRuntimeIndex_ = 0xFFU;
     uint8_t poolLevelRuntimeIndex_ = 0xFFU;
@@ -157,6 +176,7 @@ private:
     bool publishHomeGaugePercent_(HmiHomeGaugeField field);
     bool publishHomeStateBits_();
     bool publishHomeAlarmBits_();
+    bool publishNextionV2Needles_(uint32_t pending, uint32_t& sent);
     void serviceRtcBridge_(uint32_t nowMs);
     bool readNextionRtcAndSetTime_();
     bool pushEspTimeToNextionRtc_();

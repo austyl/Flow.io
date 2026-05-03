@@ -9,9 +9,9 @@ inline constexpr uint32_t kFlowIODINv1IoI2cHz = 400000U;
 inline constexpr uint32_t kFlowIODINv1InterlinkI2cHz = 400000U;
 
 inline constexpr UartSpec kFlowIODINv1Uarts[] = {
-    // {name, uartIndex, rxPin, txPin, baud, primary}
-    {"log", 0, -1, -1, 115200, true}, // USB serial console (UART0 default pins).
-    {"hmi", 2, 16, 17, 115200, false}, // HMI link on UART2 (RX=GPIO16, TX=GPIO17).
+    // {name, uartIndex, rxPin, txPin, baud, primary, enableRxPin}
+    {"log", 0, -1, -1, 115200, true, -1}, // USB serial console (UART0 default pins).
+    {"hmi", 2, 16, 17, 115200, false, -1}, // HMI link on UART2 (RX=GPIO16, TX=GPIO17).
 };
 
 inline constexpr I2cBusSpec kFlowIODINv1I2c[] = {
@@ -50,6 +50,7 @@ inline constexpr IoPointSpec kFlowIODINv1IoPoints[] = {
 
 inline constexpr BoardSpec kFlowIODINv1{
     "FlowIODINv1",
+    "flowio-core",
     kFlowIODINv1Uarts,
     (uint8_t)(sizeof(kFlowIODINv1Uarts) / sizeof(kFlowIODINv1Uarts[0])),
     kFlowIODINv1I2c,
@@ -58,6 +59,7 @@ inline constexpr BoardSpec kFlowIODINv1{
     (uint8_t)(sizeof(kFlowIODINv1OneWire) / sizeof(kFlowIODINv1OneWire[0])),
     kFlowIODINv1IoPoints,
     (uint8_t)(sizeof(kFlowIODINv1IoPoints) / sizeof(kFlowIODINv1IoPoints[0])),
+    {17, 5, 10},
     nullptr
 };
 
@@ -68,6 +70,7 @@ inline constexpr auto& kFlowIODINv2IoPoints = kFlowIODINv1IoPoints;
 
 inline constexpr BoardSpec kFlowIODINv2{
     "FlowIODINv2",
+    "flowio-core",
     kFlowIODINv2Uarts,
     (uint8_t)(sizeof(kFlowIODINv2Uarts) / sizeof(kFlowIODINv2Uarts[0])),
     kFlowIODINv2I2c,
@@ -76,6 +79,7 @@ inline constexpr BoardSpec kFlowIODINv2{
     (uint8_t)(sizeof(kFlowIODINv2OneWire) / sizeof(kFlowIODINv2OneWire[0])),
     kFlowIODINv2IoPoints,
     (uint8_t)(sizeof(kFlowIODINv2IoPoints) / sizeof(kFlowIODINv2IoPoints[0])),
+    {17, 5, 10},
     nullptr
 };
 

@@ -109,6 +109,12 @@ bool NextionDriver::sendNum_(const char* objectName, uint32_t value)
     return sendCmdFmt_("%s.val=%lu", objectName, (unsigned long)value);
 }
 
+bool NextionDriver::sendInt_(const char* objectName, int32_t value)
+{
+    if (!objectName || objectName[0] == '\0') return false;
+    return sendCmdFmt_("%s.val=%ld", objectName, (long)value);
+}
+
 void NextionDriver::sanitizeText_(char* out, size_t outLen, const char* in) const
 {
     if (!out || outLen == 0) return;
@@ -200,6 +206,9 @@ bool NextionDriver::publishHomeText(HmiHomeTextField field, const char* text)
 bool NextionDriver::publishHomeGaugePercent(HmiHomeGaugeField field, uint16_t percent)
 {
     if (!started_) return false;
+    (void)field;
+    (void)percent;
+    if (isLegacyV2()) return true;
     return sendNum_(homeGaugeObjectName_(field), percent);
 }
 
@@ -213,6 +222,17 @@ bool NextionDriver::publishHomeAlarmBits(uint32_t alarmBits)
 {
     if (!started_) return false;
     return sendNum_(cfg_.alarmBitsObject, alarmBits);
+}
+
+bool NextionDriver::publishV2Needles(const NextionV2NeedlePublish& publish)
+{
+    if (!started_ || !isLegacyV2()) return false;
+
+    bool ok = true;
+    if (publish.ph) ok = sendInt_("vaPHNiddle", publish.phNeedle) && ok;
+    if (publish.orp) ok = sendInt_("vaOrpNiddle", publish.orpNeedle) && ok;
+    if (publish.psi) ok = sendNum_("vaPSINiddle", publish.psiNeedle) && ok;
+    return ok;
 }
 
 bool NextionDriver::readNumberResponse_(uint32_t& value, uint16_t timeoutMs)

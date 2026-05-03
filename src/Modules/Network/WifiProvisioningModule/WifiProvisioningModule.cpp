@@ -5,6 +5,8 @@
 
 #include "WifiProvisioningModule.h"
 
+#include "App/BuildFlags.h"
+
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::WifiProvisioningModule)
 #include "Core/ModuleLog.h"
 
@@ -46,7 +48,18 @@ void WifiProvisioningModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
     LOGI("Provisioning config loaded: enabled=%d configured=%d",
          (int)wifiEnabled_,
          (int)wifiConfigured_);
+#if defined(FLOW_PROFILE_MICRONOVA)
+    LOGI("Provisioning portal start deferred");
+#else
     ensurePortalStarted_();
+#endif
+}
+
+void WifiProvisioningModule::onStart(ConfigStore&, ServiceRegistry&)
+{
+#if defined(FLOW_PROFILE_MICRONOVA)
+    ensurePortalStarted_();
+#endif
 }
 
 void WifiProvisioningModule::loop()
@@ -134,7 +147,7 @@ void WifiProvisioningModule::buildApCredentials_()
     const uint8_t b0 = (uint8_t)(chipId >> 16);
     const uint8_t b1 = (uint8_t)(chipId >> 8);
     const uint8_t b2 = (uint8_t)(chipId >> 0);
-    snprintf(apSsid_, sizeof(apSsid_), "FlowIO-Supervisor-%02X%02X%02X", b0, b1, b2);
+    snprintf(apSsid_, sizeof(apSsid_), "FlowIO-%s-%02X%02X%02X", FLOW_BUILD_PROFILE_NAME, b0, b1, b2);
     snprintf(apPass_, sizeof(apPass_), "%s", kDefaultApPass);
 }
 

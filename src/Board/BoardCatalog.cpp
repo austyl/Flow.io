@@ -2,6 +2,7 @@
 
 #include "App/BuildFlags.h"
 #include "Board/FlowIODINBoards.h"
+#include "Board/MicronovaBoard.h"
 #include "Board/SupervisorBoardRev1.h"
 
 namespace BoardCatalog {
@@ -21,12 +22,21 @@ const BoardSpec& supervisorBoardRev1()
     return BoardProfiles::kSupervisorBoardRev1;
 }
 
+const BoardSpec& micronovaBoardRev1()
+{
+    return BoardProfiles::kMicronovaBoardRev1;
+}
+
 const BoardSpec& activeBoard()
 {
 #if FLOW_BUILD_IS_FLOWIO
     return flowIODINv1();
-#else
+#elif FLOW_BUILD_IS_SUPERVISOR
     return supervisorBoardRev1();
+#elif FLOW_BUILD_IS_MICRONOVA
+    return micronovaBoardRev1();
+#else
+    return flowIODINv1();
 #endif
 }
 

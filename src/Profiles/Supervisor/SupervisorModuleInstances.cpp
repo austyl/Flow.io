@@ -6,7 +6,8 @@ namespace Profiles {
 namespace Supervisor {
 
 ModuleInstances::ModuleInstances(const BoardSpec& board, const SupervisorRuntimeOptions& runtime)
-    : i2cCfgClientModule(board),
+    : wifiModule(board),
+      i2cCfgClientModule(board),
       webInterfaceModule(board),
       firmwareUpdateModule(board),
       supervisorHMIModule(board, runtime)

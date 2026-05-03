@@ -1,0 +1,45 @@
+#include "Profiles/Display/DisplayProfile.h"
+
+#include <Arduino.h>
+
+#include "App/AppContext.h"
+#include "Board/BoardSerialMap.h"
+#include "Core/ConfigMigrations.h"
+#include "Core/NvsKeys.h"
+
+namespace Profiles {
+namespace Display {
+
+void setupProfile(AppContext& ctx)
+{
+    ModuleInstances& modules = moduleInstances();
+
+    Serial.begin(Board::SerialMap::uart0Baud());
+    delay(50);
+
+    ctx.preferences.begin(NvsKeys::StorageNamespace, false);
+    ctx.registry.setPreferences(ctx.preferences);
+    ctx.registry.runMigrations(CURRENT_CFG_VERSION, steps, MIGRATION_COUNT);
+
+    ctx.moduleManager.add(&modules.logHubModule);
+    ctx.moduleManager.add(&modules.logDispatcherModule);
+    ctx.moduleManager.add(&modules.logSerialSinkModule);
+    ctx.moduleManager.add(&modules.eventBusModule);
+
+    ctx.moduleManager.add(&modules.configStoreModule);
+    ctx.moduleManager.add(&modules.dataStoreModule);
+    ctx.moduleManager.add(&modules.wifiModule);
+    ctx.moduleManager.add(&modules.displayUdpClientModule);
+
+    if (!ctx.moduleManager.initAll(ctx.registry, ctx.services)) {
+        while (true) delay(1000);
+    }
+}
+
+void loopProfile(AppContext&)
+{
+    delay(20);
+}
+
+}  // namespace Display
+}  // namespace Profiles

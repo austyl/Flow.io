@@ -109,6 +109,9 @@ private:
     uint32_t reqCount_ = 0;
     uint32_t lastReqMs_ = 0;
     uint32_t badReqCount_ = 0;
+    uint32_t badReqCrcCount_ = 0;
+    uint32_t badReqFormatCount_ = 0;
+    bool rxFrameCrcEnabled_ = false;
 
     uint8_t txFrame_[I2cCfgProtocol::MaxRespFrame] = {0};
     size_t txFrameLen_ = 0;

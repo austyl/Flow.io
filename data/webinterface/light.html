@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flow.io</title>
+  <link rel="stylesheet" href="/webinterface/light.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topinner">
+      <div class="brand-wordmark" id="brand" aria-label="Flow.io">
+        <span class="brand-flow" id="brandName">Flow</span><span class="brand-io">.io</span>
+      </div>
+      <div class="subtitle" id="subtitle">Configuration Initiale</div>
+    </div>
+  </header>
+  <main>
+    <div id="status">Chargement...</div>
+
+    <section class="box" id="runtimeBox">
+      <h2>Tableau de bord</h2>
+      <pre id="runtimeOut">Chargement...</pre>
+      <button class="secondary" id="runtimeRefresh" type="button">Rafraichir</button>
+    </section>
+
+    <section class="box">
+      <h2>Portail Wi-Fi AP</h2>
+      <pre id="apOut">Chargement...</pre>
+      <button class="secondary" id="apRefresh" type="button">Rafraichir AP</button>
+    </section>
+
+    <section class="box">
+      <h2>Wi-Fi</h2>
+      <label><input id="wifiEnabled" type="checkbox" />Activer le Wi-Fi station</label>
+      <label>Réseaux détectés
+        <select id="wifiSsidList"><option value="">Saisie manuelle</option></select>
+      </label>
+      <div class="actions">
+        <button class="secondary" id="wifiScanBtn" type="button">Rechercher les réseaux</button>
+      </div>
+      <div class="scan-status" id="wifiScanStatus">Scan Wi-Fi non lancé.</div>
+      <label>SSID<input id="wifiSsid" autocomplete="off" /></label>
+      <label>Mot de passe<input id="wifiPass" type="password" autocomplete="off" /></label>
+      <button id="wifiSave" type="button">Enregistrer Wi-Fi</button>
+    </section>
+
+    <section class="box hidden" id="mqttBox">
+      <h2>MQTT</h2>
+      <label><input id="mqttEnabled" type="checkbox" />Activer MQTT</label>
+      <label>Serveur<input id="mqttHost" autocomplete="off" /></label>
+      <div class="row">
+        <label>Port<input id="mqttPort" type="number" min="1" max="65535" /></label>
+        <label>Base topic<input id="mqttBaseTopic" autocomplete="off" /></label>
+      </div>
+      <label>Utilisateur<input id="mqttUser" autocomplete="off" /></label>
+      <label>Mot de passe<input id="mqttPass" type="password" autocomplete="off" /></label>
+      <label>Device topic id<input id="mqttTopicDeviceId" autocomplete="off" /></label>
+      <button id="mqttSave" type="button">Enregistrer MQTT</button>
+    </section>
+
+    <section class="box alt">
+      <h2>Configuration locale</h2>
+      <div class="row">
+        <label>Module<input id="cfgModule" value="micronova" autocomplete="off" /></label>
+        <button class="secondary" id="cfgLoad" type="button">Lire</button>
+      </div>
+      <pre id="cfgOut">-</pre>
+    </section>
+
+    <section class="box actions">
+      <button class="secondary" id="rebootBtn" type="button">Redemarrer</button>
+      <button class="secondary" id="fullUiBtn" type="button">Interface complete</button>
+    </section>
+  </main>
+  <script src="/webinterface/light.js"></script>
+</body>
+</html>
