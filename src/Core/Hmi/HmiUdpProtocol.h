@@ -102,6 +102,7 @@ struct HmiUdpEventPayload {
 struct HmiUdpConfigStartPayload {
     uint8_t page;
     uint8_t pageCount;
+    uint8_t flags;
     char title[24];
 };
 
@@ -134,6 +135,11 @@ static constexpr uint8_t HMI_UDP_CONFIG_ROW_DIRTY = 0x08;
 static constexpr uint8_t HMI_UDP_CONFIG_ROW_CAN_ENTER = 0x10;
 static constexpr uint8_t HMI_UDP_CONFIG_ROW_CAN_EDIT = 0x20;
 static constexpr uint8_t HMI_UDP_CONFIG_MODE_EDIT = 0x40;
+
+static constexpr uint8_t HMI_UDP_CONFIG_VIEW_CAN_HOME = 0x01;
+static constexpr uint8_t HMI_UDP_CONFIG_VIEW_CAN_BACK = 0x02;
+static constexpr uint8_t HMI_UDP_CONFIG_VIEW_CAN_VALIDATE = 0x04;
+static constexpr uint8_t HMI_UDP_CONFIG_VIEW_IS_HOME = 0x08;
 
 uint16_t hmiUdpCrc16(const uint8_t* data, size_t len, uint16_t seed = 0xFFFFU);
 uint32_t hmiUdpTokenCrc(const char* token);

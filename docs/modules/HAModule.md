@@ -99,3 +99,12 @@ Réactions:
 - `add*` met à jour la table d'entités et demande refresh
 - `requestRefresh` remet `published=false` et notifie la task
 - publication effective seulement si MQTT connecté et `mqttReady(DataStore)==true`
+
+## Mode one-shot
+
+Le build peut définir `FLOW_HA_ONESHOT_DISCOVERY=1` pour publier l'auto-discovery une seule fois au démarrage.
+Ce mode est utilisé par le profil `Micronova`:
+- les tables d'entités HA sont allouées dynamiquement au lieu d'être conservées en `.bss`
+- le producteur MQTT de configuration HA n'est pas instancié
+- après publication retained de toutes les entités discovery, les tables sont libérées et la tâche `ha` appelle `vTaskDelete(nullptr)`
+- le service HA reste présent mais refuse les nouveaux enregistrements après teardown, afin d'éviter des pointeurs pendants dans les services/callbacks existants

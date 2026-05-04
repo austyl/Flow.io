@@ -7,6 +7,7 @@
 #include "Modules/Logs/LogHubModule/LogHubModule.h"
 #include "Modules/Logs/LogSerialSinkModule/LogSerialSinkModule.h"
 #include "Modules/Network/WifiModule/WifiModule.h"
+#include "Modules/Network/WifiProvisioningModule/WifiProvisioningModule.h"
 #include "Modules/Stores/ConfigStoreModule/ConfigStoreModule.h"
 #include "Modules/Stores/DataStoreModule/DataStoreModule.h"
 
@@ -23,6 +24,7 @@ struct ModuleInstances {
     ConfigStoreModule configStoreModule{};
     DataStoreModule dataStoreModule{};
     WifiModule wifiModule{};
+    WifiProvisioningModule wifiProvisioningModule{};
     DisplayUdpClientModule displayUdpClientModule{};
 };
 

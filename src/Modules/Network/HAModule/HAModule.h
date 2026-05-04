@@ -14,6 +14,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifndef FLOW_HA_ONESHOT_DISCOVERY
+#define FLOW_HA_ONESHOT_DISCOVERY 0
+#endif
+
 class HAModule : public Module {
 public:
     ModuleId moduleId() const override { return ModuleId::Ha; }
@@ -58,6 +62,7 @@ private:
     static constexpr uint16_t MAX_HA_ENTITIES =
         MAX_HA_SENSORS + MAX_HA_BINARY_SENSORS + MAX_HA_SWITCHES + MAX_HA_NUMBERS + MAX_HA_BUTTONS;
     static constexpr uint16_t MAX_HA_MESSAGES = MAX_HA_ENTITIES + MAX_HA_DISCOVERY_CLEANUPS;
+    static constexpr uint16_t HA_PENDING_WORDS = (MAX_HA_MESSAGES + 31U) / 32U;
 
     struct HAConfig {
         bool enabled = true;
@@ -75,6 +80,8 @@ private:
     bool startupReady_ = false;
     bool producerRegistered_ = false;
     bool published_ = false;
+    bool oneShotCompleted_ = false;
+    bool oneShotResourcesReleased_ = false;
 
     char deviceId_[32] = {0};
     char deviceIdent_[64] = {0};
@@ -87,18 +94,26 @@ private:
     char objectIdBuf_[96] = {0};
     char commandTopicBuf_[96] = {0};
 
+#if FLOW_HA_ONESHOT_DISCOVERY
+    HASensorEntry* sensors_ = nullptr;
+    HABinarySensorEntry* binarySensors_ = nullptr;
+    HASwitchEntry* switches_ = nullptr;
+    HANumberEntry* numbers_ = nullptr;
+    HAButtonEntry* buttons_ = nullptr;
+    uint32_t* pendingBits_ = nullptr;
+#else
     HASensorEntry sensors_[MAX_HA_SENSORS]{};
-    uint8_t sensorCount_ = 0;
     HABinarySensorEntry binarySensors_[MAX_HA_BINARY_SENSORS]{};
-    uint8_t binarySensorCount_ = 0;
     HASwitchEntry switches_[MAX_HA_SWITCHES]{};
-    uint8_t switchCount_ = 0;
     HANumberEntry numbers_[MAX_HA_NUMBERS]{};
-    uint8_t numberCount_ = 0;
     HAButtonEntry buttons_[MAX_HA_BUTTONS]{};
+    uint32_t pendingBits_[HA_PENDING_WORDS] = {0};
+#endif
+    uint8_t sensorCount_ = 0;
+    uint8_t binarySensorCount_ = 0;
+    uint8_t switchCount_ = 0;
+    uint8_t numberCount_ = 0;
     uint8_t buttonCount_ = 0;
-
-    uint32_t pendingBits_[(MAX_HA_MESSAGES + 31U) / 32U] = {0};
 
     MqttPublishProducer producer_{};
     MqttConfigRouteProducer* cfgMqttPub_ = nullptr;
@@ -138,6 +153,10 @@ private:
     bool addNumberSvc_(const HANumberEntry* entry);
     bool addButtonSvc_(const HAButtonEntry* entry);
     bool requestRefreshSvc_();
+    bool ensureStorage_();
+    void releaseOneShotResources_();
+    size_t entityTableUsedBytes_() const;
+    size_t entityTableCapacityBytes_() const;
     bool addSensorEntry(const HASensorEntry& entry);
     bool addBinarySensorEntry(const HABinarySensorEntry& entry);
     bool addSwitchEntry(const HASwitchEntry& entry);

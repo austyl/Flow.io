@@ -14,6 +14,7 @@ namespace {
 
 static constexpr uint8_t NEXTION_FF = 0xFF;
 static constexpr uint8_t NEXTION_RSP_NUMBER = 0x71;
+static constexpr uint8_t NEXTION_RSP_PAGE = 0x66;
 static constexpr uint8_t NEXTION_CUSTOM_START = '#';
 static constexpr uint8_t NEXTION_CMD_PAGE = 0x50;
 static constexpr uint8_t NEXTION_CMD_NAV = 0x51;
@@ -66,6 +67,10 @@ bool NextionDriver::begin()
     customFrameActive_ = false;
     customExpectedLen_ = 0;
     customLen_ = 0;
+    pageResponseActive_ = false;
+    pageResponseLen_ = 0;
+    currentPageKnown_ = false;
+    currentPage_ = 0;
 
     if (cfg_.displayVersionExpr && cfg_.displayVersionExpr[0] != '\0') {
         uint32_t detected = 0U;
@@ -89,6 +94,64 @@ bool NextionDriver::sendCmd_(const char* cmd)
     cfg_.serial->write(NEXTION_FF);
     cfg_.serial->write(NEXTION_FF);
     return true;
+}
+
+bool NextionDriver::requestPageReport()
+{
+    return sendCmd_("sendme");
+}
+
+bool NextionDriver::currentPage(uint8_t& out) const
+{
+    if (!currentPageKnown_) return false;
+    out = currentPage_;
+    return true;
+}
+
+bool NextionDriver::isHomePage() const
+{
+    return currentPageKnown_ && isHomePageId_(currentPage_);
+}
+
+bool NextionDriver::isConfigPage() const
+{
+    return currentPageKnown_ && isConfigPageId_(currentPage_);
+}
+
+bool NextionDriver::setTouchEnabled(bool enabled)
+{
+    return sendCmdFmt_("tsw 255,%u", enabled ? 1U : 0U);
+}
+
+bool NextionDriver::showConfigLoading(const char* title)
+{
+    if (!started_ || !pageReady_) return false;
+
+    bool ok = true;
+    char path[96]{};
+    if (title && title[0] != '\0') {
+        snprintf(path, sizeof(path), "%s - Chargement...", title);
+    } else {
+        snprintf(path, sizeof(path), "Chargement...");
+    }
+    ok = sendText_("tPath", path) && ok;
+    ok = sendCmd_("vis bHome,0") && ok;
+    ok = sendCmd_("vis bBack,0") && ok;
+    ok = sendCmd_("vis bValid,0") && ok;
+    ok = sendCmd_("vis bPrev,0") && ok;
+    ok = sendCmd_("vis bNext,0") && ok;
+    for (uint8_t i = 0; i < ConfigMenuModel::RowsPerPage; ++i) {
+        char leftObj[8]{};
+        char rightObj[8]{};
+        char rowButtonObj[8]{};
+        snprintf(leftObj, sizeof(leftObj), "tL%u", (unsigned)i);
+        snprintf(rightObj, sizeof(rightObj), "tV%u", (unsigned)i);
+        snprintf(rowButtonObj, sizeof(rowButtonObj), "bR%u", (unsigned)i);
+        ok = sendCmdFmt_("vis %s,0", leftObj) && ok;
+        ok = sendCmdFmt_("vis %s,0", rightObj) && ok;
+        ok = sendCmdFmt_("vis %s,0", rowButtonObj) && ok;
+    }
+    return ok;
 }
 
 bool NextionDriver::sendCmdFmt_(const char* fmt, ...)
@@ -295,6 +358,8 @@ bool NextionDriver::readNumber_(const char* expr, uint32_t& value, uint16_t time
     customFrameActive_ = false;
     customExpectedLen_ = 0U;
     customLen_ = 0U;
+    pageResponseActive_ = false;
+    pageResponseLen_ = 0U;
 
     if (!sendCmdFmt_("get %s", expr)) return false;
     return readNumberResponse_(value, timeoutMs);
@@ -338,12 +403,11 @@ bool NextionDriver::writeRtc(const HmiRtcDateTime& value)
 bool NextionDriver::renderConfigMenu(const ConfigMenuView& view)
 {
     if (!started_) return false;
+    if (!pageReady_) return false;
     const uint32_t now = millis();
     if (cfg_.minRenderGapMs > 0 && (uint32_t)(now - lastRenderMs_) < cfg_.minRenderGapMs) {
-        return true;
+        return false;
     }
-
-    if (!pageReady_) return false;
 
     (void)sendText_("tPath", view.breadcrumb);
     (void)sendCmdFmt_("vis bHome,%u", view.canHome ? 1U : 0U);
@@ -448,17 +512,7 @@ bool NextionDriver::parseCustomFrame_(const uint8_t* frame, uint8_t len, HmiEven
     switch (opcode) {
         case NEXTION_CMD_PAGE: {
             if (payloadLen < 1U) return false;
-            const bool wasConfigPage = pageReady_;
-            pageReady_ = (payload[0] == cfg_.configPageId);
-            if (pageReady_) {
-                out.type = HmiEventType::ConfigEnter;
-                return true;
-            }
-            if (wasConfigPage) {
-                out.type = HmiEventType::ConfigExit;
-                return true;
-            }
-            return false;
+            return handlePageId_(payload[0], true, out);
         }
 
         case NEXTION_CMD_NAV:
@@ -571,6 +625,42 @@ bool NextionDriver::parseCustomFrame_(const uint8_t* frame, uint8_t len, HmiEven
     }
 }
 
+bool NextionDriver::handlePageId_(uint8_t pageId, bool emitEvents, HmiEvent& out)
+{
+    const bool wasKnown = currentPageKnown_;
+    const uint8_t prevPage = currentPage_;
+    const bool wasConfigPage = pageReady_;
+
+    currentPageKnown_ = true;
+    currentPage_ = pageId;
+    pageReady_ = isConfigPageId_(pageId);
+
+    if (!emitEvents) return false;
+    if (pageReady_ && !wasConfigPage) {
+        out.type = HmiEventType::ConfigEnter;
+        return true;
+    }
+    if (!pageReady_ && wasConfigPage) {
+        out.type = HmiEventType::ConfigExit;
+        return true;
+    }
+    if (isHomePageId_(pageId) && (!wasKnown || prevPage != pageId)) {
+        out.type = HmiEventType::Home;
+        return true;
+    }
+    return false;
+}
+
+bool NextionDriver::isHomePageId_(uint8_t pageId) const
+{
+    return pageId == cfg_.homePageId || pageId == cfg_.homePageAliasId;
+}
+
+bool NextionDriver::isConfigPageId_(uint8_t pageId) const
+{
+    return pageId == cfg_.configPageId || pageId == cfg_.configPageAliasId;
+}
+
 bool NextionDriver::pollEvent(HmiEvent& out)
 {
     out = HmiEvent{};
@@ -580,6 +670,22 @@ bool NextionDriver::pollEvent(HmiEvent& out)
         const int rb = cfg_.serial->read();
         if (rb < 0) break;
         const uint8_t b = (uint8_t)rb;
+
+        if (pageResponseActive_) {
+            pageResponseBuf_[pageResponseLen_++] = b;
+            if (pageResponseLen_ >= PageResponseBufSize) {
+                const bool valid = pageResponseBuf_[1] == NEXTION_FF &&
+                                   pageResponseBuf_[2] == NEXTION_FF &&
+                                   pageResponseBuf_[3] == NEXTION_FF;
+                const uint8_t pageId = pageResponseBuf_[0];
+                pageResponseActive_ = false;
+                pageResponseLen_ = 0U;
+                if (valid && handlePageId_(pageId, true, out)) {
+                    return true;
+                }
+            }
+            continue;
+        }
 
         if (customFrameActive_) {
             if (customExpectedLen_ == 0U) {
@@ -609,6 +715,12 @@ bool NextionDriver::pollEvent(HmiEvent& out)
             customFrameActive_ = true;
             customExpectedLen_ = 0U;
             customLen_ = 0U;
+            continue;
+        }
+
+        if (b == NEXTION_RSP_PAGE) {
+            pageResponseActive_ = true;
+            pageResponseLen_ = 0U;
             continue;
         }
     }

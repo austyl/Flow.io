@@ -46,8 +46,18 @@ public:
     bool pollEvent(HmiEvent& out);
 
 private:
-    static constexpr uint8_t HMI_UDP_EVENT_QUEUE_SIZE = 4;
+    static constexpr uint8_t HMI_UDP_EVENT_QUEUE_SIZE = 8;
+    static constexpr uint8_t HMI_UDP_OUT_QUEUE_SIZE = 12;
+    static constexpr uint8_t HMI_UDP_OUT_PAYLOAD_MAX = 64;
     static constexpr uint32_t OfflineTimeoutMs = 9000U;
+    static constexpr uint32_t ReliableRetryMs = 150U;
+    static constexpr uint8_t ReliableMaxAttempts = 5U;
+
+    struct OutPacket {
+        HmiUdpMsgType type = HmiUdpMsgType::Error;
+        uint8_t len = 0;
+        uint8_t payload[HMI_UDP_OUT_PAYLOAD_MAX]{};
+    };
 
     struct ConfigData {
         char token[33]{};
@@ -80,7 +90,23 @@ private:
     uint8_t eventHead_ = 0;
     uint8_t eventTail_ = 0;
 
+    OutPacket outQueue_[HMI_UDP_OUT_QUEUE_SIZE]{};
+    uint8_t outHead_ = 0;
+    uint8_t outTail_ = 0;
+    uint8_t reliablePendingBuf_[HMI_UDP_MAX_PACKET]{};
+    size_t reliablePendingLen_ = 0;
+    uint16_t reliablePendingSeq_ = 0;
+    HmiUdpMsgType reliablePendingType_ = HmiUdpMsgType::Error;
+    uint8_t reliableAttempts_ = 0;
+    uint32_t reliableLastSendMs_ = 0;
+
     bool sendPacket_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen, uint8_t flags = 0);
+    bool sendImmediate_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen, uint8_t flags = 0);
+    bool enqueueReliable_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen);
+    bool loadNextReliable_();
+    void serviceReliableTx_(uint32_t nowMs);
+    void clearReliableQueue_(bool clearPending);
+    bool isConfigMsg_(HmiUdpMsgType type) const;
     bool sendAck_(uint16_t seq);
     void readUdp_(uint32_t nowMs);
     void handlePacket_(const HmiUdpHeader& header, const uint8_t* payload, uint32_t nowMs);

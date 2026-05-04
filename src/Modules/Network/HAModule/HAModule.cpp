@@ -218,8 +218,75 @@ static bool buildHaNumberRangeField(char* out, size_t outLen, float minValue, fl
     );
 }
 
+bool HAModule::ensureStorage_()
+{
+#if FLOW_HA_ONESHOT_DISCOVERY
+    if (oneShotResourcesReleased_) return false;
+    if (sensors_ && binarySensors_ && switches_ && numbers_ && buttons_ && pendingBits_) return true;
+
+    if (!sensors_) sensors_ = new (std::nothrow) HASensorEntry[MAX_HA_SENSORS]{};
+    if (!binarySensors_) binarySensors_ = new (std::nothrow) HABinarySensorEntry[MAX_HA_BINARY_SENSORS]{};
+    if (!switches_) switches_ = new (std::nothrow) HASwitchEntry[MAX_HA_SWITCHES]{};
+    if (!numbers_) numbers_ = new (std::nothrow) HANumberEntry[MAX_HA_NUMBERS]{};
+    if (!buttons_) buttons_ = new (std::nothrow) HAButtonEntry[MAX_HA_BUTTONS]{};
+    if (!pendingBits_) pendingBits_ = new (std::nothrow) uint32_t[HA_PENDING_WORDS]{};
+
+    if (sensors_ && binarySensors_ && switches_ && numbers_ && buttons_ && pendingBits_) return true;
+    releaseOneShotResources_();
+    return false;
+#else
+    return true;
+#endif
+}
+
+size_t HAModule::entityTableUsedBytes_() const
+{
+    return (size_t)sensorCount_ * sizeof(HASensorEntry) +
+           (size_t)binarySensorCount_ * sizeof(HABinarySensorEntry) +
+           (size_t)switchCount_ * sizeof(HASwitchEntry) +
+           (size_t)numberCount_ * sizeof(HANumberEntry) +
+           (size_t)buttonCount_ * sizeof(HAButtonEntry);
+}
+
+size_t HAModule::entityTableCapacityBytes_() const
+{
+    return (size_t)MAX_HA_SENSORS * sizeof(HASensorEntry) +
+           (size_t)MAX_HA_BINARY_SENSORS * sizeof(HABinarySensorEntry) +
+           (size_t)MAX_HA_SWITCHES * sizeof(HASwitchEntry) +
+           (size_t)MAX_HA_NUMBERS * sizeof(HANumberEntry) +
+           (size_t)MAX_HA_BUTTONS * sizeof(HAButtonEntry);
+}
+
+void HAModule::releaseOneShotResources_()
+{
+#if FLOW_HA_ONESHOT_DISCOVERY
+    delete[] sensors_;
+    delete[] binarySensors_;
+    delete[] switches_;
+    delete[] numbers_;
+    delete[] buttons_;
+    delete[] pendingBits_;
+    sensors_ = nullptr;
+    binarySensors_ = nullptr;
+    switches_ = nullptr;
+    numbers_ = nullptr;
+    buttons_ = nullptr;
+    pendingBits_ = nullptr;
+    sensorCount_ = 0;
+    binarySensorCount_ = 0;
+    switchCount_ = 0;
+    numberCount_ = 0;
+    buttonCount_ = 0;
+    startupReady_ = false;
+    published_ = true;
+    oneShotCompleted_ = true;
+    oneShotResourcesReleased_ = true;
+#endif
+}
+
 bool HAModule::addSensorEntry(const HASensorEntry& entry)
 {
+    if (oneShotCompleted_ || !ensureStorage_()) return false;
     if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix || !entry.valueTemplate) {
         return false;
     }
@@ -236,12 +303,8 @@ bool HAModule::addSensorEntry(const HASensorEntry& entry)
     if (sensorCount_ >= MAX_HA_SENSORS) return false;
     sensors_[sensorCount_++] = entry;
     BufferUsageTracker::note(TrackedBufferId::HaEntityTables,
-                             (size_t)sensorCount_ * sizeof(sensors_[0]) +
-                                 (size_t)binarySensorCount_ * sizeof(binarySensors_[0]) +
-                                 (size_t)switchCount_ * sizeof(switches_[0]) +
-                                 (size_t)numberCount_ * sizeof(numbers_[0]) +
-                                 (size_t)buttonCount_ * sizeof(buttons_[0]),
-                             sizeof(sensors_) + sizeof(binarySensors_) + sizeof(switches_) + sizeof(numbers_) + sizeof(buttons_),
+                             entityTableUsedBytes_(),
+                             entityTableCapacityBytes_(),
                              entry.objectSuffix,
                              nullptr);
     requestAutoconfigRefresh();
@@ -250,6 +313,7 @@ bool HAModule::addSensorEntry(const HASensorEntry& entry)
 
 bool HAModule::addBinarySensorEntry(const HABinarySensorEntry& entry)
 {
+    if (oneShotCompleted_ || !ensureStorage_()) return false;
     if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix || !entry.valueTemplate) {
         return false;
     }
@@ -266,12 +330,8 @@ bool HAModule::addBinarySensorEntry(const HABinarySensorEntry& entry)
     if (binarySensorCount_ >= MAX_HA_BINARY_SENSORS) return false;
     binarySensors_[binarySensorCount_++] = entry;
     BufferUsageTracker::note(TrackedBufferId::HaEntityTables,
-                             (size_t)sensorCount_ * sizeof(sensors_[0]) +
-                                 (size_t)binarySensorCount_ * sizeof(binarySensors_[0]) +
-                                 (size_t)switchCount_ * sizeof(switches_[0]) +
-                                 (size_t)numberCount_ * sizeof(numbers_[0]) +
-                                 (size_t)buttonCount_ * sizeof(buttons_[0]),
-                             sizeof(sensors_) + sizeof(binarySensors_) + sizeof(switches_) + sizeof(numbers_) + sizeof(buttons_),
+                             entityTableUsedBytes_(),
+                             entityTableCapacityBytes_(),
                              entry.objectSuffix,
                              nullptr);
     requestAutoconfigRefresh();
@@ -280,6 +340,7 @@ bool HAModule::addBinarySensorEntry(const HABinarySensorEntry& entry)
 
 bool HAModule::addSwitchEntry(const HASwitchEntry& entry)
 {
+    if (oneShotCompleted_ || !ensureStorage_()) return false;
     if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix ||
         !entry.valueTemplate || !entry.commandTopicSuffix || !entry.payloadOn || !entry.payloadOff) {
         return false;
@@ -297,12 +358,8 @@ bool HAModule::addSwitchEntry(const HASwitchEntry& entry)
     if (switchCount_ >= MAX_HA_SWITCHES) return false;
     switches_[switchCount_++] = entry;
     BufferUsageTracker::note(TrackedBufferId::HaEntityTables,
-                             (size_t)sensorCount_ * sizeof(sensors_[0]) +
-                                 (size_t)binarySensorCount_ * sizeof(binarySensors_[0]) +
-                                 (size_t)switchCount_ * sizeof(switches_[0]) +
-                                 (size_t)numberCount_ * sizeof(numbers_[0]) +
-                                 (size_t)buttonCount_ * sizeof(buttons_[0]),
-                             sizeof(sensors_) + sizeof(binarySensors_) + sizeof(switches_) + sizeof(numbers_) + sizeof(buttons_),
+                             entityTableUsedBytes_(),
+                             entityTableCapacityBytes_(),
                              entry.objectSuffix,
                              nullptr);
     requestAutoconfigRefresh();
@@ -311,6 +368,7 @@ bool HAModule::addSwitchEntry(const HASwitchEntry& entry)
 
 bool HAModule::addNumberEntry(const HANumberEntry& entry)
 {
+    if (oneShotCompleted_ || !ensureStorage_()) return false;
     if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix ||
         !entry.valueTemplate || !entry.commandTopicSuffix || !entry.commandTemplate) {
         return false;
@@ -328,12 +386,8 @@ bool HAModule::addNumberEntry(const HANumberEntry& entry)
     if (numberCount_ >= MAX_HA_NUMBERS) return false;
     numbers_[numberCount_++] = entry;
     BufferUsageTracker::note(TrackedBufferId::HaEntityTables,
-                             (size_t)sensorCount_ * sizeof(sensors_[0]) +
-                                 (size_t)binarySensorCount_ * sizeof(binarySensors_[0]) +
-                                 (size_t)switchCount_ * sizeof(switches_[0]) +
-                                 (size_t)numberCount_ * sizeof(numbers_[0]) +
-                                 (size_t)buttonCount_ * sizeof(buttons_[0]),
-                             sizeof(sensors_) + sizeof(binarySensors_) + sizeof(switches_) + sizeof(numbers_) + sizeof(buttons_),
+                             entityTableUsedBytes_(),
+                             entityTableCapacityBytes_(),
                              entry.objectSuffix,
                              nullptr);
     requestAutoconfigRefresh();
@@ -342,6 +396,7 @@ bool HAModule::addNumberEntry(const HANumberEntry& entry)
 
 bool HAModule::addButtonEntry(const HAButtonEntry& entry)
 {
+    if (oneShotCompleted_ || !ensureStorage_()) return false;
     if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.commandTopicSuffix || !entry.payloadPress) {
         return false;
     }
@@ -365,12 +420,8 @@ bool HAModule::addButtonEntry(const HAButtonEntry& entry)
     }
     buttons_[buttonCount_++] = entry;
     BufferUsageTracker::note(TrackedBufferId::HaEntityTables,
-                             (size_t)sensorCount_ * sizeof(sensors_[0]) +
-                                 (size_t)binarySensorCount_ * sizeof(binarySensors_[0]) +
-                                 (size_t)switchCount_ * sizeof(switches_[0]) +
-                                 (size_t)numberCount_ * sizeof(numbers_[0]) +
-                                 (size_t)buttonCount_ * sizeof(buttons_[0]),
-                             sizeof(sensors_) + sizeof(binarySensors_) + sizeof(switches_) + sizeof(numbers_) + sizeof(buttons_),
+                             entityTableUsedBytes_(),
+                             entityTableCapacityBytes_(),
                              entry.objectSuffix,
                              nullptr);
     requestAutoconfigRefresh();
@@ -786,6 +837,7 @@ uint16_t HAModule::messageCount_() const
 
 bool HAModule::isPending_(uint16_t messageId) const
 {
+    if (!pendingBits_) return false;
     if (messageId >= MAX_HA_MESSAGES) return false;
     const uint16_t word = (uint16_t)(messageId / 32U);
     const uint16_t bit = (uint16_t)(messageId % 32U);
@@ -794,6 +846,7 @@ bool HAModule::isPending_(uint16_t messageId) const
 
 void HAModule::setPending_(uint16_t messageId, bool pending)
 {
+    if (!pendingBits_) return;
     if (messageId >= MAX_HA_MESSAGES) return;
     const uint16_t word = (uint16_t)(messageId / 32U);
     const uint16_t bit = (uint16_t)(messageId % 32U);
@@ -804,7 +857,8 @@ void HAModule::setPending_(uint16_t messageId, bool pending)
 
 void HAModule::markAllPending_()
 {
-    memset(pendingBits_, 0, sizeof(pendingBits_));
+    if (oneShotCompleted_ || !ensureStorage_()) return;
+    memset(pendingBits_, 0, sizeof(uint32_t) * HA_PENDING_WORDS);
     const uint16_t count = messageCount_();
     for (uint16_t i = 0; i < count; ++i) {
         setPending_(i, true);
@@ -813,8 +867,8 @@ void HAModule::markAllPending_()
 
 bool HAModule::anyPending_() const
 {
-    const uint16_t words = (uint16_t)(sizeof(pendingBits_) / sizeof(pendingBits_[0]));
-    for (uint16_t i = 0; i < words; ++i) {
+    if (!pendingBits_) return false;
+    for (uint16_t i = 0; i < HA_PENDING_WORDS; ++i) {
         if (pendingBits_[i] != 0U) return true;
     }
     return false;
@@ -822,6 +876,7 @@ bool HAModule::anyPending_() const
 
 bool HAModule::enqueuePending_(MqttPublishPriority prio)
 {
+    if (oneShotCompleted_) return false;
     if (!mqttSvc_ || !mqttSvc_->enqueue) return false;
     if (!startupReady_) return false;
 
@@ -854,6 +909,7 @@ void HAModule::producerDroppedStatic_(void* ctx, uint16_t messageId)
 
 bool HAModule::buildEntityMessage_(uint16_t messageId, MqttBuildContext& buildCtx)
 {
+    if (!sensors_ || !binarySensors_ || !switches_ || !numbers_ || !buttons_) return false;
     bool ok = false;
     uint16_t cursor = 0;
 
@@ -930,6 +986,7 @@ bool HAModule::buildLegacyCleanupMessage_(uint16_t cleanupId, MqttBuildContext& 
 
 MqttBuildResult HAModule::buildMessage_(uint16_t messageId, MqttBuildContext& buildCtx)
 {
+    if (oneShotCompleted_) return MqttBuildResult::NoLongerNeeded;
     if (!startupReady_) return MqttBuildResult::RetryLater;
     if (!cfgData_.enabled) return MqttBuildResult::NoLongerNeeded;
     if (!mqttSvc_ || !mqttSvc_->formatTopic) return MqttBuildResult::PermanentError;
@@ -979,6 +1036,7 @@ void HAModule::onEventStatic(const Event& e, void* user)
 
 void HAModule::onEvent(const Event& e)
 {
+    if (oneShotCompleted_) return;
     if (e.id != EventId::DataChanged) return;
     const DataChangedPayload* payload = static_cast<const DataChangedPayload*>(e.payload);
     if (!payload) return;
@@ -1001,6 +1059,7 @@ void HAModule::onEvent(const Event& e)
 
 void HAModule::requestAutoconfigRefresh()
 {
+    if (oneShotCompleted_) return;
     published_ = false;
     markAllPending_();
     if (dsSvc_ && dsSvc_->store) {
@@ -1010,6 +1069,13 @@ void HAModule::requestAutoconfigRefresh()
 
 void HAModule::loop()
 {
+#if FLOW_HA_ONESHOT_DISCOVERY
+    if (published_ && !anyPending_()) {
+        LOGI("HA one-shot discovery complete, releasing resources");
+        releaseOneShotResources_();
+        vTaskDelete(nullptr);
+    }
+#endif
     if (anyPending_()) {
         (void)enqueuePending_(MqttPublishPriority::Low);
     }
@@ -1018,6 +1084,10 @@ void HAModule::loop()
 
 void HAModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
+#if FLOW_HA_ONESHOT_DISCOVERY
+    (void)services;
+    return;
+#else
     if (!cfgMqttPub_) {
         cfgMqttPub_ = new (std::nothrow) MqttConfigRouteProducer();
     }
@@ -1028,6 +1098,7 @@ void HAModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
                                (uint8_t)(sizeof(kHaCfgRoutes) / sizeof(kHaCfgRoutes[0])),
                                services);
     }
+#endif
 }
 
 void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
@@ -1043,6 +1114,9 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     eventBusSvc_ = services.get<EventBusService>(ServiceId::EventBus);
     dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
     mqttSvc_ = services.get<MqttService>(ServiceId::Mqtt);
+    if (!ensureStorage_()) {
+        LOGE("HA storage allocation failed");
+    }
 
     if (!services.add(ServiceId::Ha, &haSvc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::Ha));

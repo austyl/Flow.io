@@ -29,6 +29,7 @@ void setupProfile(AppContext& ctx)
     ctx.moduleManager.add(&modules.configStoreModule);
     ctx.moduleManager.add(&modules.dataStoreModule);
     ctx.moduleManager.add(&modules.wifiModule);
+    ctx.moduleManager.add(&modules.wifiProvisioningModule);
     ctx.moduleManager.add(&modules.displayUdpClientModule);
 
     if (!ctx.moduleManager.initAll(ctx.registry, ctx.services)) {
