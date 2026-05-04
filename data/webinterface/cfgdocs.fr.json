@@ -1,9 +1,9 @@
 {
   "_meta": {
     "generated": true,
-    "total": 396,
-    "decl_total": 224,
-    "decl_with_cfgdoc": 125,
+    "total": 400,
+    "decl_total": 228,
+    "decl_with_cfgdoc": 129,
     "missing_cfgdoc_count": 99,
     "manual_overrides_total": 23,
     "manual_overrides_applied": 5
@@ -585,6 +585,44 @@
       "label": "Période evaluation alarmes (ms)",
       "help": "Intervalle d'évaluation des conditions d'alarme.",
       "var": "evalPeriodVar_",
+      "source": "cfgdoc",
+      "unit": "ms"
+    },
+    "electrolysis/address": {
+      "module": "electrolysis",
+      "name": "address",
+      "type": "UInt8",
+      "label": "Adresse I2C electrolyse",
+      "help": "Adresse I2C du controleur d'electrolyse dedie.",
+      "var": "addressVar_",
+      "source": "cfgdoc"
+    },
+    "electrolysis/enabled": {
+      "module": "electrolysis",
+      "name": "enabled",
+      "type": "Bool",
+      "label": "Client electrolyse actif",
+      "help": "Active le client I2C vers le controleur d'electrolyse dedie.",
+      "var": "enabledVar_",
+      "source": "cfgdoc"
+    },
+    "electrolysis/max_current_ma": {
+      "module": "electrolysis",
+      "name": "max_current_ma",
+      "type": "UInt16",
+      "label": "Courant cellule maximum",
+      "help": "Courant maximum autorise pour la cellule. La valeur 0 laisse la limite au controleur dedie.",
+      "var": "maxCurrentVar_",
+      "source": "cfgdoc",
+      "unit": "mA"
+    },
+    "electrolysis/poll_ms": {
+      "module": "electrolysis",
+      "name": "poll_ms",
+      "type": "UInt16",
+      "label": "Periode polling electrolyse",
+      "help": "Periode d'echange I2C avec le controleur d'electrolyse.",
+      "var": "pollPeriodVar_",
       "source": "cfgdoc",
       "unit": "ms"
     },
