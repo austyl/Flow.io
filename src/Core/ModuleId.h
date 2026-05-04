@@ -29,6 +29,7 @@ enum class ModuleId : uint8_t {
     PoolLogic,
     Hmi,
     SupervisorHmi,
+    Electrolysis,
     Count
 };
 
@@ -68,6 +69,7 @@ constexpr const char* toString(ModuleId id)
         case ModuleId::Ha: return "ha";
         case ModuleId::Mqtt: return "mqtt";
         case ModuleId::Io: return "io";
+        case ModuleId::Electrolysis: return "electrolysis";
         case ModuleId::PoolDevice: return "pooldev";
         case ModuleId::PoolLogic: return "poollogic";
         case ModuleId::Hmi: return "hmi";

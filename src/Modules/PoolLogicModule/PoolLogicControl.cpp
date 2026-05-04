@@ -38,6 +38,29 @@ const char* poolDeviceBlockReasonStr_(uint8_t reason)
         default: return "unknown";
     }
 }
+
+const char* electrolysisSvcStatusStr_(ElectrolysisSvcStatus st)
+{
+    switch (st) {
+        case ELECTROLYSIS_SVC_OK: return "ok";
+        case ELECTROLYSIS_SVC_ERR_INVALID_ARG: return "invalid_arg";
+        case ELECTROLYSIS_SVC_ERR_NOT_READY: return "not_ready";
+        case ELECTROLYSIS_SVC_ERR_DISABLED: return "disabled";
+        case ELECTROLYSIS_SVC_ERR_COMM: return "comm";
+        case ELECTROLYSIS_SVC_ERR_BAD_STATUS: return "bad_status";
+        default: return "unknown";
+    }
+}
+
+int16_t tempCToC10_(float value)
+{
+    if (!std::isfinite(value)) {
+        return ElectrolysisProtocol::DefaultMinWaterTempC10;
+    }
+    if (value < -20.0f) value = -20.0f;
+    if (value > 80.0f) value = 80.0f;
+    return (int16_t)((value * 10.0f) + ((value >= 0.0f) ? 0.5f : -0.5f));
+}
 }  // namespace
 
 // Alarm conditions intentionally stay close to the control helpers because they
@@ -347,6 +370,43 @@ void PoolLogicModule::applyDeviceControl_(uint8_t deviceSlot,
     fsm.lastDesired = desired;
 }
 
+bool PoolLogicModule::writeElectrolysisRequest_(bool desired, uint8_t productionPct, uint32_t nowMs)
+{
+    if (!electrolysisSvc_ || !electrolysisSvc_->writeRequest) return false;
+
+    ElectrolysisRequest req{};
+    req.enable = desired ? 1U : 0U;
+    req.productionPct = desired ? ElectrolysisProtocol::clampProductionPct(productionPct) : 0U;
+    req.startDelayS = ElectrolysisProtocol::DefaultStartDelayS;
+    req.productionWindowS = ElectrolysisProtocol::DefaultProductionWindowS;
+    req.reversePeriodMin = ElectrolysisProtocol::DefaultReversePeriodMin;
+    req.deadtimeMs = ElectrolysisProtocol::DefaultDeadtimeMs;
+    req.minWaterTempC10 = tempCToC10_(secureElectroTempC_);
+    req.maxCurrentMa = 0;
+
+    const ElectrolysisSvcStatus st = electrolysisSvc_->writeRequest(electrolysisSvc_->ctx, &req);
+    if (st != ELECTROLYSIS_SVC_OK) {
+        if ((uint32_t)(nowMs - electrolysisLastWarnMs_) >= 10000U) {
+            LOGW("electrolysis.writeRequest failed desired=%u pct=%u st=%u(%s)",
+                 desired ? 1u : 0u,
+                 (unsigned)req.productionPct,
+                 (unsigned)st,
+                 electrolysisSvcStatusStr_(st));
+            electrolysisLastWarnMs_ = nowMs;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+static bool electrolysisServiceAvailable_(const ElectrolysisService* svc)
+{
+    if (!svc || !svc->writeRequest) return false;
+    if (!svc->available) return true;
+    return svc->available(svc->ctx) != 0U;
+}
+
 void PoolLogicModule::runControlLoop_(uint32_t nowMs)
 {
     // The loop always starts by refreshing observed actuator states so all
@@ -502,6 +562,7 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     }
 
     bool swgDesired = swgFsm_.on;
+    uint8_t swgProductionPct = 0;
     if (autoMode_) {
         swgDesired = false;
         if (electrolyseMode_ && filtrationFsm_.on) {
@@ -527,6 +588,9 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
                 }
             }
         }
+    }
+    if (swgDesired) {
+        swgProductionPct = ElectrolysisProtocol::MaxProductionPct;
     }
 
     // Chemical dosing is computed last because it depends on the resolved
@@ -618,6 +682,10 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     applyDeviceControl_(phPumpDeviceSlot_, "pH Pump", phPumpFsm_, phPumpDesired, nowMs);
     applyDeviceControl_(orpPumpDeviceSlot_, "Chlorine Pump", orpPumpFsm_, orpPumpDesired, nowMs);
     applyDeviceControl_(robotDeviceSlot_, "Robot Pump", robotFsm_, robotDesired, nowMs);
-    applyDeviceControl_(swgDeviceSlot_, "SWG Pump", swgFsm_, swgDesired, nowMs);
+    const bool remoteElectrolysis = electrolysisServiceAvailable_(electrolysisSvc_);
+    if (remoteElectrolysis) {
+        (void)writeElectrolysisRequest_(swgDesired, swgProductionPct, nowMs);
+    }
+    applyDeviceControl_(swgDeviceSlot_, "SWG Pump", swgFsm_, remoteElectrolysis ? false : swgDesired, nowMs);
     applyDeviceControl_(fillingDeviceSlot_, "Filling Pump", fillingFsm_, fillingDesired, nowMs);
 }

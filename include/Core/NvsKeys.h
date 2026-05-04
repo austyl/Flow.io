@@ -289,6 +289,13 @@ constexpr char ServerFreq[] = "ic_srv_frq"; // I2C cfg server bus frequency.
 constexpr char ServerAddr[] = "ic_srv_adr"; // I2C cfg server own slave address.
 }  // namespace I2cCfg
 
+namespace Electrolysis {
+constexpr char Enabled[] = "el_en"; // Electrolysis client enabled.
+constexpr char Address[] = "el_addr"; // Electrolysis I2C slave address.
+constexpr char PollPeriodMs[] = "el_poll"; // Electrolysis I2C polling period.
+constexpr char MaxCurrentMa[] = "el_mcur"; // Electrolysis max cell current in mA.
+}  // namespace Electrolysis
+
 namespace PoolLogic {
 constexpr char Enabled[] = "pl_en"; // Pool logic module persisted key for field `pl_en`.
 constexpr char AutoMode[] = "pl_auto"; // Pool logic module persisted key for field `pl_auto`.

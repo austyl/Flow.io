@@ -31,6 +31,7 @@ Le projet compile aujourd'hui deux firmwares ESP32:
 - [Services Core](core/services.md)
 - [Modèle `ConfigStore` / `DataStore` / `EventBus` / MQTT](core/data-event-model.md)
 - [Topologie MQTT](core/mqtt-topics.md)
+- [Controleur d'electrolyse dedie](core/electrolysis-controller.md)
 - [Protocole I2C `FlowIO` <-> `Supervisor`](core/flow-supervisor-i2c-protocol.md)
 - [Exposition Runtime UI](core/runtime-ui-exposure.md)
 - [Empreinte mémoire `FlowIO`](core/memory-footprint-flowio.md)
@@ -147,9 +148,10 @@ Ordre d'enregistrement dans `src/Profiles/FlowIO/FlowIOBootstrap.cpp`:
 14. `ha`
 15. `system`
 16. `io`
-17. `poollogic`
-18. `pooldev`
-19. `sysmon`
+17. `electrolysis`
+18. `poollogic`
+19. `pooldev`
+20. `sysmon`
 
 ### Profil `Supervisor`
 

@@ -366,7 +366,9 @@ private:
     const MqttService* mqttSvc_ = nullptr;
     const AlarmService* alarmSvc_ = nullptr;
     const LogHubService* logHub_ = nullptr;
+    const ElectrolysisService* electrolysisSvc_ = nullptr;
     MqttConfigRouteProducer* cfgMqttPub_ = nullptr;
+    uint32_t electrolysisLastWarnMs_ = 0;
 
     // Lifecycle
     static void onEventStatic_(const Event& e, void* user);
@@ -411,6 +413,7 @@ private:
                           bool& demandOnOut,
                           uint32_t& outputOnMsOut);
     void applyDeviceControl_(uint8_t deviceSlot, const char* label, DeviceFsm& fsm, bool desired, uint32_t nowMs);
+    bool writeElectrolysisRequest_(bool desired, uint8_t productionPct, uint32_t nowMs);
     void runControlLoop_(uint32_t nowMs);
 
     // Runtime

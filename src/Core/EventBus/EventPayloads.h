@@ -23,7 +23,8 @@ enum class ConfigModuleId : uint8_t {
     PoolLogic,
     PoolDevice,
     Alarms,
-    Log
+    Log,
+    Electrolysis
 };
 
 /** @brief Payload for ConfigChanged events. */

@@ -129,6 +129,7 @@ void registerModules(AppContext& ctx, ModuleInstances& modules)
     ctx.moduleManager.add(&modules.haModule);
     ctx.moduleManager.add(&modules.systemModule);
     ctx.moduleManager.add(&modules.ioModule);
+    ctx.moduleManager.add(&modules.electrolysisModule);
     ctx.moduleManager.add(&modules.poolLogicModule);
     ctx.moduleManager.add(&modules.poolDeviceModule);
 

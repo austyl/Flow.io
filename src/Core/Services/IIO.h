@@ -133,6 +133,14 @@ struct IOServiceV2 {
     IoStatus (*tick)(void* ctx, uint32_t nowMs);
     /** Retrieve last completed cycle information. */
     IoStatus (*lastCycle)(void* ctx, IoCycleInfo* outCycle);
+    /** Perform a raw I2C command/read transaction on the IO bus under the IO mutex. */
+    IoStatus (*i2cTransfer)(void* ctx,
+                            uint8_t address,
+                            const uint8_t* tx,
+                            uint16_t txLen,
+                            uint8_t* rx,
+                            uint16_t rxLen,
+                            uint32_t timeoutMs);
 
     /** Opaque implementation context. */
     void* ctx;

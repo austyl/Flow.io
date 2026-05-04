@@ -229,11 +229,15 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     haSvc_ = services.get<HAService>(ServiceId::Ha);
     cmdSvc_ = services.get<CommandService>(ServiceId::Command);
     alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
+    electrolysisSvc_ = services.get<ElectrolysisService>(ServiceId::Electrolysis);
     if (!ioSvc_) {
         LOGW("PoolLogic waiting for IOServiceV2");
     }
     if (!poolSvc_) {
         LOGW("PoolLogic waiting for PoolDeviceService");
+    }
+    if (electrolysisSvc_) {
+        LOGI("PoolLogic remote electrolysis service detected");
     }
     // HA entities are still registered from the lifecycle layer because they
     // are part of startup wiring, not of the control algorithm itself.

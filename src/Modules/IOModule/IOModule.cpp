@@ -1532,6 +1532,57 @@ IoStatus IOModule::ioLastCycle_(IoCycleInfo* outCycle) const
     return IO_OK;
 }
 
+IoStatus IOModule::ioI2cTransfer_(uint8_t address,
+                                  const uint8_t* tx,
+                                  uint16_t txLen,
+                                  uint8_t* rx,
+                                  uint16_t rxLen,
+                                  uint32_t timeoutMs)
+{
+    if (!cfgData_.enabled || !runtimeReady_) return IO_ERR_NOT_READY;
+    if (address < 0x08U || address > 0x77U) return IO_ERR_INVALID_ARG;
+    if ((txLen > 0U && !tx) || (rxLen > 0U && !rx)) return IO_ERR_INVALID_ARG;
+    if (txLen == 0U && rxLen == 0U) return IO_ERR_INVALID_ARG;
+    if (txLen > 255U || rxLen > 255U) return IO_ERR_INVALID_ARG;
+
+    if (!i2cBus_.lock(timeoutMs ? timeoutMs : 20U)) return IO_ERR_NOT_READY;
+
+    TwoWire* wire = i2cBus_.wire();
+    if (!wire) {
+        i2cBus_.unlock();
+        return IO_ERR_HW;
+    }
+
+    if (txLen > 0U) {
+        wire->beginTransmission((int)address);
+        const size_t wrote = wire->write(tx, txLen);
+        if (wrote != txLen || wire->endTransmission(true) != 0) {
+            i2cBus_.unlock();
+            return IO_ERR_HW;
+        }
+    }
+
+    if (rxLen > 0U) {
+        delayMicroseconds(4500U);
+        const uint16_t got = wire->requestFrom((int)address, (int)rxLen, (int)true);
+        if (got != rxLen) {
+            i2cBus_.unlock();
+            return IO_ERR_HW;
+        }
+
+        for (uint16_t i = 0; i < rxLen; ++i) {
+            if (!wire->available()) {
+                i2cBus_.unlock();
+                return IO_ERR_HW;
+            }
+            rx[i] = (uint8_t)wire->read();
+        }
+    }
+
+    i2cBus_.unlock();
+    return IO_OK;
+}
+
 bool IOModule::getLedMaskSvc_(uint8_t* mask) const
 {
     if (!mask) return false;

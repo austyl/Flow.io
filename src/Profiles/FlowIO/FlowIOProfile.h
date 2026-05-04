@@ -5,6 +5,7 @@
 #include "Modules/AlarmModule/AlarmModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 #include "Modules/EventBusModule/EventBusModule.h"
+#include "Modules/ElectrolysisModule/ElectrolysisModule.h"
 #include "Modules/HMIModule/HMIModule.h"
 #include "Modules/IOModule/IOBus/OneWireBus.h"
 #include "Modules/IOModule/IOModule.h"
@@ -49,6 +50,7 @@ struct ModuleInstances {
     AlarmModule alarmModule{};
     HMIModule hmiModule{};
     IOModule ioModule{};
+    ElectrolysisModule electrolysisModule{};
     PoolDeviceModule poolDeviceModule{};
     PoolLogicModule poolLogicModule{};
     OneWireBus oneWireWater{19};

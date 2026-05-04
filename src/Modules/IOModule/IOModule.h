@@ -129,6 +129,12 @@ private:
     IoStatus ioReadAnalog_(IoId id, float* outValue, uint32_t* outTsMs, IoSeq* outSeq) const;
     IoStatus ioTick_(uint32_t nowMs);
     IoStatus ioLastCycle_(IoCycleInfo* outCycle) const;
+    IoStatus ioI2cTransfer_(uint8_t address,
+                            const uint8_t* tx,
+                            uint16_t txLen,
+                            uint8_t* rx,
+                            uint16_t rxLen,
+                            uint32_t timeoutMs);
 
     bool setLedMask_(uint8_t mask, uint32_t tsMs);
     bool turnLedOn_(uint8_t bit, uint32_t tsMs);
@@ -457,6 +463,7 @@ private:
         ServiceBinding::bind<&IOModule::ioReadAnalog_>,
         ServiceBinding::bind<&IOModule::ioTick_>,
         ServiceBinding::bind<&IOModule::ioLastCycle_>,
+        ServiceBinding::bind<&IOModule::ioI2cTransfer_>,
         this
     };
     StatusLedsService statusLedsSvc_{

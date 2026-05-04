@@ -38,6 +38,7 @@ enum class LogModuleIdValue : LogModuleId {
     PoolDeviceModule = 23,
     PoolLogicModule = 24,
     HMIModule = 25,
+    ElectrolysisModule = 27,
 
     CoreI2cLink = 40,
     CoreModuleManager = 41,
@@ -69,6 +70,7 @@ static inline LogModuleId logModuleIdFromModuleId(ModuleId moduleId)
         case ModuleId::Ha: return (LogModuleId)LogModuleIdValue::HAModule;
         case ModuleId::Mqtt: return (LogModuleId)LogModuleIdValue::MQTTModule;
         case ModuleId::Io: return (LogModuleId)LogModuleIdValue::IOModule;
+        case ModuleId::Electrolysis: return (LogModuleId)LogModuleIdValue::ElectrolysisModule;
         case ModuleId::PoolDevice: return (LogModuleId)LogModuleIdValue::PoolDeviceModule;
         case ModuleId::PoolLogic: return (LogModuleId)LogModuleIdValue::PoolLogicModule;
         case ModuleId::Hmi:
@@ -106,6 +108,7 @@ static inline const char* logModuleNameFromId(LogModuleId moduleId)
         case LogModuleIdValue::HAModule: return "ha";
         case LogModuleIdValue::MQTTModule: return "mqtt";
         case LogModuleIdValue::IOModule: return "io";
+        case LogModuleIdValue::ElectrolysisModule: return "electrolysis";
         case LogModuleIdValue::PoolDeviceModule: return "pooldev";
         case LogModuleIdValue::PoolLogicModule: return "poollogic";
         case LogModuleIdValue::HMIModule: return "hmi";
