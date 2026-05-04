@@ -79,8 +79,10 @@ Réactions:
 - build topic/payload discovery à la demande via `MqttBuildContext` (buffer central MQTT)
 - construit topics discovery:
   - `<discoveryPrefix>/<component>/<nodeTopicId>/<objectId>/config`
-- préfixe `object_id` de type `flowioNNN_*`:
-  - `NNN` dérive du `deviceId` MQTT effectif (`mqtt.topicDeviceId` / `mq_tid` si défini, sinon fallback auto)
+- préfixe `object_id` configurable par profil:
+  - défaut `fioNN_*`
+  - profil `Micronova`: `pioNN_*`
+  - `NN` dérive du `deviceId` MQTT effectif (`mqtt.topicDeviceId` / `mq_tid` si défini, sinon fallback auto)
 - payloads incluent:
   - device metadata
   - `device.identifiers[0] = <vendor>-<mqttDeviceIdEffectif>` (donc suit `mqtt.topicDeviceId` / `mq_tid` si défini)
@@ -97,3 +99,12 @@ Réactions:
 - `add*` met à jour la table d'entités et demande refresh
 - `requestRefresh` remet `published=false` et notifie la task
 - publication effective seulement si MQTT connecté et `mqttReady(DataStore)==true`
+
+## Mode one-shot
+
+Le build peut définir `FLOW_HA_ONESHOT_DISCOVERY=1` pour publier l'auto-discovery une seule fois au démarrage.
+Ce mode est utilisé par le profil `Micronova`:
+- les tables d'entités HA sont allouées dynamiquement au lieu d'être conservées en `.bss`
+- le producteur MQTT de configuration HA n'est pas instancié
+- après publication retained de toutes les entités discovery, les tables sont libérées et la tâche `ha` appelle `vTaskDelete(nullptr)`
+- le service HA reste présent mais refuse les nouveaux enregistrements après teardown, afin d'éviter des pointeurs pendants dans les services/callbacks existants

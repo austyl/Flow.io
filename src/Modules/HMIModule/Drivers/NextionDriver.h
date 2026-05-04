@@ -27,7 +27,19 @@ struct NextionDriverConfig {
     const char* alarmBitsObject = "globals.vaAlarms";
     const char* displayVersionExpr = "globals.vaVersion.val";
     uint16_t displayVersionReadTimeoutMs = 180U;
+    uint8_t homePageId = 0U;
     uint8_t configPageId = 10U;
+    uint8_t homePageAliasId = 0xFFU;
+    uint8_t configPageAliasId = 0xFFU;
+};
+
+struct NextionV2NeedlePublish {
+    bool ph = false;
+    bool orp = false;
+    bool psi = false;
+    int8_t phNeedle = 0;
+    int8_t orpNeedle = 0;
+    uint8_t psiNeedle = 0;
 };
 
 class NextionDriver final : public IHmiDriver {
@@ -50,10 +62,19 @@ public:
     bool refreshConfigMenuValues(const ConfigMenuView& view) override;
     bool hasDisplayVersion() const { return versionDetected_; }
     uint32_t displayVersion() const { return displayVersion_; }
+    bool isLegacyV2() const { return versionDetected_ && displayVersion_ == 2U; }
+    bool requestPageReport();
+    bool currentPage(uint8_t& out) const;
+    bool isHomePage() const;
+    bool isConfigPage() const;
+    bool setTouchEnabled(bool enabled);
+    bool showConfigLoading(const char* title);
+    bool publishV2Needles(const NextionV2NeedlePublish& publish);
 
 private:
     static constexpr uint8_t CustomRxBufSize = 64;
     static constexpr size_t TxBufSize = 160U;
+    static constexpr uint8_t PageResponseBufSize = 4U;
 
     NextionDriverConfig cfg_{};
     bool started_ = false;
@@ -66,12 +87,21 @@ private:
     uint8_t customExpectedLen_ = 0;
     uint8_t customLen_ = 0;
     uint8_t customBuf_[CustomRxBufSize]{};
+    bool pageResponseActive_ = false;
+    uint8_t pageResponseLen_ = 0;
+    uint8_t pageResponseBuf_[PageResponseBufSize]{};
+    bool currentPageKnown_ = false;
+    uint8_t currentPage_ = 0;
 
     bool parseCustomFrame_(const uint8_t* frame, uint8_t len, HmiEvent& out);
+    bool handlePageId_(uint8_t pageId, bool emitEvents, HmiEvent& out);
+    bool isHomePageId_(uint8_t pageId) const;
+    bool isConfigPageId_(uint8_t pageId) const;
 
     bool sendCmd_(const char* cmd);
     bool sendCmdFmt_(const char* fmt, ...);
     bool sendNum_(const char* objectName, uint32_t value);
+    bool sendInt_(const char* objectName, int32_t value);
     bool sendText_(const char* objectName, const char* value);
     bool readNumber_(const char* expr, uint32_t& value, uint16_t timeoutMs);
     bool readNumberResponse_(uint32_t& value, uint16_t timeoutMs);

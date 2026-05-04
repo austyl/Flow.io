@@ -67,7 +67,7 @@ const SupervisorBoardSpec& supervisorBoardSpec_(const BoardSpec& board)
 
 const UartSpec& panelUartSpec_(const BoardSpec& board)
 {
-    static constexpr UartSpec kFallback{"panel", 2, 33, 32, 115200, false};
+    static constexpr UartSpec kFallback{"panel", 2, 33, 32, 115200, false, -1};
     const UartSpec* spec = boardFindUart(board, "panel");
     return spec ? *spec : kFallback;
 }

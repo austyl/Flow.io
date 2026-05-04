@@ -24,6 +24,28 @@ void MQTTModule::processRx_(const RxMsg& msg)
         return;
     }
 
+    const MqttInboundHandler* handlers[MaxInboundHandlers]{};
+    uint8_t handlerCount = 0;
+    portENTER_CRITICAL(&inboundMux_);
+    handlerCount = inboundHandlerCount_;
+    if (handlerCount > MaxInboundHandlers) handlerCount = MaxInboundHandlers;
+    for (uint8_t i = 0; i < handlerCount; ++i) {
+        handlers[i] = inboundHandlers_[i];
+    }
+    portEXIT_CRITICAL(&inboundMux_);
+
+    for (uint8_t i = 0; i < handlerCount; ++i) {
+        const MqttInboundHandler* h = handlers[i];
+        if (!h || !h->topicSuffix || !h->onMessage) continue;
+        char topic[Limits::Mqtt::Buffers::Topic] = {0};
+        formatTopic(topic, sizeof(topic), h->topicSuffix);
+        if (strcmp(msg.topic, topic) != 0) continue;
+
+        const MqttInboundMessage inbound{msg.topic, msg.payload};
+        h->onMessage(h->ctx, inbound);
+        return;
+    }
+
     publishRxError_(MqttTopics::SuffixAck, ErrorCode::UnknownTopic, "rx", false);
 }
 

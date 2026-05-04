@@ -39,6 +39,7 @@ struct UartSpec {
     int8_t txPin;      // TX GPIO number (-1 when default/unused).
     uint32_t baud;     // Baud rate.
     bool primary;      // True when this UART is the primary instance for its role.
+    int8_t enableRxPin; // Optional GPIO used to switch a half-duplex adapter to receive mode.
 };
 
 struct I2cBusSpec {
@@ -61,6 +62,12 @@ struct IoPointSpec {
     uint8_t pin;            // GPIO pin (or logical channel id for some backends).
     bool momentary;         // True when output is pulse-based (monostable style).
     uint16_t pulseMs;       // Pulse duration in ms for momentary outputs.
+};
+
+struct IoCapacitySpec {
+    uint8_t analogEndpoints;  // Number of analog runtime endpoints expected for this board/profile.
+    uint8_t digitalInputs;    // Number of digital input runtime endpoints expected for this board/profile.
+    uint8_t digitalOutputs;   // Number of digital output runtime endpoints expected for this board/profile.
 };
 
 struct St7789DisplaySpec {
@@ -105,6 +112,7 @@ struct SupervisorBoardSpec {
 
 struct BoardSpec {
     const char* name;                  // Board identifier exposed to the app/runtime.
+    const char* mdnsHost;              // Default mDNS host name for this board/profile.
     const UartSpec* uarts;             // UART definitions table.
     uint8_t uartCount;                 // Number of UART definitions.
     const I2cBusSpec* i2cBuses;        // I2C bus definitions table.
@@ -113,5 +121,6 @@ struct BoardSpec {
     uint8_t oneWireCount;              // Number of 1-Wire buses.
     const IoPointSpec* ioPoints;       // IO points mapping table.
     uint8_t ioPointCount;              // Number of IO points.
+    IoCapacitySpec ioCapacity;         // Intended IO runtime capacity for memory sizing.
     const SupervisorBoardSpec* supervisor; // Optional supervisor-only extension block.
 };

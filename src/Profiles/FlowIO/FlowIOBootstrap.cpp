@@ -121,6 +121,7 @@ void registerModules(AppContext& ctx, ModuleInstances& modules)
     ctx.moduleManager.add(&modules.dataStoreModule);
     ctx.moduleManager.add(&modules.commandModule);
     ctx.moduleManager.add(&modules.i2cCfgServerModule);
+    ctx.moduleManager.add(&modules.hmiUdpServerModule);
     ctx.moduleManager.add(&modules.hmiModule);
     ctx.moduleManager.add(&modules.alarmModule);
     ctx.moduleManager.add(&modules.wifiModule);
@@ -195,6 +196,7 @@ void setupProfile(AppContext& ctx)
     ctx.registry.runMigrations(CURRENT_CFG_VERSION, steps, MIGRATION_COUNT);
 
     registerModules(ctx, modules);
+    modules.hmiModule.setRemoteUdpServer(&modules.hmiUdpServerModule);
     configureIoModule(ctx, modules);
     configurePoolDevices(ctx, modules);
 

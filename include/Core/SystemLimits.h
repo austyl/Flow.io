@@ -70,17 +70,74 @@ constexpr uint8_t ModuleListMax = 96;
 /** @brief MQTT-specific limits grouped by concern to keep `SystemLimits` readable. */
 namespace Mqtt {
 
+#ifndef FLOW_MQTT_TASK_STACK_SIZE
+#define FLOW_MQTT_TASK_STACK_SIZE 5712
+#endif
+
 /** @brief MQTT module task stack size returned by `MQTTModule::taskStackSize`. */
-constexpr uint16_t TaskStackSize = 5712;
+constexpr uint16_t TaskStackSize = FLOW_MQTT_TASK_STACK_SIZE;
 
 /** @brief MQTT static capacities (queues, tables). */
 namespace Capacity {
+#ifndef FLOW_MQTT_RX_QUEUE_LEN
+#define FLOW_MQTT_RX_QUEUE_LEN 8
+#endif
+#ifndef FLOW_MQTT_MAX_PUBLISHERS
+#define FLOW_MQTT_MAX_PUBLISHERS 8
+#endif
+#ifndef FLOW_MQTT_CFG_TOPIC_MAX
+#define FLOW_MQTT_CFG_TOPIC_MAX 48
+#endif
+#ifndef FLOW_MQTT_MAX_PRODUCERS
+#define FLOW_MQTT_MAX_PRODUCERS 24
+#endif
+#ifndef FLOW_MQTT_MAX_INBOUND_HANDLERS
+#define FLOW_MQTT_MAX_INBOUND_HANDLERS 16
+#endif
+#ifndef FLOW_MQTT_MAX_ACK_MESSAGES
+#define FLOW_MQTT_MAX_ACK_MESSAGES 2
+#endif
+#ifndef FLOW_MQTT_MAX_JOBS
+#define FLOW_MQTT_MAX_JOBS 80
+#endif
+#ifndef FLOW_MQTT_HIGH_QUEUE_CAP
+#define FLOW_MQTT_HIGH_QUEUE_CAP 80
+#endif
+#ifndef FLOW_MQTT_NORMAL_QUEUE_CAP
+#define FLOW_MQTT_NORMAL_QUEUE_CAP 80
+#endif
+#ifndef FLOW_MQTT_LOW_QUEUE_CAP
+#define FLOW_MQTT_LOW_QUEUE_CAP 60
+#endif
+
 /** @brief FreeRTOS RX queue length for inbound MQTT messages in `MQTTModule`. */
-constexpr uint8_t RxQueueLen = 8;
+constexpr uint8_t RxQueueLen = FLOW_MQTT_RX_QUEUE_LEN;
 /** @brief Maximum number of runtime publishers stored in `MQTTModule::publishers`. */
-constexpr uint8_t MaxPublishers = 8;
+constexpr uint8_t MaxPublishers = FLOW_MQTT_MAX_PUBLISHERS;
 /** @brief Maximum number of `cfg/<module>` blocks tracked by `MQTTModule::cfgModules/topicCfgBlocks`. */
-constexpr uint8_t CfgTopicMax = 48;
+constexpr uint8_t CfgTopicMax = FLOW_MQTT_CFG_TOPIC_MAX;
+/** @brief Maximum registered publish producers. */
+constexpr uint8_t MaxProducers = FLOW_MQTT_MAX_PRODUCERS;
+/** @brief Maximum registered inbound topic handlers. */
+constexpr uint8_t MaxInboundHandlers = FLOW_MQTT_MAX_INBOUND_HANDLERS;
+/** @brief Number of retained transient ACK payload slots. */
+constexpr uint8_t MaxAckMessages = FLOW_MQTT_MAX_ACK_MESSAGES;
+/** @brief Maximum active publish jobs. */
+constexpr uint8_t MaxJobs = FLOW_MQTT_MAX_JOBS;
+/** @brief High-priority publish queue capacity. */
+constexpr uint16_t HighQueueCap = FLOW_MQTT_HIGH_QUEUE_CAP;
+/** @brief Normal-priority publish queue capacity. */
+constexpr uint16_t NormalQueueCap = FLOW_MQTT_NORMAL_QUEUE_CAP;
+/** @brief Low-priority publish queue capacity. */
+constexpr uint16_t LowQueueCap = FLOW_MQTT_LOW_QUEUE_CAP;
+
+static_assert(RxQueueLen > 0, "FLOW_MQTT_RX_QUEUE_LEN must be at least 1");
+static_assert(MaxPublishers > 0, "FLOW_MQTT_MAX_PUBLISHERS must be at least 1");
+static_assert(MaxProducers >= 4, "FLOW_MQTT_MAX_PRODUCERS must keep built-in MQTT producers");
+static_assert(MaxInboundHandlers > 0, "FLOW_MQTT_MAX_INBOUND_HANDLERS must be at least 1");
+static_assert(MaxAckMessages > 0, "FLOW_MQTT_MAX_ACK_MESSAGES must be at least 1");
+static_assert(MaxJobs > 0, "FLOW_MQTT_MAX_JOBS must be at least 1");
+static_assert(HighQueueCap > 0 && NormalQueueCap > 0 && LowQueueCap > 0, "MQTT queues must be non-empty");
 }  // namespace Capacity
 
 /** @brief MQTT default configuration values. */
@@ -93,39 +150,97 @@ constexpr uint32_t SensorMinPublishMs = 20000;
 
 /** @brief MQTT string/payload buffer sizes. */
 namespace Buffers {
+#ifndef FLOW_MQTT_BUF_HOST
+#define FLOW_MQTT_BUF_HOST 64
+#endif
+#ifndef FLOW_MQTT_BUF_USER
+#define FLOW_MQTT_BUF_USER 32
+#endif
+#ifndef FLOW_MQTT_BUF_PASS
+#define FLOW_MQTT_BUF_PASS 32
+#endif
+#ifndef FLOW_MQTT_BUF_BASE_TOPIC
+#define FLOW_MQTT_BUF_BASE_TOPIC 15
+#endif
+#ifndef FLOW_MQTT_BUF_DEVICE_ID
+#define FLOW_MQTT_BUF_DEVICE_ID 15
+#endif
+#ifndef FLOW_MQTT_BUF_TOPIC
+#define FLOW_MQTT_BUF_TOPIC 70
+#endif
+#ifndef FLOW_MQTT_BUF_DYNAMIC_TOPIC
+#define FLOW_MQTT_BUF_DYNAMIC_TOPIC 160
+#endif
+#ifndef FLOW_MQTT_BUF_RX_TOPIC
+#define FLOW_MQTT_BUF_RX_TOPIC 128
+#endif
+#ifndef FLOW_MQTT_BUF_RX_PAYLOAD
+#define FLOW_MQTT_BUF_RX_PAYLOAD 384
+#endif
+#ifndef FLOW_MQTT_BUF_ACK
+#define FLOW_MQTT_BUF_ACK 1536
+#endif
+#ifndef FLOW_MQTT_BUF_REPLY
+#define FLOW_MQTT_BUF_REPLY 1024
+#endif
+#ifndef FLOW_MQTT_BUF_STATE_CFG
+#define FLOW_MQTT_BUF_STATE_CFG 1536
+#endif
+#ifndef FLOW_MQTT_BUF_PUBLISH
+#define FLOW_MQTT_BUF_PUBLISH 1536
+#endif
+#ifndef FLOW_MQTT_BUF_CMD_NAME
+#define FLOW_MQTT_BUF_CMD_NAME 64
+#endif
+#ifndef FLOW_MQTT_BUF_CMD_ARGS
+#define FLOW_MQTT_BUF_CMD_ARGS 320
+#endif
+#ifndef FLOW_MQTT_BUF_CMD_MODULE
+#define FLOW_MQTT_BUF_CMD_MODULE 32
+#endif
+
 /** @brief MQTT config buffer length for `MQTTConfig::host` in `MQTTModule`. */
-constexpr size_t Host = 64;
+constexpr size_t Host = FLOW_MQTT_BUF_HOST;
 /** @brief MQTT config buffer length for `MQTTConfig::user` in `MQTTModule`. */
-constexpr size_t User = 32;
+constexpr size_t User = FLOW_MQTT_BUF_USER;
 /** @brief MQTT config buffer length for `MQTTConfig::pass` in `MQTTModule`. */
-constexpr size_t Pass = 32;
+constexpr size_t Pass = FLOW_MQTT_BUF_PASS;
 /** @brief MQTT config buffer length for `MQTTConfig::baseTopic` in `MQTTModule`. */
-constexpr size_t BaseTopic = 15;
+constexpr size_t BaseTopic = FLOW_MQTT_BUF_BASE_TOPIC;
 /** @brief MQTT device identifier buffer length used by `MQTTModule::deviceId` (e.g. `ESP32-XXXXXX`). */
-constexpr size_t DeviceId = 15;
+constexpr size_t DeviceId = FLOW_MQTT_BUF_DEVICE_ID;
 /** @brief MQTT full topic buffer length used by `MQTTModule` fixed topics (`cmd`, `ack`, `status`, `cfg/*`). */
-constexpr size_t Topic = 70;
+constexpr size_t Topic = FLOW_MQTT_BUF_TOPIC;
 /** @brief MQTT temporary topic buffer length for dynamic subtopics in `MQTTModule` (`cfg/<module>`, scheduler slots). */
-constexpr size_t DynamicTopic = 160;
+constexpr size_t DynamicTopic = FLOW_MQTT_BUF_DYNAMIC_TOPIC;
 /** @brief RX command topic buffer length inside `MQTTModule::RxMsg`. */
-constexpr size_t RxTopic = 128;
+constexpr size_t RxTopic = FLOW_MQTT_BUF_RX_TOPIC;
 /** @brief RX command payload buffer length inside `MQTTModule::RxMsg`. */
-constexpr size_t RxPayload = 384;
+constexpr size_t RxPayload = FLOW_MQTT_BUF_RX_PAYLOAD;
 /** @brief ACK JSON buffer length used by command/config acknowledge payloads. */
-constexpr size_t Ack = 1536;
+constexpr size_t Ack = FLOW_MQTT_BUF_ACK;
 /** @brief Command handler reply buffer length used by `MQTTModule` (`replyBuf`).
  *  Must accommodate larger structured replies (e.g. `alarms.list` snapshots). */
-constexpr size_t Reply = 1024;
+constexpr size_t Reply = FLOW_MQTT_BUF_REPLY;
 /** @brief Config JSON serialization buffer length used by module/state exports. */
-constexpr size_t StateCfg = 1536;
+constexpr size_t StateCfg = FLOW_MQTT_BUF_STATE_CFG;
 /** @brief Runtime publish payload buffer length used by `MQTTModule` shared scratch buffer. */
-constexpr size_t Publish = 1536;
+constexpr size_t Publish = FLOW_MQTT_BUF_PUBLISH;
 /** @brief Parsed command name buffer length in `MQTTModule::processRxCmd_`. */
-constexpr size_t CmdName = 64;
+constexpr size_t CmdName = FLOW_MQTT_BUF_CMD_NAME;
 /** @brief Serialized command args JSON buffer length in `MQTTModule::processRxCmd_`. */
-constexpr size_t CmdArgs = 320;
+constexpr size_t CmdArgs = FLOW_MQTT_BUF_CMD_ARGS;
 /** @brief Command module token buffer length in `MQTTModule::processRxCmd_`. */
-constexpr size_t CmdModule = 32;
+constexpr size_t CmdModule = FLOW_MQTT_BUF_CMD_MODULE;
+
+static_assert(Host >= 16, "FLOW_MQTT_BUF_HOST is too small");
+static_assert(BaseTopic >= 8, "FLOW_MQTT_BUF_BASE_TOPIC is too small");
+static_assert(DeviceId >= 12, "FLOW_MQTT_BUF_DEVICE_ID must fit ESP32-XXXXXX");
+static_assert(Topic >= 70, "FLOW_MQTT_BUF_TOPIC must fit existing Micronova topics");
+static_assert(RxTopic >= Topic, "FLOW_MQTT_BUF_RX_TOPIC must fit full subscribed topics");
+static_assert(RxPayload >= 32, "FLOW_MQTT_BUF_RX_PAYLOAD is too small");
+static_assert(Ack >= 128 && Reply >= 128 && Publish >= 128, "MQTT payload buffers are too small");
+static_assert(CmdName >= 16 && CmdArgs >= 64 && CmdModule >= 16, "MQTT command buffers are too small");
 }  // namespace Buffers
 
 /** @brief MQTT timing constants (runtime behavior). */
@@ -171,6 +286,45 @@ constexpr uint16_t MomentaryPulseMs = 500;
 constexpr uint32_t IoTracePeriodMs = 10000;
 /** @brief HA command payload buffer length for IO output switches (`IOModule::haSwitchPayloadOn_/Off_`). */
 constexpr size_t IoHaSwitchPayloadBuf = 128;
+
+/** @brief IO module compile-time capacities. Override per firmware env when a board needs less than FlowIO. */
+namespace Io {
+#ifndef FLOW_IO_MAX_ANALOG_ENDPOINTS
+#define FLOW_IO_MAX_ANALOG_ENDPOINTS 17
+#endif
+#ifndef FLOW_IO_MAX_DIGITAL_INPUTS
+#define FLOW_IO_MAX_DIGITAL_INPUTS 5
+#endif
+#ifndef FLOW_IO_MAX_DIGITAL_OUTPUTS
+#define FLOW_IO_MAX_DIGITAL_OUTPUTS 10
+#endif
+#ifndef FLOW_IO_ANALOG_CFG_SLOTS
+#define FLOW_IO_ANALOG_CFG_SLOTS FLOW_IO_MAX_ANALOG_ENDPOINTS
+#endif
+#ifndef FLOW_IO_DIGITAL_INPUT_CFG_SLOTS
+#define FLOW_IO_DIGITAL_INPUT_CFG_SLOTS 5
+#endif
+#ifndef FLOW_IO_DIGITAL_OUTPUT_CFG_SLOTS
+#define FLOW_IO_DIGITAL_OUTPUT_CFG_SLOTS FLOW_IO_MAX_DIGITAL_OUTPUTS
+#endif
+
+constexpr uint8_t MaxAnalogEndpoints = FLOW_IO_MAX_ANALOG_ENDPOINTS;
+constexpr uint8_t MaxDigitalInputs = FLOW_IO_MAX_DIGITAL_INPUTS;
+constexpr uint8_t MaxDigitalOutputs = FLOW_IO_MAX_DIGITAL_OUTPUTS;
+constexpr uint8_t AnalogConfigSlots = FLOW_IO_ANALOG_CFG_SLOTS;
+constexpr uint8_t DigitalInputConfigSlots = FLOW_IO_DIGITAL_INPUT_CFG_SLOTS;
+constexpr uint8_t DigitalOutputConfigSlots = FLOW_IO_DIGITAL_OUTPUT_CFG_SLOTS;
+
+static_assert(MaxAnalogEndpoints > 0, "FLOW_IO_MAX_ANALOG_ENDPOINTS must be at least 1");
+static_assert(MaxDigitalInputs > 0, "FLOW_IO_MAX_DIGITAL_INPUTS must be at least 1");
+static_assert(MaxDigitalOutputs > 0, "FLOW_IO_MAX_DIGITAL_OUTPUTS must be at least 1");
+static_assert(AnalogConfigSlots >= 6, "FLOW_IO_ANALOG_CFG_SLOTS must keep legacy a00..a05 config vars");
+static_assert(DigitalInputConfigSlots >= 5, "FLOW_IO_DIGITAL_INPUT_CFG_SLOTS must keep legacy i00..i04 config vars");
+static_assert(DigitalOutputConfigSlots >= 8, "FLOW_IO_DIGITAL_OUTPUT_CFG_SLOTS must keep legacy d00..d07 config vars");
+static_assert(AnalogConfigSlots >= MaxAnalogEndpoints, "analog config slots must cover runtime analog endpoints");
+static_assert(DigitalInputConfigSlots >= MaxDigitalInputs, "digital input config slots must cover runtime inputs");
+static_assert(DigitalOutputConfigSlots >= MaxDigitalOutputs, "digital output config slots must cover runtime outputs");
+}  // namespace Io
 
 /** @brief Alarm engine compile-time capacities and defaults. */
 namespace Alarm {
@@ -244,13 +398,25 @@ constexpr uint32_t MinLargestBlockBytes = 4096U;
 /** @brief Boot orchestration timings used in `main.cpp` staged startup. */
 namespace Boot {
 /** @brief Delay in ms before allowing MQTT connection attempts (`MQTTModule::setStartupReady`). */
+#if defined(FLOW_PROFILE_MICRONOVA)
+constexpr uint32_t WifiProvisioningStartDelayMs = 4000;
+constexpr uint32_t IoStartDelayMs = 8000;
+constexpr uint32_t MicronovaBusStartDelayMs = 12000;
+constexpr uint32_t MicronovaBoilerStartDelayMs = 16000;
+constexpr uint32_t MqttStartDelayMs = 22000;
+constexpr uint32_t WebInterfaceStartDelayMs = 34000;
+#else
+constexpr uint32_t WifiProvisioningStartDelayMs = 0;
+constexpr uint32_t IoStartDelayMs = 0;
+constexpr uint32_t MicronovaBusStartDelayMs = 0;
+constexpr uint32_t MicronovaBoilerStartDelayMs = 0;
 constexpr uint32_t MqttStartDelayMs = 1500;
+constexpr uint32_t WebInterfaceStartDelayMs = 10000;
+#endif
 /** @brief Delay in ms before enabling HA auto-discovery publishing (`HAModule::setStartupReady`). */
 constexpr uint32_t HaStartDelayMs = 15000;
 /** @brief Delay in ms before enabling PoolLogic control loop (`PoolLogicModule::setStartupReady`). */
 constexpr uint32_t PoolLogicStartDelayMs = 10000;
-/** @brief Delay in ms before releasing the Supervisor web task (`WebInterfaceModule`). */
-constexpr uint32_t WebInterfaceStartDelayMs = 10000;
 }  // namespace Boot
 
 /** @brief Firmware update networking limits shared by the update module. */

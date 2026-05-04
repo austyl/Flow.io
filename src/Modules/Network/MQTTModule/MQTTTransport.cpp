@@ -110,6 +110,26 @@ void MQTTModule::onConnect_(bool)
     (void)esp_mqtt_client_subscribe(client_, topicCmd_, 0);
     (void)esp_mqtt_client_subscribe(client_, topicCfgSet_, 1);
 
+    const MqttInboundHandler* handlers[MaxInboundHandlers]{};
+    uint8_t handlerCount = 0;
+    portENTER_CRITICAL(&inboundMux_);
+    handlerCount = inboundHandlerCount_;
+    if (handlerCount > MaxInboundHandlers) handlerCount = MaxInboundHandlers;
+    for (uint8_t i = 0; i < handlerCount; ++i) {
+        handlers[i] = inboundHandlers_[i];
+    }
+    portEXIT_CRITICAL(&inboundMux_);
+
+    for (uint8_t i = 0; i < handlerCount; ++i) {
+        const MqttInboundHandler* h = handlers[i];
+        if (!h || !h->topicSuffix || h->topicSuffix[0] == '\0') continue;
+        char topic[Limits::Mqtt::Buffers::Topic] = {0};
+        formatTopic(topic, sizeof(topic), h->topicSuffix);
+        if (topic[0] != '\0') {
+            (void)esp_mqtt_client_subscribe(client_, topic, 0);
+        }
+    }
+
     retryCount_ = 0;
     retryDelayMs_ = Limits::Mqtt::Backoff::MinMs;
     setState_(MQTTState::Connected);

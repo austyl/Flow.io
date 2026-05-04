@@ -102,8 +102,27 @@ constexpr uint8_t FlowRemoteDashboardSlotReservedCount = 8;
 constexpr uint8_t FlowRemoteReservedCount = 48;
 constexpr DataKey FlowRemoteEndExclusive = FlowRemoteBase + FlowRemoteReservedCount;
 
+/** @brief Reserved base for Micronova boiler runtime keys. */
+constexpr DataKey MicronovaBase = 192;
+constexpr DataKey MicronovaOnline = MicronovaBase + 0;
+constexpr DataKey MicronovaStoveStateCode = MicronovaBase + 1;
+constexpr DataKey MicronovaStoveStateText = MicronovaBase + 2;
+constexpr DataKey MicronovaPowerState = MicronovaBase + 3;
+constexpr DataKey MicronovaPowerLevel = MicronovaBase + 4;
+constexpr DataKey MicronovaFanSpeed = MicronovaBase + 5;
+constexpr DataKey MicronovaTargetTemperature = MicronovaBase + 6;
+constexpr DataKey MicronovaRoomTemperature = MicronovaBase + 7;
+constexpr DataKey MicronovaFumesTemperature = MicronovaBase + 8;
+constexpr DataKey MicronovaWaterTemperature = MicronovaBase + 9;
+constexpr DataKey MicronovaWaterPressure = MicronovaBase + 10;
+constexpr DataKey MicronovaAlarmCode = MicronovaBase + 11;
+constexpr DataKey MicronovaLastUpdateMs = MicronovaBase + 12;
+constexpr DataKey MicronovaLastCommand = MicronovaBase + 13;
+constexpr uint8_t MicronovaReservedCount = 16;
+constexpr DataKey MicronovaEndExclusive = MicronovaBase + MicronovaReservedCount;
+
 /** @brief Upper bound for currently reserved keys. */
-constexpr DataKey ReservedMax = FlowRemoteEndExclusive - 1;
+constexpr DataKey ReservedMax = MicronovaEndExclusive - 1;
 
 static_assert(WifiReady < TimeReady, "DataKey ordering invariant broken");
 static_assert(TimeReady < MqttReady, "DataKey ordering invariant broken");
@@ -114,5 +133,7 @@ static_assert(PoolDeviceStateEndExclusive <= PoolDeviceMetricsBase, "Pool-device
 static_assert(PoolDeviceMetricsEndExclusive <= FlowRemoteBase, "Pool-device and flow-remote key ranges overlap");
 static_assert((FlowRemoteBase + FlowRemoteReservedCount) == FlowRemoteEndExclusive, "Flow remote key bounds inconsistent");
 static_assert(FlowRemoteEndExclusive <= (ReservedMax + 1), "Flow remote key range exceeds reserved max");
+static_assert(FlowRemoteEndExclusive <= MicronovaBase, "Flow remote and Micronova key ranges overlap");
+static_assert(MicronovaEndExclusive <= (ReservedMax + 1), "Micronova key range exceeds reserved max");
 
 }  // namespace DataKeys

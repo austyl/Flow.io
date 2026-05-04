@@ -277,13 +277,13 @@
       mask-image: var(--menu-icon-flowcfg-url);
     }
     body.web-icons-disabled .menu-item .ico {
-      width: 21px;
-      height: 21px;
-      flex: 0 0 21px;
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
       border-radius: 50%;
       background: var(--menu-inactive-fg);
       color: #FFFFFF;
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 800;
       line-height: 1;
       -webkit-mask-image: none;
@@ -356,6 +356,11 @@
       .drawer.collapsed .menu-item .ico {
         width: 20px;
         height: 20px;
+      }
+      body.web-icons-disabled .drawer.collapsed .menu-item .ico {
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
       }
       .drawer.collapsed .app-icon-shell {
         display: inline-flex;

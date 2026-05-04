@@ -24,7 +24,7 @@ enum class ConfigModuleId : uint8_t {
     PoolDevice,
     Alarms,
     Log,
-    Electrolysis
+    Micronova
 };
 
 /** @brief Payload for ConfigChanged events. */
@@ -91,3 +91,26 @@ struct DataChangedPayload {
     DataKey id;
 };
 static_assert(sizeof(DataChangedPayload) <= 48, "DataChangedPayload too large for EventBus queue");
+
+struct MicronovaValueUpdatedPayload {
+    char key[24];
+    float value = 0.0f;
+    int16_t raw = 0;
+};
+static_assert(sizeof(MicronovaValueUpdatedPayload) <= 48, "MicronovaValueUpdatedPayload too large for EventBus queue");
+
+struct MicronovaCommandPowerPayload {
+    uint8_t on = 0;
+};
+
+struct MicronovaCommandValuePayload {
+    uint8_t value = 0;
+};
+
+struct MicronovaCommandRawWritePayload {
+    uint8_t writeCode = 0;
+    uint8_t address = 0;
+    uint8_t value = 0;
+    uint8_t repeatCount = 1;
+    uint16_t repeatDelayMs = 100;
+};

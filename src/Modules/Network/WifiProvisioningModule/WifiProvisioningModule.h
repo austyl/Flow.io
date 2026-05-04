@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file WifiProvisioningModule.h
- * @brief Supervisor-only WiFi provisioning overlay (STA fallback to AP portal).
+ * @brief WiFi provisioning overlay (STA fallback to AP portal).
  */
 
 #include "Core/Module.h"
@@ -29,7 +29,9 @@ public:
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
+    void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
+    uint32_t startDelayMs() const override { return Limits::Boot::WifiProvisioningStartDelayMs; }
 
 private:
     enum class PortalReason : uint8_t {
@@ -65,6 +67,18 @@ private:
     wifi_event_id_t wifiEventHandlerId_ = 0;
     char apSsid_[40] = {0};
     char apPass_[32] = {0};
+#if defined(FLOW_PROFILE_DISPLAY)
+    WiFiServer portalServer_{80};
+    bool portalHttpActive_ = false;
+    bool portalCredentialsSaved_ = false;
+    char portalReqLine_[384] = {0};
+    char portalPath_[384] = {0};
+    char portalSsid_[33] = {0};
+    char portalPass_[65] = {0};
+    char portalJson_[320] = {0};
+    char portalEscSsid_[67] = {0};
+    char portalEscPass_[131] = {0};
+#endif
 
     bool isWebReachable_() const;
     NetworkAccessMode mode_() const;
@@ -86,6 +100,19 @@ private:
     bool isStaConnected_() const;
     bool getStaIp_(char* out, size_t len) const;
     bool getApIp_(char* out, size_t len) const;
+#if defined(FLOW_PROFILE_DISPLAY)
+    void startLightPortal_();
+    void stopLightPortal_();
+    void handleLightPortalClient_();
+    void sendPortalPage_(WiFiClient& client, const char* message, bool success);
+    void sendHttpHeader_(WiFiClient& client, const char* status, const char* contentType);
+    bool readRequestLine_(WiFiClient& client, char* out, size_t outLen);
+    bool handleSaveRequest_(const char* query);
+    static bool getQueryParam_(const char* query, const char* key, char* out, size_t outLen);
+    static bool urlDecode_(const char* in, size_t len, char* out, size_t outLen);
+    static int hexNibble_(char c);
+    static bool jsonEscape_(const char* in, char* out, size_t outLen);
+#endif
 
     NetworkAccessService netAccessSvc_{
         ServiceBinding::bind<&WifiProvisioningModule::isWebReachable_>,

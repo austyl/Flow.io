@@ -114,6 +114,9 @@ bool LogHub::registerConfigVar_(ModuleRegistration& slot)
 
     cfg_->registerVar(slot.minLevelVar, cfgModuleId_, cfgLocalBranchId_);
     cfg_->loadPersistentVar(slot.minLevelVar);
+#if defined(FLOW_PROFILE_MICRONOVA)
+    slot.minLevelRaw = (int32_t)LogLevel::Debug;
+#endif
     slot.cfgRegistered = true;
     return true;
 }
@@ -191,7 +194,11 @@ bool LogHub::registerModule(LogModuleId moduleId, const char* moduleName)
         if (moduleCount_ >= MAX_REGISTERED_MODULES) return false;
         slot = &modules_[moduleCount_++];
         slot->id = moduleId;
+#if defined(FLOW_PROFILE_MICRONOVA)
+        slot->minLevelRaw = (int32_t)LogLevel::Debug;
+#else
         slot->minLevelRaw = (int32_t)kDefaultMinLevel;
+#endif
     }
 
     strncpy(slot->name, moduleName, sizeof(slot->name) - 1);
@@ -223,7 +230,12 @@ bool LogHub::setModuleMinLevel(LogModuleId moduleId, LogLevel level)
 {
     ModuleRegistration* slot = findModule_(moduleId);
     if (!slot) return false;
+#if defined(FLOW_PROFILE_MICRONOVA)
+    (void)level;
+    slot->minLevelRaw = (int32_t)LogLevel::Debug;
+#else
     slot->minLevelRaw = (int32_t)level;
+#endif
     return true;
 }
 

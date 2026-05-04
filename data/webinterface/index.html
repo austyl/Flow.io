@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Superviseur Flow.io</title>
+  <title>Flow.io</title>
   <link id="appFavicon" rel="icon" href="data:," />
   <style>
     html, body {
@@ -104,6 +104,7 @@
           })
           .then(function(data) {
             if (!data || data.ok !== true) throw new Error('meta');
+            window.__FLOW_WEB_META__ = data;
             var version = '';
             if (typeof data.web_asset_version === 'string') {
               version = data.web_asset_version.trim();

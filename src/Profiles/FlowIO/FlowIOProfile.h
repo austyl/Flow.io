@@ -5,7 +5,6 @@
 #include "Modules/AlarmModule/AlarmModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 #include "Modules/EventBusModule/EventBusModule.h"
-#include "Modules/ElectrolysisModule/ElectrolysisModule.h"
 #include "Modules/HMIModule/HMIModule.h"
 #include "Modules/IOModule/IOBus/OneWireBus.h"
 #include "Modules/IOModule/IOModule.h"
@@ -13,6 +12,7 @@
 #include "Modules/Logs/LogHubModule/LogHubModule.h"
 #include "Modules/Logs/LogSerialSinkModule/LogSerialSinkModule.h"
 #include "Modules/Network/HAModule/HAModule.h"
+#include "Modules/Network/HmiUdpServerModule/HmiUdpServerModule.h"
 #include "Modules/Network/I2CCfgServerModule/I2CCfgServerModule.h"
 #include "Modules/Network/MQTTModule/MQTTModule.h"
 #include "Modules/Network/TimeModule/TimeModule.h"
@@ -33,7 +33,7 @@ namespace FlowIO {
 struct ModuleInstances {
     explicit ModuleInstances(const BoardSpec& board);
 
-    WifiModule wifiModule{};
+    WifiModule wifiModule;
     TimeModule timeModule{};
     I2CCfgServerModule i2cCfgServerModule;
     CommandModule commandModule{};
@@ -48,9 +48,9 @@ struct ModuleInstances {
     LogHubModule logHubModule{};
     EventBusModule eventBusModule{};
     AlarmModule alarmModule{};
+    HmiUdpServerModule hmiUdpServerModule{};
     HMIModule hmiModule{};
-    IOModule ioModule{};
-    ElectrolysisModule electrolysisModule{};
+    IOModule ioModule;
     PoolDeviceModule poolDeviceModule{};
     PoolLogicModule poolLogicModule{};
     OneWireBus oneWireWater{19};

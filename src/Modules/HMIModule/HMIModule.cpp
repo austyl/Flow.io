@@ -10,6 +10,7 @@
 #include "Core/EventBus/EventPayloads.h"
 #include "Core/AlarmIds.h"
 #include "Domain/Pool/PoolBindings.h"
+#include "Domain/Pool/PoolDefaults.h"
 #include "Modules/IOModule/IORuntime.h"
 #include "Modules/Network/MQTTModule/MQTTRuntime.h"
 #include "Modules/Network/TimeModule/TimeRuntime.h"
@@ -60,6 +61,7 @@ static constexpr uint32_t kHomePublishTime = 1UL << 7;
 static constexpr uint32_t kHomePublishDate = 1UL << 8;
 static constexpr uint32_t kHomePublishAlarmBits = 1UL << 9;
 static constexpr uint32_t kHomePublishErrorMessage = 1UL << 10;
+static constexpr uint32_t kHomePublishPsi = 1UL << 11;
 static constexpr uint32_t kHomePublishAll = kHomePublishWaterTemp |
                                             kHomePublishAirTemp |
                                             kHomePublishPh |
@@ -70,14 +72,22 @@ static constexpr uint32_t kHomePublishAll = kHomePublishWaterTemp |
                                             kHomePublishTime |
                                             kHomePublishDate |
                                             kHomePublishAlarmBits |
-                                            kHomePublishErrorMessage;
+                                            kHomePublishErrorMessage |
+                                            kHomePublishPsi;
 static constexpr uint32_t kClockPublishCheckMs = 1000U;
 static constexpr uint32_t kInvalidClockStamp = 0xFFFFFFFFUL;
 static constexpr uint32_t kRtcFallbackDelayMs = 30000U;
 static constexpr uint32_t kRtcFallbackRetryMs = 10000U;
 static constexpr uint32_t kRtcPushRetryMs = 60000U;
 static constexpr uint16_t kNextionRtcReadTimeoutMs = 180U;
-static constexpr uint32_t kNextionDisplayVersionCurrent = 1U;
+static constexpr uint32_t kNextionDisplayVersionV1 = 1U;
+static constexpr uint32_t kNextionDisplayVersionLegacyV2 = 2U;
+
+static bool isSupportedNextionDisplayVersion_(uint32_t version)
+{
+    return version == kNextionDisplayVersionV1 ||
+           version == kNextionDisplayVersionLegacyV2;
+}
 
 static const char* const kMonthNamesFr[] = {
     "Janvier",
@@ -112,6 +122,22 @@ static uint16_t gaugePercentFromSetpoint_(float value, float setpoint)
     if (normalized <= 0.0f) return 0U;
     if (normalized >= 280.0f) return 280U;
     return (uint16_t)lroundf(normalized);
+}
+
+static int8_t nextionV2SignedNeedle_(float value, float setpoint, float nearLimit, float farLimit)
+{
+    const float delta = value - setpoint;
+    if (fabsf(delta) <= nearLimit) return 0;
+    if (delta > nearLimit && delta <= farLimit) return 1;
+    if (delta < -nearLimit && delta >= -farLimit) return -1;
+    return (delta > 0.0f) ? 2 : -2;
+}
+
+static uint8_t nextionV2PsiNeedle_(float psi, float lowThreshold, float highThreshold)
+{
+    if (psi <= lowThreshold) return 0U;
+    if (psi > highThreshold) return 4U;
+    return 2U;
 }
 
 static inline uint8_t normalizeLedPage_(uint8_t page)
@@ -283,8 +309,12 @@ static const ConfigMenuHint kHints[] = {
 
 void HMIModule::applyOutputConfig_()
 {
-    IHmiDriver* wantedDriver =
-        (cfgData_.nextionEnabled && !nextionDisabledByVersion_) ? static_cast<IHmiDriver*>(&nextion_) : nullptr;
+    IHmiDriver* wantedDriver = nullptr;
+    if (cfgData_.remoteUdpEnabled) {
+        wantedDriver = static_cast<IHmiDriver*>(&remoteUdp_);
+    } else if (cfgData_.nextionEnabled && !nextionDisabledByVersion_) {
+        wantedDriver = static_cast<IHmiDriver*>(&nextion_);
+    }
     if (driver_ != wantedDriver) {
         driver_ = wantedDriver;
         driverReady_ = false;
@@ -302,6 +332,12 @@ void HMIModule::applyOutputConfig_()
         wifiBlinkOn_ = false;
     }
     ledMaskValid_ = false;
+}
+
+void HMIModule::setRemoteUdpServer(HmiUdpServerModule* server)
+{
+    remoteUdpServer_ = server;
+    remoteUdp_.setUdpServer(server);
 }
 
 bool HMIModule::requestRefresh_()
@@ -360,6 +396,7 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     cfg.registerVar(ledsEnabledVar_);
     cfg.registerVar(nextionEnabledVar_);
+    cfg.registerVar(remoteUdpEnabledVar_);
     cfg.registerVar(veniceEnabledVar_);
     cfg.registerVar(veniceTxGpioVar_);
 
@@ -430,9 +467,16 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     nextionVersion_ = 0U;
     phIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPh].ioId;
     orpIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotOrp].ioId;
+    psiIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPsi].ioId;
     airTempIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotAirTemp].ioId;
     poolLevelIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotPoolLevel].ioId;
     waterTempIoId_ = PoolBinding::kSensorBindings[PoolBinding::kSensorSlotWaterTemp].ioId;
+    phRuntimeIndex_ = kInvalidRuntimeIndex;
+    orpRuntimeIndex_ = kInvalidRuntimeIndex;
+    psiRuntimeIndex_ = kInvalidRuntimeIndex;
+    waterTempRuntimeIndex_ = kInvalidRuntimeIndex;
+    airTempRuntimeIndex_ = kInvalidRuntimeIndex;
+    poolLevelRuntimeIndex_ = kInvalidRuntimeIndex;
     homeErrorMessage_[0] = '\0';
 
     LOGI("HMI service registered with driver=%s led_panel=%s",
@@ -487,6 +531,7 @@ void HMIModule::refreshHomeBindings_()
         bool foundPoolLevel = false;
         bool foundPh = false;
         bool foundOrp = false;
+        bool foundPsi = false;
         bool foundWaterTemp = false;
         bool foundAirTemp = false;
         bool foundFiltrationSlot = false;
@@ -515,6 +560,11 @@ void HMIModule::refreshHomeBindings_()
             foundOrp = findJsonUInt16_(jsonBuf, "orp_io_id", ioId);
             if (foundOrp) {
                 orpIoId_ = (IoId)ioId;
+            }
+            ioId = (uint16_t)psiIoId_;
+            foundPsi = findJsonUInt16_(jsonBuf, "psi_io_id", ioId);
+            if (foundPsi) {
+                psiIoId_ = (IoId)ioId;
             }
             ioId = (uint16_t)waterTempIoId_;
             foundWaterTemp = findJsonUInt16_(jsonBuf, "wat_temp_io_id", ioId);
@@ -563,12 +613,13 @@ void HMIModule::refreshHomeBindings_()
                 fillingDeviceSlot_ = (uint8_t)slot;
             }
 
-            LOGD("HMI poollogic cfg sensors_trunc=%u device_trunc=%u keys lvl=%u ph=%u orp=%u wat=%u air=%u filtr=%u php=%u orpp=%u robot=%u fill=%u",
+            LOGD("HMI poollogic cfg sensors_trunc=%u device_trunc=%u keys lvl=%u ph=%u orp=%u psi=%u wat=%u air=%u filtr=%u php=%u orpp=%u robot=%u fill=%u",
                  sensorsTruncated ? 1U : 0U,
                  truncated ? 1U : 0U,
                  foundPoolLevel ? 1U : 0U,
                  foundPh ? 1U : 0U,
                  foundOrp ? 1U : 0U,
+                 foundPsi ? 1U : 0U,
                  foundWaterTemp ? 1U : 0U,
                  foundAirTemp ? 1U : 0U,
                  foundFiltrationSlot ? 1U : 0U,
@@ -583,15 +634,18 @@ void HMIModule::refreshHomeBindings_()
 
     (void)resolveIoRuntimeIndex_(phIoId_, phRuntimeIndex_);
     (void)resolveIoRuntimeIndex_(orpIoId_, orpRuntimeIndex_);
+    (void)resolveIoRuntimeIndex_(psiIoId_, psiRuntimeIndex_);
     (void)resolveIoRuntimeIndex_(waterTempIoId_, waterTempRuntimeIndex_);
     (void)resolveIoRuntimeIndex_(airTempIoId_, airTempRuntimeIndex_);
     (void)resolveIoRuntimeIndex_(poolLevelIoId_, poolLevelRuntimeIndex_);
 
-    LOGD("HMI home bindings ph=%u(rt=%u) orp=%u(rt=%u) wat=%u(rt=%u) air=%u(rt=%u) lvl=%u(rt=%u)",
+    LOGD("HMI home bindings ph=%u(rt=%u) orp=%u(rt=%u) psi=%u(rt=%u) wat=%u(rt=%u) air=%u(rt=%u) lvl=%u(rt=%u)",
          (unsigned)phIoId_,
          (unsigned)phRuntimeIndex_,
          (unsigned)orpIoId_,
          (unsigned)orpRuntimeIndex_,
+         (unsigned)psiIoId_,
+         (unsigned)psiRuntimeIndex_,
          (unsigned)waterTempIoId_,
          (unsigned)waterTempRuntimeIndex_,
          (unsigned)airTempIoId_,
@@ -861,6 +915,78 @@ bool HMIModule::publishHomeAlarmBits_()
     return driver_ && driver_->publishHomeAlarmBits(buildHomeAlarmBits_());
 }
 
+bool HMIModule::publishNextionV2Needles_(uint32_t pending, uint32_t& sent)
+{
+    sent = 0U;
+    if (!driver_ || !driverReady_) return false;
+    if (driver_ != static_cast<IHmiDriver*>(&nextion_)) return false;
+    if (!nextion_.isLegacyV2()) return false;
+
+    NextionV2NeedlePublish publish{};
+    publish.ph = (pending & kHomePublishPhGauge) != 0U;
+    publish.orp = (pending & kHomePublishOrpGauge) != 0U;
+    publish.psi = (pending & kHomePublishPsi) != 0U;
+    if (!publish.ph && !publish.orp && !publish.psi) return true;
+
+    float phSetpoint = PoolDefaults::PhSetpoint;
+    float orpSetpoint = PoolDefaults::OrpSetpoint;
+    float psiLowThreshold = PoolDefaults::PsiLow;
+    float psiHighThreshold = PoolDefaults::PsiHigh;
+    if (cfgSvc_ && cfgSvc_->toJsonModule) {
+        char jsonBuf[kPoolLogicPidJsonBufSize]{};
+        bool truncated = false;
+        if (cfgSvc_->toJsonModule(cfgSvc_->ctx,
+                                  kPoolLogicPidModule,
+                                  jsonBuf,
+                                  sizeof(jsonBuf),
+                                  &truncated)) {
+            float f = 0.0f;
+            if (findJsonFloat_(jsonBuf, "ph_setpoint", f)) phSetpoint = f;
+            if (findJsonFloat_(jsonBuf, "orp_setpoint", f)) orpSetpoint = f;
+            if (findJsonFloat_(jsonBuf, "psi_low_th", f)) psiLowThreshold = f;
+            if (findJsonFloat_(jsonBuf, "psi_high_th", f)) psiHighThreshold = f;
+        }
+    }
+
+    uint32_t needleSent = 0U;
+    if (publish.ph) {
+        float ph = 0.0f;
+        if (dsSvc_ &&
+            dsSvc_->store &&
+            phRuntimeIndex_ != kInvalidRuntimeIndex &&
+            ioEndpointFloat(*dsSvc_->store, phRuntimeIndex_, ph)) {
+            publish.phNeedle = nextionV2SignedNeedle_(ph, phSetpoint, 0.1f, 0.3f);
+        }
+        needleSent |= kHomePublishPhGauge;
+    }
+    if (publish.orp) {
+        float orp = 0.0f;
+        if (dsSvc_ &&
+            dsSvc_->store &&
+            orpRuntimeIndex_ != kInvalidRuntimeIndex &&
+            ioEndpointFloat(*dsSvc_->store, orpRuntimeIndex_, orp)) {
+            publish.orpNeedle = nextionV2SignedNeedle_(orp, orpSetpoint, 70.0f, 200.0f);
+        }
+        needleSent |= kHomePublishOrpGauge;
+    }
+    if (publish.psi) {
+        float psi = 0.0f;
+        if (dsSvc_ &&
+            dsSvc_->store &&
+            psiRuntimeIndex_ != kInvalidRuntimeIndex &&
+            ioEndpointFloat(*dsSvc_->store, psiRuntimeIndex_, psi)) {
+            publish.psiNeedle = nextionV2PsiNeedle_(psi, psiLowThreshold, psiHighThreshold);
+        }
+        needleSent |= kHomePublishPsi;
+    }
+
+    if (needleSent == 0U) return false;
+    if (!nextion_.publishV2Needles(publish)) return false;
+
+    sent = needleSent;
+    return true;
+}
+
 bool HMIModule::readNextionRtcAndSetTime_()
 {
     if (!driver_ || !timeSvc_ || !timeSvc_->setExternalEpoch) return false;
@@ -1033,6 +1159,8 @@ void HMIModule::flushHomePublish_()
     if (pending == 0U) return;
 
     uint32_t sent = 0U;
+    const bool nextionV2 = driver_ == static_cast<IHmiDriver*>(&nextion_) && nextion_.isLegacyV2();
+
     if ((pending & kHomePublishWaterTemp) != 0U && publishHomeText_(HmiHomeTextField::WaterTemp)) {
         sent |= kHomePublishWaterTemp;
     }
@@ -1045,10 +1173,14 @@ void HMIModule::flushHomePublish_()
     if ((pending & kHomePublishOrp) != 0U && publishHomeText_(HmiHomeTextField::Orp)) {
         sent |= kHomePublishOrp;
     }
-    if ((pending & kHomePublishPhGauge) != 0U && publishHomeGaugePercent_(HmiHomeGaugeField::PhPercent)) {
+    if (!nextionV2 &&
+        (pending & kHomePublishPhGauge) != 0U &&
+        publishHomeGaugePercent_(HmiHomeGaugeField::PhPercent)) {
         sent |= kHomePublishPhGauge;
     }
-    if ((pending & kHomePublishOrpGauge) != 0U && publishHomeGaugePercent_(HmiHomeGaugeField::OrpPercent)) {
+    if (!nextionV2 &&
+        (pending & kHomePublishOrpGauge) != 0U &&
+        publishHomeGaugePercent_(HmiHomeGaugeField::OrpPercent)) {
         sent |= kHomePublishOrpGauge;
     }
     if ((pending & kHomePublishStateBits) != 0U && publishHomeStateBits_()) {
@@ -1065,6 +1197,14 @@ void HMIModule::flushHomePublish_()
     }
     if ((pending & kHomePublishErrorMessage) != 0U && publishHomeText_(HmiHomeTextField::ErrorMessage)) {
         sent |= kHomePublishErrorMessage;
+    }
+    if (nextionV2) {
+        uint32_t needleSent = 0U;
+        if (publishNextionV2Needles_(pending, needleSent)) {
+            sent |= needleSent;
+        }
+    } else if ((pending & kHomePublishPsi) != 0U) {
+        sent |= kHomePublishPsi;
     }
 
     if (sent == 0U) return;
@@ -1197,7 +1337,7 @@ void HMIModule::onEvent_(const Event& e)
         if (p->module[0] && strncmp(p->module, kHmiModulePrefix, strlen(kHmiModulePrefix)) == 0) {
             applyOutputConfig_();
             ledDirty = cfgData_.ledsEnabled;
-            if (cfgData_.nextionEnabled) {
+            if (cfgData_.nextionEnabled || cfgData_.remoteUdpEnabled) {
                 homePublishMask |= kHomePublishAll;
             }
         }
@@ -1224,6 +1364,9 @@ void HMIModule::onEvent_(const Event& e)
         } else if (orpRuntimeIndex_ != kInvalidRuntimeIndex &&
                    p->id == (DataKey)(DATAKEY_IO_BASE + orpRuntimeIndex_)) {
             homePublishMask |= kHomePublishOrp | kHomePublishOrpGauge;
+        } else if (psiRuntimeIndex_ != kInvalidRuntimeIndex &&
+                   p->id == (DataKey)(DATAKEY_IO_BASE + psiRuntimeIndex_)) {
+            homePublishMask |= kHomePublishPsi;
         } else if (p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + filtrationDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + phPumpDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + orpPumpDeviceSlot_) ||
@@ -1699,14 +1842,18 @@ void HMIModule::loop()
                 nextionVersion_ = nextion_.displayVersion();
                 if (nextionVersionDetected_) {
                     LOGI("Ecran Nextion version %04lu detecte.", (unsigned long)nextionVersion_);
-                    if (nextionVersion_ != kNextionDisplayVersionCurrent) {
-                        LOGW("Ecran Nextion version %04lu non supportee (attendu %04lu). Affichage Nextion desactive.",
+                    if (!isSupportedNextionDisplayVersion_(nextionVersion_)) {
+                        LOGW("Ecran Nextion version %04lu non supportee (supportees %04lu,%04lu). Affichage Nextion desactive.",
                              (unsigned long)nextionVersion_,
-                             (unsigned long)kNextionDisplayVersionCurrent);
+                             (unsigned long)kNextionDisplayVersionV1,
+                             (unsigned long)kNextionDisplayVersionLegacyV2);
                         nextionDisabledByVersion_ = true;
                         applyOutputConfig_();
                         vTaskDelay(pdMS_TO_TICKS(25));
                         return;
+                    }
+                    if (nextionVersion_ == kNextionDisplayVersionLegacyV2) {
+                        LOGI("Ecran Nextion V2 detecte: rendu Home V1 avec aiguilles active.");
                     }
                 } else {
                     LOGW("Ecran Nextion version non detectee. Affichage Nextion desactive.");
@@ -1718,6 +1865,12 @@ void HMIModule::loop()
             }
             viewDirty_ = true;
             queueHomePublish_(kHomePublishAll);
+        }
+
+        if (driverReady_ && driver_ == static_cast<IHmiDriver*>(&remoteUdp_) &&
+            remoteUdpServer_ && remoteUdpServer_->consumeFullRefreshRequested()) {
+            queueHomePublish_(kHomePublishAll);
+            viewDirty_ = true;
         }
 
         HmiEvent ev{};

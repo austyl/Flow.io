@@ -39,6 +39,30 @@ bool MQTTModule::registerProducer(const MqttPublishProducer* producer)
     return ok;
 }
 
+bool MQTTModule::registerInboundHandler(const MqttInboundHandler* handler)
+{
+    if (!handler || !handler->topicSuffix || handler->topicSuffix[0] == '\0' || !handler->onMessage) {
+        return false;
+    }
+
+    bool ok = false;
+    portENTER_CRITICAL(&inboundMux_);
+    for (uint8_t i = 0; i < inboundHandlerCount_; ++i) {
+        const MqttInboundHandler* h = inboundHandlers_[i];
+        if (h && h->topicSuffix && strcmp(h->topicSuffix, handler->topicSuffix) == 0) {
+            inboundHandlers_[i] = handler;
+            ok = true;
+            break;
+        }
+    }
+    if (!ok && inboundHandlerCount_ < MaxInboundHandlers) {
+        inboundHandlers_[inboundHandlerCount_++] = handler;
+        ok = true;
+    }
+    portEXIT_CRITICAL(&inboundMux_);
+    return ok;
+}
+
 const MqttPublishProducer* MQTTModule::findProducer_(uint8_t producerId) const
 {
     const MqttPublishProducer* out = nullptr;

@@ -25,6 +25,10 @@
     let supervisorFirmwareVersion = '-';
     let supervisorUptimeMs = 0;
     let supervisorHeap = {};
+    let webProfileName = 'Supervisor';
+    let webProfileKey = 'supervisor';
+    let webLocalConfigLabel = 'Config Store Supervisor';
+    let webRemoteConfigEnabled = true;
     let hideMenuSvg = false;
     let disableWebIcons = false;
     let unifyStatusCardIcons = false;
@@ -113,6 +117,112 @@
       return '-';
     }
 
+    function ingestWebProfileMeta(data) {
+      if (!data || typeof data !== 'object') return;
+      const rawProfile = String(data.profile_name || data.profile || '').trim();
+      if (rawProfile) {
+        webProfileName = rawProfile;
+        webProfileKey = rawProfile.toLowerCase();
+      }
+      const label = String(data.local_config_label || '').trim();
+      webLocalConfigLabel = label || ('Config Store ' + webProfileName);
+      webRemoteConfigEnabled = data.remote_config_enabled !== false;
+      runtimeMeasureDomainKeys = runtimeDomainsForProfile();
+      ensureRuntimeDomainState();
+      runtimeManifestDomainCache = null;
+      runtimeManifestDomainLoadPromise = null;
+      if (isMicronovaProfile()) {
+        poolMeasureDomainState.micronova.active = true;
+        poolMeasureDomainState.mqtt.active = true;
+      }
+      document.body.classList.toggle('profile-micronova', isMicronovaProfile());
+      applyProfileUiText();
+      renderPoolMeasureDomainButtons();
+    }
+
+    function isMicronovaProfile() {
+      return webProfileKey === 'micronova';
+    }
+
+    function runtimeDomainsForProfile() {
+      return isMicronovaProfile()
+        ? ['micronova', 'mqtt', 'system', 'wifi']
+        : ['pool', 'mqtt', 'system', 'wifi', 'alarm'];
+    }
+
+    function createRuntimeDomainState() {
+      return { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 };
+    }
+
+    function ensureRuntimeDomainState() {
+      runtimeMeasureDomainKeys.forEach((domainKey) => {
+        if (!poolMeasureDomainState[domainKey]) {
+          poolMeasureDomainState[domainKey] = createRuntimeDomainState();
+        }
+      });
+    }
+
+    function setLabelForInput(inputId, text) {
+      const label = document.querySelector('label[for="' + inputId + '"]');
+      if (label) label.textContent = text;
+    }
+
+    function hideFieldForInput(inputId, hidden) {
+      const input = document.getElementById(inputId);
+      const field = input ? input.closest('.field') : null;
+      if (field) field.hidden = !!hidden;
+    }
+
+    function setSystemActionVisible(buttonId, visible) {
+      const button = document.getElementById(buttonId);
+      const action = button ? button.closest('.system-action') : null;
+      if (action) action.hidden = !visible;
+    }
+
+    function setPageMenuVisible(pageId, visible) {
+      const item = document.querySelector('[data-page="' + pageId + '"]');
+      const page = document.getElementById(pageId);
+      if (item) item.hidden = !visible;
+      if (page) page.hidden = !visible;
+    }
+
+    function setBrandWordmark(firstPart) {
+      const first = String(firstPart || '').trim() || 'Flow';
+      document.querySelectorAll('.brand-flow').forEach((node) => {
+        node.textContent = first;
+      });
+      document.querySelectorAll('.brand-wordmark,.mobile-title,.drawer-user').forEach((node) => {
+        node.setAttribute('aria-label', first + '.io');
+      });
+      document.title = first + '.io';
+    }
+
+    function applyProfileUiText() {
+      if (!document.body) return;
+      setBrandWordmark(isMicronovaProfile() ? 'Pellet' : 'Flow');
+      if (!isMicronovaProfile()) return;
+      setLabelForInput('supervisorPath', 'Chemin image Micronova');
+      setLabelForInput('spiffsPath', 'Chemin image assets Micronova (spiffs)');
+      if (supervisorPath) supervisorPath.placeholder = '/build/Micronova/firmware.bin';
+      if (spiffsPath) spiffsPath.placeholder = '/build/Micronova/spiffs.bin';
+      if (applySupervisorPathBtn) {
+        applySupervisorPathBtn.setAttribute('aria-label', 'Appliquer le chemin Micronova');
+      }
+      hideFieldForInput('flowPath', true);
+      hideFieldForInput('nextionPath', true);
+      setPageMenuVisible('page-calibration', false);
+      setSystemActionVisible('rebootFlow', false);
+      setSystemActionVisible('rebootNextion', false);
+      setSystemActionVisible('flowFactoryReset', false);
+      const rebootAction = rebootSupervisorBtn ? rebootSupervisorBtn.closest('.system-action') : null;
+      if (rebootAction) {
+        const h3 = rebootAction.querySelector('h3');
+        const p = rebootAction.querySelector('p');
+        if (h3) h3.textContent = 'Redémarrer Micronova';
+        if (p) p.textContent = 'Redémarre le firmware Micronova sans modifier la configuration.';
+      }
+    }
+
     try {
       loadedWebAssetVersion = String(window.__FLOW_WEB_ASSET_VERSION__ || '').trim();
     } catch (err) {
@@ -124,6 +234,20 @@
     }
 
     supervisorFirmwareVersion = resolveSupervisorFirmwareVersion();
+    try {
+      const initialMeta = window.__FLOW_WEB_META__;
+      if (initialMeta && typeof initialMeta === 'object') {
+        const rawProfile = String(initialMeta.profile_name || initialMeta.profile || '').trim();
+        if (rawProfile) {
+          webProfileName = rawProfile;
+          webProfileKey = rawProfile.toLowerCase();
+        }
+        const label = String(initialMeta.local_config_label || '').trim();
+        if (label) webLocalConfigLabel = label;
+        webRemoteConfigEnabled = initialMeta.remote_config_enabled !== false;
+      }
+    } catch (err) {
+    }
 
     function assetUrl(path) {
       if (!webAssetVersion) return path;
@@ -437,6 +561,7 @@
         if (currentUpgradeSession && currentUpgradeSession.awaitingReconnect) {
           handleUpgradeReconnectSuccess();
         }
+        ingestWebProfileMeta(data);
 
         if (typeof data.web_asset_version === 'string') {
           const announcedVersion = data.web_asset_version.trim();
@@ -882,15 +1007,16 @@
       i2c: { data: null, fetchedAt: 0 }
     };
     const flowStatusDashboardSlotsCache = { data: [], fetchedAt: 0 };
-    const runtimeMeasureDomainKeys = ['pool', 'mqtt', 'system', 'wifi', 'alarm'];
+    let runtimeMeasureDomainKeys = runtimeDomainsForProfile();
     let runtimeManifestDomainCache = null;
     let runtimeManifestDomainLoadPromise = null;
     const poolMeasureDomainState = {
-      pool: { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 },
-      mqtt: { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 },
-      system: { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 },
-      wifi: { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 },
-      alarm: { active: false, loading: false, entries: [], values: [], dashboardSlots: [], error: '', requestSeq: 0 }
+      pool: createRuntimeDomainState(),
+      micronova: createRuntimeDomainState(),
+      mqtt: createRuntimeDomainState(),
+      system: createRuntimeDomainState(),
+      wifi: createRuntimeDomainState(),
+      alarm: createRuntimeDomainState()
     };
     const poolMeasureDomainAnimations = {};
     const upgradeReconnectFetchTimeoutMs = 1400;
@@ -1128,7 +1254,7 @@
     function upgradeTargetLabel(target) {
       const key = String(target || '').trim().toLowerCase();
       if (key === 'flowio') return 'Flow.io';
-      if (key === 'supervisor') return 'Superviseur';
+      if (key === 'supervisor') return isMicronovaProfile() ? 'Micronova' : 'Superviseur';
       if (key === 'nextion') return 'Nextion';
       if (key === 'spiffs') return 'SPIFFS';
       return 'Firmware';
@@ -1630,7 +1756,10 @@
       def.button.disabled = true;
       def.button.classList.add('is-pending');
       try {
-        await saveUpgradeConfig({ [def.key]: def.input.value.trim() }, def.successMessage);
+        let success = def.successMessage;
+        if (isMicronovaProfile() && def.key === 'supervisor_path') success = 'Chemin Micronova enregistré.';
+        if (isMicronovaProfile() && def.key === 'spiffs_path') success = 'Chemin assets Micronova enregistré.';
+        await saveUpgradeConfig({ [def.key]: def.input.value.trim() }, success);
       } finally {
         updateUpgradeConfigFieldApplyState(def);
       }
@@ -2715,13 +2844,11 @@
     }
 
     function createEmptyRuntimeManifestDomainCache() {
-      return {
-        pool: [],
-        mqtt: [],
-        system: [],
-        wifi: [],
-        alarm: []
-      };
+      const cache = {};
+      runtimeMeasureDomainKeys.forEach((domainKey) => {
+        cache[domainKey] = [];
+      });
+      return cache;
     }
 
     function activePoolMeasureDomainKeys() {
@@ -2775,6 +2902,16 @@
             insideEntry = true;
             braceDepth = countJsonBraces(line);
             entryLines = [line];
+            if (braceDepth <= 0) {
+              const objectText = entryLines.join('\n').replace(/,$/, '');
+              entryLines = [];
+              insideEntry = false;
+              try {
+                registerRuntimeManifestEntry(cache, JSON.parse(objectText));
+              } catch (err) {
+                throw new Error('manifeste runtime invalide');
+              }
+            }
           }
           return;
         }
@@ -2814,7 +2951,7 @@
       }
 
       runtimeManifestDomainLoadPromise = (async () => {
-        const response = await fetch(assetUrl('/webinterface/runtimeui.json'), {
+        const response = await fetch(assetUrl('/api/runtime/manifest'), {
           cache: forceRefresh ? 'no-store' : 'default'
         });
         if (!response.ok) throw new Error('manifeste runtime indisponible');
@@ -2852,6 +2989,7 @@
     function formatRuntimeDomainLabel(domain) {
       const key = String(domain || '').trim().toLowerCase();
       if (key === 'pool') return 'Piscine';
+      if (key === 'micronova') return 'Micronova';
       if (key === 'mqtt') return 'MQTT';
       if (key === 'wifi') return 'WiFi';
       if (key === 'i2c') return 'I2C';
@@ -4788,12 +4926,16 @@
       return source === 'supervisor' ? nettoyerNomFlowCfg(supCfgTreePath) : cheminFlowCfgCourant();
     }
 
+    function cfgSourceLabel(source) {
+      return source === 'supervisor' ? webLocalConfigLabel : 'Config Store Flow.io';
+    }
+
     function renderFlowCfgCurrentPath(source, pathValue, node) {
       const cleanPath = nettoyerNomFlowCfg(pathValue);
       const childCount = cfgFilteredChildren(source, cleanPath).length;
       const level = cleanPath ? cleanPath.split('/').length : 0;
       const hasExact = !!(node && node.hasExact);
-      const sourceLabel = source === 'supervisor' ? 'Config Store Supervisor' : 'Config Store Flow.io';
+      const sourceLabel = cfgSourceLabel(source);
 
       flowCfgPathLabel.textContent = cleanPath ? (sourceLabel + ' / ' + flowCfgTitreDepuisChemin(cleanPath)) : sourceLabel;
       flowCfgPathLabel.setAttribute('aria-label', cleanPath ? ('Branche ' + cleanPath) : sourceLabel);
@@ -4952,8 +5094,10 @@
       const roots = document.createElement('ul');
       roots.className = 'cfg-tree-group';
       roots.setAttribute('role', 'tree');
-      roots.appendChild(buildCfgTreeRootItem('flow', 'Config Store Flow.io', flowCfgRootExpanded, flowChildren));
-      roots.appendChild(buildCfgTreeRootItem('supervisor', 'Config Store Supervisor', supCfgRootExpanded, supervisorChildren));
+      if (webRemoteConfigEnabled && flowChildren.length > 0) {
+        roots.appendChild(buildCfgTreeRootItem('flow', 'Config Store Flow.io', flowCfgRootExpanded, flowChildren));
+      }
+      roots.appendChild(buildCfgTreeRootItem('supervisor', cfgSourceLabel('supervisor'), supCfgRootExpanded, supervisorChildren));
       flowCfgTree.appendChild(roots);
       flowCfgTree.scrollTop = savedScrollTop;
     }
@@ -6018,13 +6162,13 @@
     }
 
     async function chargerPrimarySupervisorCfgModule(moduleName) {
-      beginFlowCfgLoading('Chargement de la branche supervisor...', { tree: false, detail: true });
+      beginFlowCfgLoading('Chargement de la branche locale...', { tree: false, detail: true });
       const m = nettoyerNomFlowCfg(moduleName);
       try {
         if (!m) {
           supCfgCurrentModule = '';
           supCfgCurrentData = {};
-          resetPrimaryCfgEditor('Aucune branche supervisor sélectionnée.');
+          resetPrimaryCfgEditor('Aucune branche locale sélectionnée.');
           return;
         }
         const res = await fetch('/api/supervisorcfg/module?name=' + encodeURIComponent(m), { cache: 'no-store' });
@@ -6037,12 +6181,12 @@
         renderPrimarySupervisorCfgFields(supCfgCurrentData);
         updatePrimaryCfgApplyState();
         flowCfgStatus.textContent = data.truncated
-          ? 'Branche supervisor chargée (tronquée, buffer atteint).'
-          : 'Branche supervisor chargée.';
+          ? 'Branche locale chargée (tronquée, buffer atteint).'
+          : 'Branche locale chargée.';
       } catch (err) {
         supCfgCurrentModule = '';
         supCfgCurrentData = {};
-        resetPrimaryCfgEditor('Chargement branche supervisor échoué: ' + err);
+        resetPrimaryCfgEditor('Chargement branche locale échoué: ' + err);
       } finally {
         endFlowCfgLoading({ tree: false, detail: true });
       }
@@ -6092,6 +6236,34 @@
         flowCfgExpandedNodes = new Set();
         supCfgChildrenCache = {};
         supCfgExpandedNodes = new Set();
+      }
+
+      if (!webRemoteConfigEnabled) {
+        if (force) {
+          flowCfgChildrenCache = {};
+          flowCfgExpandedNodes = new Set();
+        }
+        markCfgSourceUnavailable('flow');
+        let supervisorLoaded = false;
+        try {
+          await ensureCfgPathLoaded('supervisor', '', force);
+          supervisorLoaded = true;
+        } catch (err) {
+          markCfgSourceUnavailable('supervisor');
+        }
+        if (supervisorLoaded) {
+          await selectFlowCfgPath('supervisor', currentCfgTreePath('supervisor'), force);
+        } else {
+          cfgTreeSelectedSource = 'supervisor';
+          renderFlowCfgCurrentPath('supervisor', '', null);
+          renderFlowCfgTree();
+          resetPrimaryCfgEditor('Aucune branche disponible.');
+        }
+        return {
+          ok: supervisorLoaded,
+          flowLoaded: false,
+          supervisorLoaded
+        };
       }
 
       const rootLoads = await Promise.allSettled([
@@ -6305,10 +6477,10 @@
           if (!res.ok || !data || data.ok !== true) {
             throw new Error('apply refusé');
           }
-          flowCfgStatus.textContent = 'Configuration supervisor appliquée.';
+          flowCfgStatus.textContent = 'Configuration locale appliquée.';
           await chargerPrimarySupervisorCfgModule(supCfgCurrentModule);
         } catch (err) {
-          flowCfgStatus.textContent = 'Application cfg supervisor échouée: ' + err;
+          flowCfgStatus.textContent = 'Application cfg locale échouée: ' + err;
         }
         return;
       }
@@ -6355,7 +6527,7 @@
     }
 
     function flowCfgBackupStoreLabel(storeName) {
-      return storeName === 'supervisor' ? 'Supervisor' : 'Flow.io';
+      return storeName === 'supervisor' ? webProfileName : 'Flow.io';
     }
 
     function flowCfgBackupStoreFetchImpl(storeName) {
@@ -6425,25 +6597,64 @@
     async function flowCfgBackupFetchModules(storeName) {
       const basePath = flowCfgBackupStoreBasePath(storeName);
       const fetchImpl = flowCfgBackupStoreFetchImpl(storeName);
-      const data = await fetchOkJson(
-        basePath + '/modules',
-        { cache: 'no-store' },
-        'liste modules ' + flowCfgBackupStoreLabel(storeName) + ' indisponible',
-        fetchImpl
-      );
-      if (!Array.isArray(data.modules)) {
-        throw new Error('liste modules ' + flowCfgBackupStoreLabel(storeName) + ' invalide');
+      const normalizeModules = (data) => {
+        if (!Array.isArray(data && data.modules)) {
+          throw new Error('liste modules ' + flowCfgBackupStoreLabel(storeName) + ' invalide');
+        }
+        return data.modules
+          .filter((moduleName) => typeof moduleName === 'string' && moduleName.trim().length > 0)
+          .map((moduleName) => moduleName.trim())
+          .sort((left, right) => left.localeCompare(right));
+      };
+      const sameModuleList = (left, right) => {
+        if (!Array.isArray(left) || !Array.isArray(right)) return false;
+        if (left.length !== right.length) return false;
+        for (let i = 0; i < left.length; i += 1) {
+          if (left[i] !== right[i]) return false;
+        }
+        return true;
+      };
+
+      if (storeName !== 'flow') {
+        const data = await fetchOkJson(
+          basePath + '/modules',
+          { cache: 'no-store' },
+          'liste modules ' + flowCfgBackupStoreLabel(storeName) + ' indisponible',
+          fetchImpl
+        );
+        return normalizeModules(data);
       }
-      return data.modules
-        .filter((moduleName) => typeof moduleName === 'string' && moduleName.trim().length > 0)
-        .map((moduleName) => moduleName.trim())
-        .sort((left, right) => left.localeCompare(right));
+
+      let previous = null;
+      let stableCount = 0;
+      let attempt = 0;
+      while (stableCount < 1) {
+        attempt += 1;
+        const data = await fetchOkJson(
+          basePath + '/modules',
+          { cache: 'no-store' },
+          'liste modules ' + flowCfgBackupStoreLabel(storeName) + ' indisponible',
+          fetchImpl
+        );
+        const modules = normalizeModules(data);
+        if (previous && sameModuleList(previous, modules)) {
+          stableCount += 1;
+          return modules;
+        }
+        previous = modules;
+        stableCount = 0;
+        const retryDelayMs = attempt <= 3
+          ? (100 * attempt)
+          : Math.min(1200, 300 + ((attempt - 3) * 120));
+        await waitMs(retryDelayMs);
+      }
+      return previous || [];
     }
 
     async function flowCfgBackupFetchModule(storeName, moduleName) {
       const basePath = flowCfgBackupStoreBasePath(storeName);
       const fetchImpl = flowCfgBackupStoreFetchImpl(storeName);
-      const maxAttempts = storeName === 'flow' ? 3 : 1;
+      const maxAttempts = storeName === 'flow' ? Number.POSITIVE_INFINITY : 1;
       let lastError = null;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try {
@@ -6463,7 +6674,10 @@
         } catch (err) {
           lastError = err;
           if (attempt >= maxAttempts) break;
-          await waitMs(120 * attempt);
+          const retryDelayMs = attempt <= 3
+            ? (120 * attempt)
+            : Math.min(5000, 500 + ((attempt - 3) * 250));
+          await waitMs(retryDelayMs);
         }
       }
       throw (lastError || new Error('lecture module ' + moduleName + ' impossible'));
@@ -7006,11 +7220,12 @@
 
     function initSystemBindings() {
       bindClickAction(rebootSupervisorBtn, () => {
+        const label = isMicronovaProfile() ? 'Micronova' : 'superviseur';
         startDelayedSystemAction(
           rebootSupervisorBtn,
-          'Reboot superviseur',
+          'Reboot ' + label,
           () => callSystemAction('supervisor', 'reboot'),
-          'Reboot superviseur échoué'
+          'Reboot ' + label + ' échoué'
         );
       });
       bindClickAction(rebootFlowBtn, () => {

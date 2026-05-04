@@ -6,7 +6,9 @@ namespace Profiles {
 namespace FlowIO {
 
 ModuleInstances::ModuleInstances(const BoardSpec& board)
-    : i2cCfgServerModule(board)
+    : wifiModule(board),
+      i2cCfgServerModule(board),
+      ioModule(board)
 {
 }
 

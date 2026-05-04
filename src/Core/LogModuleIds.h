@@ -38,7 +38,11 @@ enum class LogModuleIdValue : LogModuleId {
     PoolDeviceModule = 23,
     PoolLogicModule = 24,
     HMIModule = 25,
-    ElectrolysisModule = 27,
+    HmiUdpServerModule = 26,
+    DisplayUdpClientModule = 27,
+    MicronovaBusModule = 28,
+    MicronovaBoilerModule = 29,
+    MicronovaMqttBridgeModule = 30,
 
     CoreI2cLink = 40,
     CoreModuleManager = 41,
@@ -70,9 +74,13 @@ static inline LogModuleId logModuleIdFromModuleId(ModuleId moduleId)
         case ModuleId::Ha: return (LogModuleId)LogModuleIdValue::HAModule;
         case ModuleId::Mqtt: return (LogModuleId)LogModuleIdValue::MQTTModule;
         case ModuleId::Io: return (LogModuleId)LogModuleIdValue::IOModule;
-        case ModuleId::Electrolysis: return (LogModuleId)LogModuleIdValue::ElectrolysisModule;
         case ModuleId::PoolDevice: return (LogModuleId)LogModuleIdValue::PoolDeviceModule;
         case ModuleId::PoolLogic: return (LogModuleId)LogModuleIdValue::PoolLogicModule;
+        case ModuleId::HmiUdpServer: return (LogModuleId)LogModuleIdValue::HmiUdpServerModule;
+        case ModuleId::DisplayUdpClient: return (LogModuleId)LogModuleIdValue::DisplayUdpClientModule;
+        case ModuleId::MicronovaBus: return (LogModuleId)LogModuleIdValue::MicronovaBusModule;
+        case ModuleId::MicronovaBoiler: return (LogModuleId)LogModuleIdValue::MicronovaBoilerModule;
+        case ModuleId::MicronovaMqttBridge: return (LogModuleId)LogModuleIdValue::MicronovaMqttBridgeModule;
         case ModuleId::Hmi:
         case ModuleId::SupervisorHmi:
             return (LogModuleId)LogModuleIdValue::HMIModule;
@@ -108,10 +116,14 @@ static inline const char* logModuleNameFromId(LogModuleId moduleId)
         case LogModuleIdValue::HAModule: return "ha";
         case LogModuleIdValue::MQTTModule: return "mqtt";
         case LogModuleIdValue::IOModule: return "io";
-        case LogModuleIdValue::ElectrolysisModule: return "electrolysis";
         case LogModuleIdValue::PoolDeviceModule: return "pooldev";
         case LogModuleIdValue::PoolLogicModule: return "poollogic";
         case LogModuleIdValue::HMIModule: return "hmi";
+        case LogModuleIdValue::HmiUdpServerModule: return "hmi.udp.server";
+        case LogModuleIdValue::DisplayUdpClientModule: return "display.udp.client";
+        case LogModuleIdValue::MicronovaBusModule: return "micronova.bus";
+        case LogModuleIdValue::MicronovaBoilerModule: return "micronova.boiler";
+        case LogModuleIdValue::MicronovaMqttBridgeModule: return "micronova.mqtt";
         case LogModuleIdValue::CoreI2cLink: return "core.i2clink";
         case LogModuleIdValue::CoreModuleManager: return "core.modulemanager";
         case LogModuleIdValue::CoreConfigStore: return "core.configstore";

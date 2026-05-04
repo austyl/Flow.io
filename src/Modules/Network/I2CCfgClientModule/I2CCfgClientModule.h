@@ -101,6 +101,7 @@ private:
     I2cLink link_{};
     bool ready_ = false;
     bool reachable_ = false;
+    bool frameCrcEnabled_ = false;
     uint8_t seq_ = 1;
     uint32_t retryAfterMs_ = 0;
     MqttConfigRouteProducer cfgMqttPub_{};

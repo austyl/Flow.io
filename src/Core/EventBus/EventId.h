@@ -32,4 +32,13 @@ enum class EventId : uint16_t {
     AlarmSilenceChanged = 413,
     AlarmConditionChanged = 414,
     SchedulerEventTriggered = 420,
+
+    MicronovaValueUpdated = 500,
+    MicronovaOnlineChanged = 501,
+    MicronovaCommandPower = 510,
+    MicronovaCommandPowerLevel = 511,
+    MicronovaCommandFanSpeed = 512,
+    MicronovaCommandTargetTemperature = 513,
+    MicronovaCommandRefresh = 514,
+    MicronovaCommandRawWrite = 515,
 };

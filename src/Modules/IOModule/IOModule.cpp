@@ -14,6 +14,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+IOModule::IOModule(const BoardSpec& board)
+{
+    applyBoardDefaults_(board);
+}
+
+void IOModule::applyBoardDefaults_(const BoardSpec& board)
+{
+    const I2cBusSpec* ioBus = boardFindI2cBus(board, "io");
+    if (!ioBus) return;
+    cfgData_.i2cSda = ioBus->sdaPin;
+    cfgData_.i2cScl = ioBus->sclPin;
+}
+
 namespace {
 static constexpr uint8_t kIoCfgProducerId = 47;
 static constexpr uint8_t kCfgBranchIo = 1;
@@ -1218,6 +1231,7 @@ void IOModule::refreshAnalogConfigState_()
     // synced here makes the next acquired sample use the new calibration without reboot.
     if (runtimeReady_) {
         for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+            if (i >= MAX_ANALOG_ENDPOINTS) continue;
             if (!analogSlots_[i].used) continue;
             analogSlots_[i].def.c0 = analogCfg_[i].c0;
             analogSlots_[i].def.c1 = analogCfg_[i].c1;
@@ -1806,13 +1820,6 @@ bool IOModule::configureRuntime_()
     if (runtimeReady_) return true;
     if (!cfgData_.enabled) return false;
 
-    // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
-    i2cBus_.begin(cfgData_.i2cSda, cfgData_.i2cScl);
-    const bool ads48Present = i2cBus_.probe(0x48);
-    const bool ads49Present = i2cBus_.probe(0x49);
-    LOGI("ADS1115 probe 0x48: %s", ads48Present ? "found" : "not found");
-    LOGI("ADS1115 probe 0x49: %s", ads49Present ? "found" : "not found");
-
     bool needAnalogSource[IO_SRC_COUNT] = {false};
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
@@ -1862,6 +1869,43 @@ bool IOModule::configureRuntime_()
         analogSlots_[i].endpoint = allocAnalogEndpoint_(analogSlots_[i].def.id);
         if (!analogSlots_[i].endpoint) continue;
         registry_.add(analogSlots_[i].endpoint);
+    }
+
+    bool needPcfOutput = false;
+    for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
+        const DigitalSlot& s = digitalSlots_[i];
+        if (!s.used || s.kind != DIGITAL_SLOT_OUTPUT) continue;
+        PhysicalPortId bindingPort = s.outDef.bindingPort;
+        if (s.logicalIdx < DIGITAL_CFG_SLOTS) {
+            bindingPort = digitalCfg_[s.logicalIdx].bindingPort;
+        }
+        const IOBindingPortSpec* spec = bindingPortSpec_(bindingPort);
+        if (spec && spec->kind == IO_PORT_KIND_PCF8574_OUTPUT) {
+            needPcfOutput = true;
+            break;
+        }
+    }
+
+    const bool needI2c =
+        needAnalogSource[IO_SRC_ADS_INTERNAL_SINGLE] ||
+        needAnalogSource[IO_SRC_ADS_EXTERNAL_DIFF] ||
+        needAnalogSource[IO_SRC_SHT40] ||
+        needAnalogSource[IO_SRC_BMP280] ||
+        needAnalogSource[IO_SRC_BME680] ||
+        needAnalogSource[IO_SRC_INA226] ||
+        cfgData_.sht40Enabled ||
+        cfgData_.bmp280Enabled ||
+        cfgData_.bme680Enabled ||
+        cfgData_.ina226Enabled ||
+        needPcfOutput;
+
+    if (needI2c) {
+        // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
+        i2cBus_.begin(cfgData_.i2cSda, cfgData_.i2cScl);
+        const bool ads48Present = i2cBus_.probe(0x48);
+        const bool ads49Present = i2cBus_.probe(0x49);
+        LOGI("ADS1115 probe 0x48: %s", ads48Present ? "found" : "not found");
+        LOGI("ADS1115 probe 0x49: %s", ads49Present ? "found" : "not found");
     }
 
     for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
@@ -2584,24 +2628,49 @@ void IOModule::onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services)
         cfgMqttPubConfigured_ = true;
     }
 
-    LOGI("io.onConfigLoaded begin enabled=%s i2c_sda=%ld i2c_scl=%ld runtimeReady=%s",
+#if defined(FLOW_PROFILE_MICRONOVA)
+    LOGI("io.onConfigLoaded deferred runtime init enabled=%s i2c_sda=%ld i2c_scl=%ld",
+         cfgData_.enabled ? "true" : "false",
+         (long)cfgData_.i2cSda,
+         (long)cfgData_.i2cScl);
+#else
+    configureRuntimeAfterConfig_();
+#endif
+}
+
+void IOModule::onStart(ConfigStore& cfg, ServiceRegistry& services)
+{
+    (void)cfg;
+    (void)services;
+#if defined(FLOW_PROFILE_MICRONOVA)
+    configureRuntimeAfterConfig_();
+#endif
+}
+
+void IOModule::configureRuntimeAfterConfig_()
+{
+    if (runtimeInitAttempted_) {
+        LOGD("io runtime init already attempted");
+        return;
+    }
+
+    LOGI("io.runtime init begin enabled=%s i2c_sda=%ld i2c_scl=%ld runtimeReady=%s",
          cfgData_.enabled ? "true" : "false",
          (long)cfgData_.i2cSda,
          (long)cfgData_.i2cScl,
          runtimeReady_ ? "true" : "false");
 
-    // Allocate and wire all IO runtime objects once after persistent config is loaded.
     runtimeInitAttempted_ = true;
     if (cfgData_.enabled) {
         runtimeReady_ = configureRuntime_();
         if (!runtimeReady_) {
-            LOGW("Runtime init failed during io.onConfigLoaded; no runtime allocations will be attempted later");
+            LOGW("Runtime init failed; no runtime allocations will be attempted later");
         } else {
-            LOGI("io.onConfigLoaded runtime configured");
+            LOGI("io.runtime configured");
         }
     } else {
         runtimeReady_ = false;
-        LOGI("io.onConfigLoaded skipped runtime init (disabled)");
+        LOGI("io.runtime init skipped (disabled)");
     }
 }
 

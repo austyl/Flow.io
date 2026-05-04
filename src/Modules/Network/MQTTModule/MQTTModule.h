@@ -56,6 +56,7 @@ public:
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
+    void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
     uint16_t taskStackSize() const override { return Limits::Mqtt::TaskStackSize; }
     uint32_t startDelayMs() const override { return Limits::Boot::MqttStartDelayMs; }
@@ -70,6 +71,7 @@ public:
     bool registerRuntimeProvider(const IRuntimeSnapshotProvider* provider);
     bool enqueue(uint8_t producerId, uint16_t messageId, MqttPublishPriority priority, uint8_t flags = 0);
     bool registerProducer(const MqttPublishProducer* producer);
+    bool registerInboundHandler(const MqttInboundHandler* handler);
     bool writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) const override;
 
     void formatTopic(char* out, size_t outLen, const char* suffix) const;
@@ -159,16 +161,17 @@ private:
     static constexpr uint16_t AlarmMsgPack = 2;
     static constexpr uint16_t AlarmMsgStateBase = 100;
 
-    static constexpr uint8_t MaxProducers = 24;
-    static constexpr uint8_t MaxAckMessages = 2;
-    static constexpr uint8_t MaxJobs = 80;
+    static constexpr uint8_t MaxProducers = Limits::Mqtt::Capacity::MaxProducers;
+    static constexpr uint8_t MaxInboundHandlers = Limits::Mqtt::Capacity::MaxInboundHandlers;
+    static constexpr uint8_t MaxAckMessages = Limits::Mqtt::Capacity::MaxAckMessages;
+    static constexpr uint8_t MaxJobs = Limits::Mqtt::Capacity::MaxJobs;
     static constexpr uint16_t RetryMinMs = 250;
     static constexpr uint16_t RetryMaxMs = 10000;
     static constexpr uint8_t ProcessBudgetPerTick = 8;
 
-    static constexpr uint16_t HighQueueCap = 80;
-    static constexpr uint16_t NormalQueueCap = 80;
-    static constexpr uint16_t LowQueueCap = 60;
+    static constexpr uint16_t HighQueueCap = Limits::Mqtt::Capacity::HighQueueCap;
+    static constexpr uint16_t NormalQueueCap = Limits::Mqtt::Capacity::NormalQueueCap;
+    static constexpr uint16_t LowQueueCap = Limits::Mqtt::Capacity::LowQueueCap;
 
     MQTTConfig cfgData_{};
     // CFGDOC: {"label":"Hôte MQTT","help":"Adresse du broker MQTT (DNS ou IP)."}
@@ -237,6 +240,9 @@ private:
     const MqttPublishProducer* producers_[MaxProducers]{};
     uint8_t producerCount_ = 0;
     portMUX_TYPE producerMux_ = portMUX_INITIALIZER_UNLOCKED;
+    const MqttInboundHandler* inboundHandlers_[MaxInboundHandlers]{};
+    uint8_t inboundHandlerCount_ = 0;
+    portMUX_TYPE inboundMux_ = portMUX_INITIALIZER_UNLOCKED;
 
     Job jobs_[MaxJobs]{};
     JobRing<HighQueueCap> highQ_{};
@@ -281,6 +287,7 @@ private:
     void formatTopicSvc_(const char* suffix, char* out, size_t outLen) const;
     void setState_(MQTTState s);
     bool allocateScratchBuffers_();
+    bool allocateRxQueue_();
     void refreshTopicDeviceId_();
     void buildTopics_();
     static void onEventStatic_(const Event& e, void* user);
@@ -362,6 +369,7 @@ private:
         ServiceBinding::bind<&MQTTModule::registerProducer>,
         ServiceBinding::bind<&MQTTModule::formatTopicSvc_>,
         ServiceBinding::bind<&MQTTModule::isConnected>,
+        ServiceBinding::bind<&MQTTModule::registerInboundHandler>,
         this
     };
 };
