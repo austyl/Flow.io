@@ -6,6 +6,7 @@
     const appMeta = document.querySelector('.app-meta');
     const appRuntimeMeta = document.getElementById('appRuntimeMeta');
     const appHeapSummary = document.getElementById('appHeapSummary');
+    const mobileTopbarTitle = document.getElementById('mobileTopbarTitle');
     const flowWebAssetVersionStorageKey = 'flow_web_asset_version';
     const deferredVisualAssetsStateKey = 'flow_web_deferred_visual_assets';
     const upgradeUiSessionStorageKey = 'flow_upgrade_ui_session';
@@ -20,6 +21,15 @@
     const deferredMenuAssetReloadDelayMs = 1400;
     const deferredMenuAssetReloadStepMs = 850;
     const deferredMenuAssetReloadFallbackDelayMs = 6500;
+    const remoteMenuIconFontLinkId = 'flowMenuIconFontRemote';
+    const remoteMenuIconFontHref = 'https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded&display=block';
+    const remoteMenuIconLigatures = {
+      'icon-measures': 'dashboard',
+      'icon-calibration': 'science',
+      'icon-terminal': 'terminal_2',
+      'icon-system': 'system_update_alt',
+      'icon-flowcfg': 'settings'
+    };
     let webAssetVersion = '';
     let loadedWebAssetVersion = '';
     let supervisorFirmwareVersion = '-';
@@ -38,8 +48,82 @@
     let menuAssetsActivated = false;
     let deferredMenuAssetsArmed = false;
     let fieldApplyCheckIcon = '✓';
+    let networkMode = 'none';
+    let useRemoteMenuIcons = false;
+    let remoteMenuIconFontReady = false;
+    let remoteMenuIconFontPromise = null;
     const pendingSystemActionCountdowns = new Map();
     let activeColorPickerPopover = null;
+
+    function normalizeNetworkMode(value) {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'ap' || raw === 'accesspoint' || raw === 'access_point') return 'ap';
+      if (raw === 'station' || raw === 'sta') return 'station';
+      return 'none';
+    }
+
+    function isAccessPointMode() {
+      return normalizeNetworkMode(networkMode) === 'ap';
+    }
+
+    function applyMenuIconSourcePreference(useRemote) {
+      useRemoteMenuIcons = !!useRemote;
+      document.body.classList.toggle('menu-icons-remote', useRemoteMenuIcons);
+      document.body.classList.toggle(
+        'menu-icons-letter-fallback',
+        !disableWebIcons && !isAccessPointMode() && !useRemoteMenuIcons
+      );
+      syncMenuIconFallbacks();
+    }
+
+    function menuIconLigatureForNode(iconNode) {
+      if (!iconNode || !iconNode.classList) return '';
+      const iconClasses = Object.keys(remoteMenuIconLigatures);
+      for (let i = 0; i < iconClasses.length; i += 1) {
+        const cls = iconClasses[i];
+        if (iconNode.classList.contains(cls)) return remoteMenuIconLigatures[cls];
+      }
+      return '';
+    }
+
+    function ensureRemoteMenuIconFontLoaded() {
+      if (remoteMenuIconFontReady) return Promise.resolve(true);
+      if (remoteMenuIconFontPromise) return remoteMenuIconFontPromise;
+
+      remoteMenuIconFontPromise = new Promise((resolve) => {
+        let link = document.getElementById(remoteMenuIconFontLinkId);
+        if (link) {
+          remoteMenuIconFontReady = link.getAttribute('data-flow-ready') === '1';
+          if (remoteMenuIconFontReady) {
+            resolve(true);
+            return;
+          }
+          link.remove();
+        }
+        link = document.createElement('link');
+        link.id = remoteMenuIconFontLinkId;
+        link.rel = 'stylesheet';
+        link.href = remoteMenuIconFontHref;
+        let done = false;
+        const finalize = (ok) => {
+          if (done) return;
+          done = true;
+          remoteMenuIconFontReady = !!ok;
+          if (remoteMenuIconFontReady) {
+            link.setAttribute('data-flow-ready', '1');
+          }
+          resolve(remoteMenuIconFontReady);
+        };
+        link.onload = () => finalize(true);
+        link.onerror = () => finalize(false);
+        document.head.appendChild(link);
+        setTimeout(() => finalize(false), 2600);
+      }).finally(() => {
+        remoteMenuIconFontPromise = null;
+      });
+
+      return remoteMenuIconFontPromise;
+    }
 
     function menuFallbackLetter(label) {
       const text = String(label || '').trim();
@@ -52,6 +136,7 @@
     }
 
     function syncMenuIconFallbacks() {
+      const useLetterFallback = document.body.classList.contains('menu-icons-letter-fallback');
       menuItems.forEach((item) => {
         if (!item) return;
         const icon = item.querySelector('.ico');
@@ -59,7 +144,15 @@
         if (!icon || !label) return;
         const fallback = menuFallbackLetter(label.textContent);
         icon.setAttribute('data-fallback-text', fallback);
-        icon.textContent = disableWebIcons ? fallback : '';
+        if (disableWebIcons || useLetterFallback) {
+          icon.textContent = fallback;
+          return;
+        }
+        if (useRemoteMenuIcons) {
+          icon.textContent = menuIconLigatureForNode(icon);
+          return;
+        }
+        icon.textContent = '';
       });
     }
 
@@ -86,6 +179,10 @@
     function applyIconUsagePreference(disabled) {
       disableWebIcons = !!disabled;
       document.body.classList.toggle('web-icons-disabled', disableWebIcons);
+      document.body.classList.toggle(
+        'menu-icons-letter-fallback',
+        !disableWebIcons && !isAccessPointMode() && !useRemoteMenuIcons
+      );
       fieldApplyCheckIcon = iconCheckText();
       syncMenuIconFallbacks();
       syncRenderedCheckFallbacks();
@@ -138,6 +235,17 @@
       document.body.classList.toggle('profile-micronova', isMicronovaProfile());
       applyProfileUiText();
       renderPoolMeasureDomainButtons();
+    }
+
+    async function applyMenuIconModeFromMeta(data) {
+      const mode = normalizeNetworkMode(data && data.network_mode);
+      networkMode = mode;
+      if (isAccessPointMode()) {
+        applyMenuIconSourcePreference(false);
+        return;
+      }
+      const fontReady = await ensureRemoteMenuIconFontLoaded();
+      applyMenuIconSourcePreference(fontReady);
     }
 
     function isMicronovaProfile() {
@@ -212,6 +320,7 @@
       hideFieldForInput('nextionPath', true);
       setPageMenuVisible('page-calibration', false);
       setSystemActionVisible('rebootFlow', false);
+      setSystemActionVisible('rebootFlowHardware', false);
       setSystemActionVisible('rebootNextion', false);
       setSystemActionVisible('flowFactoryReset', false);
       const rebootAction = rebootSupervisorBtn ? rebootSupervisorBtn.closest('.system-action') : null;
@@ -245,6 +354,7 @@
         const label = String(initialMeta.local_config_label || '').trim();
         if (label) webLocalConfigLabel = label;
         webRemoteConfigEnabled = initialMeta.remote_config_enabled !== false;
+        networkMode = normalizeNetworkMode(initialMeta.network_mode);
       }
     } catch (err) {
     }
@@ -481,7 +591,7 @@
       }
       const stepMs = Math.max(0, Number(stepDelayMs) || deferredMenuAssetStepMs);
       const steps = [];
-      if (!hideMenuSvg) {
+      if (!hideMenuSvg && isAccessPointMode() && !useRemoteMenuIcons) {
         steps.push(
           ['--menu-icon-measures-url', iconAssetUrl('m')],
           ['--menu-icon-calibration-url', iconAssetUrl('c')],
@@ -513,7 +623,7 @@
     }
 
     function armDeferredMenuAssets(startDelayMs, stepDelayMs, fallbackDelayMs) {
-      if (deferredMenuAssetsArmed || menuAssetsActivated || hideMenuSvg || disableWebIcons || !drawer) return;
+      if (deferredMenuAssetsArmed || menuAssetsActivated || hideMenuSvg || disableWebIcons || useRemoteMenuIcons || !isAccessPointMode() || !drawer) return;
       deferredMenuAssetsArmed = true;
       let triggered = false;
       const trigger = () => {
@@ -597,6 +707,7 @@
         applyIconUsagePreference(!!data.disable_icons);
         applyMenuIconPreference(!!data.hide_menu_svg);
         applyStatusIconPreference(!!data.unify_status_card_icons);
+        await applyMenuIconModeFromMeta(data);
         if (!disableWebIcons && hasWarmDeferredVisualAssets()) {
           activateMenuAssets(false);
         }
@@ -625,6 +736,19 @@
 
     function isMobileLayout() {
       return window.innerWidth <= 900;
+    }
+
+    function resolvePageMenuLabel(pageId) {
+      const item = document.querySelector('[data-page="' + pageId + '"]');
+      if (!item) return '';
+      const label = item.querySelector('.label');
+      return String(label && label.textContent ? label.textContent : '').trim();
+    }
+
+    function syncMobileTopbarTitle(pageId) {
+      if (!mobileTopbarTitle) return;
+      const label = resolvePageMenuLabel(pageId) || webProfileName;
+      mobileTopbarTitle.textContent = label;
     }
 
     function isDrawerExpanded() {
@@ -728,6 +852,7 @@
       const pageToken = ++pageLoadToken;
       pages.forEach((el) => el.classList.toggle('active', el.id === pageId));
       menuItems.forEach((el) => el.classList.toggle('active', el.dataset.page === pageId));
+      syncMobileTopbarTitle(pageId);
       terminalActive = pageId === 'page-terminal';
       if (terminalActive) {
         connectLogSocket();
@@ -859,6 +984,7 @@
     const wifiConfigStatus = document.getElementById('wifiConfigStatus');
     const rebootSupervisorBtn = document.getElementById('rebootSupervisor');
     const rebootFlowBtn = document.getElementById('rebootFlow');
+    const rebootFlowHardwareBtn = document.getElementById('rebootFlowHardware');
     const rebootNextionBtn = document.getElementById('rebootNextion');
     const flowFactoryResetBtn = document.getElementById('flowFactoryReset');
     const systemStatusText = document.getElementById('systemStatusText');
@@ -1268,7 +1394,7 @@
     function upgradeStepDefinitions(target) {
       return [
         { id: 'target', label: 'Sélection de la cible ' + upgradeTargetLabel(target) },
-        { id: 'download', label: 'Téléchargement du firmware' },
+        { id: 'download', label: 'Connexion au serveur' },
         { id: 'flash', label: 'Mise à jour' },
         { id: 'reboot', label: 'Redémarrage' },
         { id: 'reconnect', label: 'Attente de Reconnection' },
@@ -1606,7 +1732,7 @@
         updateUpgradeUiSession({
           phase: 'download',
           target: target,
-          detail: 'Téléchargement du firmware.',
+          detail: 'Connexion au serveur.',
           backendProgress: progress,
           awaitingReconnect: false,
           reconnectShown: false,
@@ -7061,12 +7187,15 @@
     async function callSystemAction(target, action) {
       let endpoint = '/api/system/reboot';
       if (target === 'flow' && action === 'reboot') endpoint = '/api/flow/system/reboot';
+      else if (target === 'flow' && action === 'hardware_reboot') endpoint = '/api/flow/system/hardware-reboot';
       else if (target === 'nextion' && action === 'reboot') endpoint = '/api/system/nextion/reboot';
       else if (target === 'flow' && action === 'factory_reset') endpoint = '/api/flow/system/factory-reset';
       else if (target === 'supervisor' && action === 'factory_reset') endpoint = '/api/system/factory-reset';
       await fetchOkJson(endpoint, { method: 'POST' }, 'échec action', target === 'flow' ? fetchFlowRemoteQueued : fetch);
       if (target === 'flow' && action === 'factory_reset') {
         systemStatusText.textContent = 'Reset Flow.io en cours';
+      } else if (target === 'flow' && action === 'hardware_reboot') {
+        systemStatusText.textContent = 'Reset matériel Flow.io';
       } else if (target === 'flow' && action === 'reboot') {
         systemStatusText.textContent = 'Redémarrage Flow.io';
       } else if (target === 'nextion' && action === 'reboot') {
@@ -7086,11 +7215,14 @@
       }
       pendingSystemActionCountdowns.delete(button);
       button.disabled = false;
-      button.textContent = 'Redémarrer';
+      button.textContent = button.dataset.defaultLabel || 'Redémarrer';
     }
 
     function startDelayedSystemAction(button, countdownLabel, actionRunner, failurePrefix) {
       if (!button || typeof actionRunner !== 'function') return;
+      if (!button.dataset.defaultLabel) {
+        button.dataset.defaultLabel = button.textContent || 'Redémarrer';
+      }
       clearPendingSystemAction(button);
 
       let remaining = rebootActionDelaySeconds;
@@ -7111,7 +7243,7 @@
               systemStatusText.textContent = failurePrefix;
               return;
             }
-            button.textContent = 'Redémarrer';
+            button.textContent = button.dataset.defaultLabel || 'Redémarrer';
             button.disabled = false;
           });
           return;
@@ -7234,6 +7366,14 @@
           'Reboot Flow.io',
           () => callSystemAction('flow', 'reboot'),
           'Reboot Flow.io échoué'
+        );
+      });
+      bindClickAction(rebootFlowHardwareBtn, () => {
+        startDelayedSystemAction(
+          rebootFlowHardwareBtn,
+          'Reset matériel Flow.io',
+          () => callSystemAction('flow', 'hardware_reboot'),
+          'Reset matériel Flow.io échoué'
         );
       });
       bindClickAction(rebootNextionBtn, () => {
