@@ -30,7 +30,8 @@ void HmiUdpServerModule::tick(uint32_t nowMs)
     if (!begin()) return;
     readUdp_(nowMs);
     serviceReliableTx_(nowMs);
-    if (displayOnline_ && !rtcReadInProgress_ && (uint32_t)(nowMs - lastSeenMs_) > OfflineTimeoutMs) {
+    const uint32_t offlineTimeout = displaySleeping_ ? SleepOfflineTimeoutMs : OfflineTimeoutMs;
+    if (displayOnline_ && !rtcReadInProgress_ && (uint32_t)(nowMs - lastSeenMs_) > offlineTimeout) {
         markDisplayOffline_("heartbeat-timeout", true);
     }
 }
@@ -44,6 +45,7 @@ bool HmiUdpServerModule::consumeFullRefreshRequested()
 
 bool HmiUdpServerModule::sendHomeText(HmiHomeTextField field, const char* text)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpHomeTextPayload payload{};
     payload.field = (uint8_t)field;
     copyText_(payload.text, sizeof(payload.text), text);
@@ -52,6 +54,7 @@ bool HmiUdpServerModule::sendHomeText(HmiHomeTextField field, const char* text)
 
 bool HmiUdpServerModule::sendHomeGauge(HmiHomeGaugeField field, uint16_t percent)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpHomeGaugePayload payload{};
     payload.field = (uint8_t)field;
     payload.percent = percent;
@@ -60,6 +63,7 @@ bool HmiUdpServerModule::sendHomeGauge(HmiHomeGaugeField field, uint16_t percent
 
 bool HmiUdpServerModule::sendHomeV2Needles(const NextionV2NeedlePublish& publish)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpHomeV2NeedlesPayload payload{};
     if (publish.ph) payload.flags |= HMI_UDP_V2_NEEDLE_PH;
     if (publish.orp) payload.flags |= HMI_UDP_V2_NEEDLE_ORP;
@@ -72,6 +76,7 @@ bool HmiUdpServerModule::sendHomeV2Needles(const NextionV2NeedlePublish& publish
 
 bool HmiUdpServerModule::sendHomeStateBits(uint32_t stateBits)
 {
+    if (shouldSuppressUiTx_()) return true;
     if (!started_ || !displayOnline_ || !wifiConnected_()) return true;
     HmiUdpStateBitsPayload payload{};
     payload.stateBits = stateBits;
@@ -84,6 +89,7 @@ bool HmiUdpServerModule::sendHomeStateBits(uint32_t stateBits)
 
 bool HmiUdpServerModule::sendHomeAlarmBits(uint32_t alarmBits)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpAlarmBitsPayload payload{};
     payload.alarmBits = alarmBits;
     return sendPacket_(HmiUdpMsgType::HomeAlarmBits, &payload, sizeof(payload));
@@ -91,6 +97,7 @@ bool HmiUdpServerModule::sendHomeAlarmBits(uint32_t alarmBits)
 
 bool HmiUdpServerModule::sendConfigStart(const ConfigMenuView& view)
 {
+    if (shouldSuppressUiTx_()) return true;
     clearReliableQueue_(true);
     HmiUdpConfigStartPayload payload{};
     payload.page = (uint8_t)(view.pageIndex + 1U);
@@ -106,31 +113,43 @@ bool HmiUdpServerModule::sendConfigStart(const ConfigMenuView& view)
 
 bool HmiUdpServerModule::sendConfigRow(uint8_t row, const ConfigMenuRowView& viewRow, ConfigMenuMode mode)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpConfigRowPayload payload{};
-    payload.row = row;
-    payload.widget = (uint8_t)viewRow.widget;
-    payload.editType = viewRow.editType;
-    if (viewRow.visible) payload.flags |= HMI_UDP_CONFIG_ROW_VISIBLE;
-    if (viewRow.valueVisible) payload.flags |= HMI_UDP_CONFIG_ROW_VALUE_VISIBLE;
-    if (viewRow.editable) payload.flags |= HMI_UDP_CONFIG_ROW_EDITABLE;
-    if (viewRow.dirty) payload.flags |= HMI_UDP_CONFIG_ROW_DIRTY;
-    if (viewRow.canEnter) payload.flags |= HMI_UDP_CONFIG_ROW_CAN_ENTER;
-    if (viewRow.canEdit) payload.flags |= HMI_UDP_CONFIG_ROW_CAN_EDIT;
-    if (mode == ConfigMenuMode::Edit) payload.flags |= HMI_UDP_CONFIG_MODE_EDIT;
-    copyText_(payload.label, sizeof(payload.label), viewRow.label);
-    copyText_(payload.value, sizeof(payload.value), viewRow.value);
+    fillConfigRowPayload_(payload, row, viewRow, mode);
     return enqueueReliable_(HmiUdpMsgType::ConfigRow, &payload, sizeof(payload));
 }
 
 bool HmiUdpServerModule::sendConfigEnd(uint8_t rowCount)
 {
+    if (shouldSuppressUiTx_()) return true;
     HmiUdpConfigEndPayload payload{};
     payload.rowCount = rowCount;
     return enqueueReliable_(HmiUdpMsgType::ConfigEnd, &payload, sizeof(payload));
 }
 
+bool HmiUdpServerModule::sendConfigViewSnapshot(const ConfigMenuView& view)
+{
+    if (shouldSuppressUiTx_()) return true;
+    HmiUdpConfigViewSnapshotPayload payload{};
+    payload.page = (uint8_t)(view.pageIndex + 1U);
+    payload.pageCount = view.pageCount;
+    payload.rowCount = view.rowCountOnPage;
+    payload.mode = (uint8_t)view.mode;
+    payload.contextRef = view.contextRef;
+    if (view.canHome) payload.flags |= HMI_UDP_CONFIG_VIEW_CAN_HOME;
+    if (view.canBack) payload.flags |= HMI_UDP_CONFIG_VIEW_CAN_BACK;
+    if (view.canValidate) payload.flags |= HMI_UDP_CONFIG_VIEW_CAN_VALIDATE;
+    if (view.isHome) payload.flags |= HMI_UDP_CONFIG_VIEW_IS_HOME;
+    copyText_(payload.title, sizeof(payload.title), view.breadcrumb);
+    for (uint8_t i = 0; i < HMI_UDP_CONFIG_SNAPSHOT_ROWS; ++i) {
+        fillConfigRowPayload_(payload.rows[i], i, view.rows[i], view.mode);
+    }
+    return sendReliableLarge_(HmiUdpMsgType::ConfigViewSnapshot, &payload, sizeof(payload));
+}
+
 bool HmiUdpServerModule::sendRtcWrite(const HmiRtcDateTime& value)
 {
+    if (shouldSuppressUiTx_()) return false;
     HmiUdpRtcPayload payload{};
     hmiUdpRtcToPayload(value, payload);
     return sendPacket_(HmiUdpMsgType::RtcWrite, &payload, sizeof(payload), HMI_UDP_FLAG_ACK_REQUIRED);
@@ -138,6 +157,7 @@ bool HmiUdpServerModule::sendRtcWrite(const HmiRtcDateTime& value)
 
 bool HmiUdpServerModule::requestRtcRead()
 {
+    if (displaySleeping_) return false;
     return sendPacket_(HmiUdpMsgType::RtcReadRequest, nullptr, 0U, HMI_UDP_FLAG_ACK_REQUIRED);
 }
 
@@ -241,6 +261,71 @@ bool HmiUdpServerModule::enqueueReliable_(HmiUdpMsgType type, const void* payloa
     return true;
 }
 
+bool HmiUdpServerModule::sendReliableLarge_(HmiUdpMsgType type, const void* payload, size_t payloadLen)
+{
+    if (!started_ || !displayOnline_ || !wifiConnected_()) return false;
+    if (payloadLen > HMI_UDP_LARGE_PAYLOAD_MAX) return false;
+    if (payloadLen > 0U && !payload) return false;
+
+    if (reliablePendingLen_ > 0U) {
+        const size_t pendingPayloadLen = reliablePendingLen_ > sizeof(HmiUdpHeader)
+            ? reliablePendingLen_ - sizeof(HmiUdpHeader)
+            : 0U;
+        const uint8_t* pendingPayload = reliablePendingBuf_ + sizeof(HmiUdpHeader);
+        const bool samePending = reliablePendingType_ == type &&
+                                 pendingPayloadLen == payloadLen &&
+                                 (payloadLen == 0U || memcmp(pendingPayload, payload, payloadLen) == 0);
+        if (samePending) {
+            LOGD("HMI UDP reliable large duplicate suppressed type=%u seq=%u len=%u",
+                 (unsigned)type,
+                 (unsigned)reliablePendingSeq_,
+                 (unsigned)payloadLen);
+            return true;
+        }
+
+        LOGD("HMI UDP reliable large busy type=%u pending=%u seq=%u len=%u",
+             (unsigned)type,
+             (unsigned)reliablePendingType_,
+             (unsigned)reliablePendingSeq_,
+             (unsigned)payloadLen);
+        return false;
+    }
+
+    clearReliableQueue_(false);
+    if (!buildReliablePending_(type, payload, payloadLen)) return false;
+    serviceReliableTx_(millis());
+    return reliablePendingLen_ > 0U;
+}
+
+bool HmiUdpServerModule::buildReliablePending_(HmiUdpMsgType type, const void* payload, size_t payloadLen)
+{
+    if (payloadLen > HMI_UDP_LARGE_PAYLOAD_MAX) return false;
+    if (payloadLen > 0U && !payload) return false;
+
+    reliablePendingSeq_ = txSeq_;
+    reliablePendingType_ = type;
+    reliableAttempts_ = 0;
+    reliableLastSendMs_ = 0;
+
+    size_t packetLen = 0;
+    if (!hmiUdpBuildPacket(reliablePendingBuf_,
+                           sizeof(reliablePendingBuf_),
+                           packetLen,
+                           type,
+                           txSeq_++,
+                           lastRxSeq_,
+                           HMI_UDP_FLAG_ACK_REQUIRED,
+                           payload,
+                           payloadLen)) {
+        reliablePendingSeq_ = 0;
+        reliablePendingType_ = HmiUdpMsgType::Error;
+        return false;
+    }
+
+    reliablePendingLen_ = packetLen;
+    return true;
+}
+
 bool HmiUdpServerModule::loadNextReliable_()
 {
     if (reliablePendingLen_ > 0 || outHead_ == outTail_) return false;
@@ -281,14 +366,16 @@ void HmiUdpServerModule::serviceReliableTx_(uint32_t nowMs)
 
     if (reliableAttempts_ >= ReliableMaxAttempts) {
         const HmiUdpMsgType timedOutType = reliablePendingType_;
-        LOGW("HMI UDP reliable TX timeout type=%u seq=%u attempts=%u",
+        LOGW("HMI UDP reliable TX timeout type=%u seq=%u attempts=%u; dropping packet and resuming",
              (unsigned)timedOutType,
              (unsigned)reliablePendingSeq_,
              (unsigned)reliableAttempts_);
-        markDisplayOffline_("reliable-timeout", true);
-        if (isConfigMsg_(timedOutType)) {
-            clearReliableQueue_(false);
-        }
+        reliablePendingLen_ = 0;
+        reliablePendingSeq_ = 0;
+        reliablePendingType_ = HmiUdpMsgType::Error;
+        reliableAttempts_ = 0;
+        reliableLastSendMs_ = 0;
+        if (isConfigMsg_(timedOutType)) clearReliableQueue_(false);
         return;
     }
 
@@ -323,6 +410,7 @@ void HmiUdpServerModule::markDisplayOffline_(const char* reason, bool clearPendi
 {
     const bool wasOnline = displayOnline_;
     displayOnline_ = false;
+    displaySleeping_ = false;
     displayVersionDetected_ = false;
     displayVersion_ = 0U;
     clearReliableQueue_(clearPending);
@@ -336,7 +424,13 @@ bool HmiUdpServerModule::isConfigMsg_(HmiUdpMsgType type) const
     return type == HmiUdpMsgType::ConfigStart ||
            type == HmiUdpMsgType::ConfigRow ||
            type == HmiUdpMsgType::ConfigEnd ||
-           type == HmiUdpMsgType::ConfigValues;
+           type == HmiUdpMsgType::ConfigValues ||
+           type == HmiUdpMsgType::ConfigViewSnapshot;
+}
+
+bool HmiUdpServerModule::shouldSuppressUiTx_() const
+{
+    return displaySleeping_;
 }
 
 bool HmiUdpServerModule::sendAck_(uint16_t seq)
@@ -415,12 +509,15 @@ void HmiUdpServerModule::handlePacket_(const HmiUdpHeader& header, const uint8_t
             if (welcome.accepted == 0U) {
                 (void)sendPacket_(HmiUdpMsgType::Welcome, &welcome, sizeof(welcome));
                 displayOnline_ = false;
+                displaySleeping_ = false;
                 displayVersionDetected_ = false;
                 displayVersion_ = 0U;
                 return;
             }
             const bool haveDisplayVersion = hello &&
                                             (hello->flags & HMI_UDP_HELLO_FLAG_NEXTION_VERSION_VALID) != 0U;
+            const bool nextionSleeping = hello &&
+                                         (hello->flags & HMI_UDP_HELLO_FLAG_NEXTION_SLEEPING) != 0U;
             const bool wasOnline = displayOnline_;
             const bool previousVersionDetected = displayVersionDetected_;
             const uint32_t previousVersion = displayVersion_;
@@ -444,7 +541,8 @@ void HmiUdpServerModule::handlePacket_(const HmiUdpHeader& header, const uint8_t
                 }
             }
             displayOnline_ = true;
-            if (!wasOnline || versionChanged || freshDisplaySession) {
+            displaySleeping_ = nextionSleeping;
+            if (!nextionSleeping && (!wasOnline || versionChanged || freshDisplaySession)) {
                 fullRefreshRequested_ = true;
                 if (freshDisplaySession) {
                     LOGI("HMI UDP Flow Connect Display fresh session detected");
@@ -468,15 +566,52 @@ void HmiUdpServerModule::handlePacket_(const HmiUdpHeader& header, const uint8_t
             }
             HmiEvent event{};
             hmiUdpPayloadToEvent(*reinterpret_cast<const HmiUdpEventPayload*>(payload), event);
+            if (event.type == HmiEventType::DisplaySleep) {
+                lastEventSeq_ = header.seq;
+                hasLastEventSeq_ = true;
+                displaySleeping_ = true;
+                clearReliableQueue_(true);
+                LOGI("HMI UDP display sleeping");
+                return;
+            }
+            if (event.type == HmiEventType::DisplayWake) {
+                lastEventSeq_ = header.seq;
+                hasLastEventSeq_ = true;
+                const bool wasSleeping = displaySleeping_;
+                displaySleeping_ = false;
+                fullRefreshRequested_ = true;
+                LOGI("HMI UDP display awake%s", wasSleeping ? "" : " (already awake)");
+                return;
+            }
             if (pushEvent_(event)) {
                 lastEventSeq_ = header.seq;
                 hasLastEventSeq_ = true;
-                LOGD("HMI UDP event queued seq=%u type=%u command=%u value=%u row=%u",
-                     (unsigned)header.seq,
-                     (unsigned)event.type,
-                     (unsigned)event.command,
-                     (unsigned)event.value,
-                     (unsigned)event.row);
+                const bool menuEvent = event.type == HmiEventType::Back ||
+                                       event.type == HmiEventType::Validate ||
+                                       event.type == HmiEventType::NextPage ||
+                                       event.type == HmiEventType::PrevPage ||
+                                       event.type == HmiEventType::RowActivate ||
+                                       event.type == HmiEventType::RowToggle ||
+                                       event.type == HmiEventType::RowCycle ||
+                                       event.type == HmiEventType::RowSetText ||
+                                       event.type == HmiEventType::RowSetSlider ||
+                                       event.type == HmiEventType::RowEdit ||
+                                       event.type == HmiEventType::ConfigEnter ||
+                                       event.type == HmiEventType::ConfigExit;
+                if (menuEvent) {
+                    LOGI("HMI UDP menu event queued seq=%u type=%u row=%u value=%u",
+                         (unsigned)header.seq,
+                         (unsigned)event.type,
+                         (unsigned)event.row,
+                         (unsigned)event.value);
+                } else {
+                    LOGD("HMI UDP event queued seq=%u type=%u command=%u value=%u row=%u",
+                         (unsigned)header.seq,
+                         (unsigned)event.type,
+                         (unsigned)event.command,
+                         (unsigned)event.value,
+                         (unsigned)event.row);
+                }
             } else {
                 LOGW("HMI UDP event queue full seq=%u type=%u command=%u",
                      (unsigned)header.seq,
@@ -543,4 +678,24 @@ void HmiUdpServerModule::copyText_(char* out, size_t outLen, const char* in)
         ++i;
     }
     out[i] = '\0';
+}
+
+void HmiUdpServerModule::fillConfigRowPayload_(HmiUdpConfigRowPayload& payload,
+                                               uint8_t row,
+                                               const ConfigMenuRowView& viewRow,
+                                               ConfigMenuMode mode)
+{
+    payload = HmiUdpConfigRowPayload{};
+    payload.row = row;
+    payload.widget = (uint8_t)viewRow.widget;
+    payload.editType = viewRow.editType;
+    if (viewRow.visible) payload.flags |= HMI_UDP_CONFIG_ROW_VISIBLE;
+    if (viewRow.valueVisible) payload.flags |= HMI_UDP_CONFIG_ROW_VALUE_VISIBLE;
+    if (viewRow.editable) payload.flags |= HMI_UDP_CONFIG_ROW_EDITABLE;
+    if (viewRow.dirty) payload.flags |= HMI_UDP_CONFIG_ROW_DIRTY;
+    if (viewRow.canEnter) payload.flags |= HMI_UDP_CONFIG_ROW_CAN_ENTER;
+    if (viewRow.canEdit) payload.flags |= HMI_UDP_CONFIG_ROW_CAN_EDIT;
+    if (mode == ConfigMenuMode::Edit) payload.flags |= HMI_UDP_CONFIG_MODE_EDIT;
+    copyText_(payload.label, sizeof(payload.label), viewRow.label);
+    copyText_(payload.value, sizeof(payload.value), viewRow.value);
 }

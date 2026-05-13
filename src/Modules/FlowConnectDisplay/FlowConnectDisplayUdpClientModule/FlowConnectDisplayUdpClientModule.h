@@ -35,10 +35,13 @@ public:
 
 private:
     static constexpr uint32_t HelloPeriodMs = 1000U;
+    static constexpr uint32_t SleepHelloPeriodMs = 30000U;
     static constexpr uint32_t PingPeriodMs = 2000U;
+    static constexpr uint32_t SleepPingPeriodMs = 30000U;
     static constexpr uint32_t LinkTimeoutMs = 9000U;
+    static constexpr uint32_t SleepLinkTimeoutMs = 120000U;
     static constexpr uint32_t AckRetryMs = 150U;
-    static constexpr uint8_t AckMaxAttempts = 3U;
+    static constexpr uint8_t AckMaxAttempts = 7U;
     static constexpr uint32_t HomeRefreshThrottleMs = 10000U;
     static constexpr uint32_t PageProbePeriodMs = 5000U;
     static constexpr uint32_t VersionProbeRetryMs = 2000U;
@@ -50,6 +53,7 @@ private:
     static constexpr uint8_t ConfigValuesPasses = 2U;
     static constexpr uint8_t NEXTION_EVENT_QUEUE_SIZE = 6U;
     static constexpr uint32_t InputLockMaxMs = 5000U;
+    static constexpr uint16_t NextionSleepNoTouchSeconds = 30U;
     static constexpr const char* FlowConnectionStateObject = "tFConnectState";
 
     struct ConfigData {
@@ -124,7 +128,7 @@ private:
 
     void sendHello_(uint32_t nowMs, bool force = false);
     void probeNextionVersion_(uint32_t nowMs, bool force = false);
-    void sendPing_(uint32_t nowMs);
+    void sendPing_(uint32_t nowMs, uint32_t periodMs = PingPeriodMs);
     void readUdp_(uint32_t nowMs);
     void handlePacket_(const HmiUdpHeader& header, const uint8_t* payload, uint32_t nowMs);
     bool sendPacket_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen, uint8_t flags = 0);
@@ -133,6 +137,8 @@ private:
     void serviceEventTx_();
     bool enqueueEvent_(const HmiEvent& event);
     bool dequeueEvent_(HmiEvent& out);
+    bool peekEvent_(HmiEvent& out) const;
+    void popEvent_();
     bool sendEvent_(const HmiEvent& event);
     bool queueReliablePacket_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen);
     bool sendRtcReadResponse_();
@@ -147,6 +153,7 @@ private:
     void setInputLocked_(bool locked, const char* reason, uint32_t nowMs);
     void logDisplayState_(const char* reason, bool force = false);
     void logEvent_(const char* prefix, const HmiEvent& event) const;
+    static bool isMenuEvent_(HmiEventType type);
     void servicePendingAck_(uint32_t nowMs);
     void setFlowConnectionVisible_(bool visible, const char* reason, bool force = false);
     void markSeen_(uint32_t nowMs);

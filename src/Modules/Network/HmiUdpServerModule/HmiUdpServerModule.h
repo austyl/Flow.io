@@ -29,6 +29,7 @@ public:
     void tick(uint32_t nowMs);
 
     bool isDisplayOnline() const { return displayOnline_; }
+    bool isDisplaySleeping() const { return displaySleeping_; }
     bool hasDisplayVersion() const { return displayVersionDetected_; }
     uint32_t displayVersion() const { return displayVersion_; }
     bool isLegacyV2() const { return displayVersionDetected_ && displayVersion_ == 2U; }
@@ -43,6 +44,7 @@ public:
     bool sendConfigStart(const ConfigMenuView& view);
     bool sendConfigRow(uint8_t row, const ConfigMenuRowView& viewRow, ConfigMenuMode mode);
     bool sendConfigEnd(uint8_t rowCount);
+    bool sendConfigViewSnapshot(const ConfigMenuView& view);
 
     bool sendRtcWrite(const HmiRtcDateTime& value);
     bool requestRtcRead();
@@ -54,9 +56,11 @@ private:
     static constexpr uint8_t HMI_UDP_EVENT_QUEUE_SIZE = 8;
     static constexpr uint8_t HMI_UDP_OUT_QUEUE_SIZE = 12;
     static constexpr uint8_t HMI_UDP_OUT_PAYLOAD_MAX = 64;
+    static constexpr size_t HMI_UDP_LARGE_PAYLOAD_MAX = HMI_UDP_MAX_PACKET - sizeof(HmiUdpHeader);
     static constexpr uint32_t OfflineTimeoutMs = 9000U;
+    static constexpr uint32_t SleepOfflineTimeoutMs = 120000U;
     static constexpr uint32_t ReliableRetryMs = 150U;
-    static constexpr uint8_t ReliableMaxAttempts = 5U;
+    static constexpr uint8_t ReliableMaxAttempts = 7U;
 
     struct OutPacket {
         HmiUdpMsgType type = HmiUdpMsgType::Error;
@@ -84,6 +88,7 @@ private:
     uint16_t remotePort_ = HMI_UDP_PORT;
     bool started_ = false;
     bool displayOnline_ = false;
+    bool displaySleeping_ = false;
     bool fullRefreshRequested_ = false;
     bool displayVersionDetected_ = false;
     uint32_t displayVersion_ = 0U;
@@ -113,11 +118,18 @@ private:
     bool sendPacket_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen, uint8_t flags = 0);
     bool sendImmediate_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen, uint8_t flags = 0);
     bool enqueueReliable_(HmiUdpMsgType type, const void* payload, uint8_t payloadLen);
+    bool sendReliableLarge_(HmiUdpMsgType type, const void* payload, size_t payloadLen);
+    bool buildReliablePending_(HmiUdpMsgType type, const void* payload, size_t payloadLen);
     bool loadNextReliable_();
+    static void fillConfigRowPayload_(HmiUdpConfigRowPayload& payload,
+                                      uint8_t row,
+                                      const ConfigMenuRowView& viewRow,
+                                      ConfigMenuMode mode);
     void serviceReliableTx_(uint32_t nowMs);
     void clearReliableQueue_(bool clearPending);
     void markDisplayOffline_(const char* reason, bool clearPending);
     bool isConfigMsg_(HmiUdpMsgType type) const;
+    bool shouldSuppressUiTx_() const;
     bool sendAck_(uint16_t seq);
     void readUdp_(uint32_t nowMs);
     void handlePacket_(const HmiUdpHeader& header, const uint8_t* payload, uint32_t nowMs);

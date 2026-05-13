@@ -24,10 +24,10 @@
     const remoteMenuIconFontLinkId = 'flowMenuIconFontRemote';
     const remoteMenuIconFontHref = 'https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded&display=block';
     const remoteMenuIconLigatures = {
-      'icon-measures': 'dashboard',
+      'icon-measures': 'water_damage',
       'icon-calibration': 'science',
-      'icon-terminal': 'terminal_2',
-      'icon-system': 'system_update_alt',
+      'icon-terminal': 'list_alt',
+      'icon-system': 'cloud_upload',
       'icon-flowcfg': 'settings'
     };
     let webAssetVersion = '';
@@ -240,12 +240,8 @@
     async function applyMenuIconModeFromMeta(data) {
       const mode = normalizeNetworkMode(data && data.network_mode);
       networkMode = mode;
-      if (isAccessPointMode()) {
-        applyMenuIconSourcePreference(false);
-        return;
-      }
-      const fontReady = await ensureRemoteMenuIconFontLoaded();
-      applyMenuIconSourcePreference(fontReady);
+      await ensureRemoteMenuIconFontLoaded().catch(() => false);
+      applyMenuIconSourcePreference(true);
     }
 
     function isMicronovaProfile() {
@@ -308,27 +304,23 @@
     function applyProfileUiText() {
       if (!document.body) return;
       setBrandWordmark(isMicronovaProfile() ? 'Pellet' : 'Flow');
-      if (!isMicronovaProfile()) return;
-      setLabelForInput('supervisorPath', 'Chemin image Micronova');
-      setLabelForInput('spiffsPath', 'Chemin image assets Micronova (spiffs)');
-      if (supervisorPath) supervisorPath.placeholder = '/build/Micronova/firmware.bin';
-      if (spiffsPath) spiffsPath.placeholder = '/build/Micronova/spiffs.bin';
-      if (applySupervisorPathBtn) {
-        applySupervisorPathBtn.setAttribute('aria-label', 'Appliquer le chemin Micronova');
+      if (isMicronovaProfile()) {
+        setPageMenuVisible('page-calibration', false);
       }
-      hideFieldForInput('flowPath', true);
-      hideFieldForInput('nextionPath', true);
-      setPageMenuVisible('page-calibration', false);
-      setSystemActionVisible('rebootFlow', false);
-      setSystemActionVisible('rebootFlowHardware', false);
-      setSystemActionVisible('rebootNextion', false);
-      setSystemActionVisible('flowFactoryReset', false);
-      const rebootAction = rebootSupervisorBtn ? rebootSupervisorBtn.closest('.system-action') : null;
-      if (rebootAction) {
-        const h3 = rebootAction.querySelector('h3');
-        const p = rebootAction.querySelector('p');
-        if (h3) h3.textContent = 'Redémarrer Micronova';
-        if (p) p.textContent = 'Redémarre le firmware Micronova sans modifier la configuration.';
+      if (rebootDeviceTargetSelect) {
+        const blockValues = isMicronovaProfile()
+          ? new Set(['flow_soft', 'flow_hard', 'nextion', 'factory_reset'])
+          : new Set();
+        Array.from(rebootDeviceTargetSelect.options || []).forEach((option) => {
+          if (!option) return;
+          option.disabled = blockValues.has(option.value);
+        });
+        if (rebootDeviceTargetSelect.options[0]) {
+          rebootDeviceTargetSelect.options[0].text = isMicronovaProfile() ? 'Micronova' : 'Supervisor';
+        }
+        if (blockValues.has(rebootDeviceTargetSelect.value)) {
+          rebootDeviceTargetSelect.value = 'supervisor';
+        }
       }
     }
 
@@ -362,10 +354,6 @@
     function assetUrl(path) {
       if (!webAssetVersion) return path;
       return path + '?v=' + encodeURIComponent(webAssetVersion);
-    }
-
-    function iconAssetUrl(iconName) {
-      return assetUrl('/webinterface/i/' + iconName + '.svg');
     }
 
     function getStorageValue(storage, key) {
@@ -537,130 +525,22 @@
       return navigationType() === 'reload';
     }
 
-    function setDeferredVisualAssetUrl(varName, url) {
-      document.documentElement.style.setProperty(varName, "url('" + url + "')");
-    }
-
-    function setDeferredFaviconUrl(url) {
-      if (!url) return;
-      const resolvedUrl = url.indexOf('?') >= 0 ? (url + '&slot=favicon') : (url + '?slot=favicon');
-      let link = document.getElementById('appFavicon');
-      if (!link) {
-        link = document.createElement('link');
-        link.id = 'appFavicon';
-        document.head.appendChild(link);
-      }
-      link.setAttribute('data-flow-favicon', '1');
-      link.rel = 'icon';
-      link.type = 'image/svg+xml';
-      link.sizes = 'any';
-      if (link.href !== resolvedUrl) {
-        link.href = resolvedUrl;
-      }
-
-      let shortcutLink = document.getElementById('appFaviconShortcut');
-      if (!shortcutLink) {
-        shortcutLink = document.createElement('link');
-        shortcutLink.id = 'appFaviconShortcut';
-        document.head.appendChild(shortcutLink);
-      }
-      shortcutLink.setAttribute('data-flow-favicon', '1');
-      shortcutLink.rel = 'shortcut icon';
-      shortcutLink.type = 'image/svg+xml';
-      shortcutLink.sizes = 'any';
-      if (shortcutLink.href !== resolvedUrl) {
-        shortcutLink.href = resolvedUrl;
-      }
-    }
-
-    function applyDeferredVisualAsset(entry) {
-      if (!entry || !entry[0]) return;
-      if (entry[0] === 'favicon') {
-        setDeferredFaviconUrl(entry[1]);
-        return;
-      }
-      setDeferredVisualAssetUrl(entry[0], entry[1]);
-    }
-
-    function activateMenuAssets(deferred, stepDelayMs) {
+    function activateMenuAssets() {
       if (menuAssetsActivated) return;
       menuAssetsActivated = true;
-      if (disableWebIcons) {
-        markDeferredVisualAssetsWarm();
-        return;
-      }
-      const stepMs = Math.max(0, Number(stepDelayMs) || deferredMenuAssetStepMs);
-      const steps = [];
-      if (!hideMenuSvg && isAccessPointMode() && !useRemoteMenuIcons) {
-        steps.push(
-          ['--menu-icon-measures-url', iconAssetUrl('m')],
-          ['--menu-icon-calibration-url', iconAssetUrl('c')],
-          ['--menu-icon-terminal-url', iconAssetUrl('t')],
-          ['--menu-icon-system-url', iconAssetUrl('d')],
-          ['--menu-icon-flowcfg-url', iconAssetUrl('s')]
-        );
-      }
-      steps.push(
-        ['--ui-refresh-icon-url', iconAssetUrl('r')],
-        ['--ui-crumb-arrow-icon-url', iconAssetUrl('u')],
-        ['favicon', iconAssetUrl('f')]
-      );
-      if (!deferred) {
-        steps.forEach((entry) => {
-          applyDeferredVisualAsset(entry);
-        });
-        markDeferredVisualAssetsWarm();
-        return;
-      }
-      steps.forEach((entry, index) => {
-        setTimeout(() => {
-          applyDeferredVisualAsset(entry);
-          if (index === steps.length - 1) {
-            markDeferredVisualAssetsWarm();
-          }
-        }, deferred ? (index * stepMs) : 0);
-      });
+      markDeferredVisualAssetsWarm();
     }
 
-    function armDeferredMenuAssets(startDelayMs, stepDelayMs, fallbackDelayMs) {
-      if (deferredMenuAssetsArmed || menuAssetsActivated || hideMenuSvg || disableWebIcons || useRemoteMenuIcons || !isAccessPointMode() || !drawer) return;
+    function armDeferredMenuAssets() {
+      if (deferredMenuAssetsArmed || menuAssetsActivated) return;
       deferredMenuAssetsArmed = true;
-      let triggered = false;
-      const trigger = () => {
-        if (triggered) return;
-        triggered = true;
-        setTimeout(() => {
-          activateMenuAssets(true, stepDelayMs);
-        }, Math.max(0, Number(startDelayMs) || 0));
-      };
-      drawer.addEventListener('pointerenter', trigger, { once: true });
-      drawer.addEventListener('touchstart', trigger, { once: true, passive: true });
-      drawer.addEventListener('click', trigger, { once: true });
-      setTimeout(trigger, Math.max(0, Number(fallbackDelayMs) || 0));
+      activateMenuAssets();
     }
 
     function scheduleDeferredVisualAssets() {
       if (deferredVisualAssetsScheduled) return;
       deferredVisualAssetsScheduled = true;
-      if (disableWebIcons) return;
-      if (hasWarmDeferredVisualAssets() && !isReloadNavigation()) {
-        activateMenuAssets(false);
-        return;
-      }
-
-      const isReload = isReloadNavigation();
-      if (isReload) {
-        armDeferredMenuAssets(
-          deferredMenuAssetReloadDelayMs,
-          deferredMenuAssetReloadStepMs,
-          deferredMenuAssetReloadFallbackDelayMs
-        );
-        return;
-      }
-
-      setTimeout(() => {
-        activateMenuAssets(true, deferredMenuAssetStepMs);
-      }, deferredMenuAssetStartDelayMs);
+      armDeferredMenuAssets();
     }
 
     async function loadWebMeta(options) {
@@ -704,8 +584,8 @@
             }
           }
         }
-        applyIconUsagePreference(!!data.disable_icons);
-        applyMenuIconPreference(!!data.hide_menu_svg);
+        applyIconUsagePreference(false);
+        applyMenuIconPreference(false);
         applyStatusIconPreference(!!data.unify_status_card_icons);
         await applyMenuIconModeFromMeta(data);
         if (!disableWebIcons && hasWarmDeferredVisualAssets()) {
@@ -952,20 +832,10 @@
     let terminalActive = false;
     const lineDefaultPlaceholder = line ? line.placeholder : '';
 
-    const updateHost = document.getElementById('updateHost');
-    const flowPath = document.getElementById('flowPath');
-    const nextionPath = document.getElementById('nextionPath');
-    const supervisorPath = document.getElementById('supervisorPath');
-    const spiffsPath = document.getElementById('spiffsPath');
-    const applyUpdateHostBtn = document.getElementById('applyUpdateHost');
-    const applyFlowPathBtn = document.getElementById('applyFlowPath');
-    const applyNextionPathBtn = document.getElementById('applyNextionPath');
-    const applySupervisorPathBtn = document.getElementById('applySupervisorPath');
-    const applySpiffsPathBtn = document.getElementById('applySpiffsPath');
-    const upSupervisorBtn = document.getElementById('upSupervisor');
-    const upFlowBtn = document.getElementById('upFlow');
-    const upNextionBtn = document.getElementById('upNextion');
-    const upSpiffsBtn = document.getElementById('upSpiffs');
+    const updateServerPath = document.getElementById('updateServerPath');
+    const applyUpdateServerPathBtn = document.getElementById('applyUpdateServerPath');
+    const checkUpdatesBtn = document.getElementById('checkUpdates');
+    const upgradeCards = document.getElementById('upgradeCards');
     const upgradeProgressBar = document.getElementById('upgradeProgressBar');
     const upgradePct = document.getElementById('upgradePct');
     const upgradeJourneyLabel = document.getElementById('upgradeJourneyLabel');
@@ -982,11 +852,8 @@
     const scanWifiBtn = document.getElementById('scanWifi');
     const applyWifiCfgBtn = document.getElementById('applyWifiCfg');
     const wifiConfigStatus = document.getElementById('wifiConfigStatus');
-    const rebootSupervisorBtn = document.getElementById('rebootSupervisor');
-    const rebootFlowBtn = document.getElementById('rebootFlow');
-    const rebootFlowHardwareBtn = document.getElementById('rebootFlowHardware');
-    const rebootNextionBtn = document.getElementById('rebootNextion');
-    const flowFactoryResetBtn = document.getElementById('flowFactoryReset');
+    const rebootDeviceTargetSelect = document.getElementById('rebootDeviceTarget');
+    const rebootDeviceActionBtn = document.getElementById('rebootDeviceAction');
     const systemStatusText = document.getElementById('systemStatusText');
     const flowStatusRefreshBtn = document.getElementById('flowStatusRefresh');
     const flowStatusChip = document.getElementById('flowStatusChip');
@@ -1054,6 +921,7 @@
     let calibrationLoadedOnce = false;
     let calibrationContext = null;
     let calibrationComputed = null;
+    let upgradeManifestState = { manifest: null, manifestUrl: '', baseUrl: '' };
     let cfgTreeAliases = [];
     let cfgTreeVirtualBranches = [];
     let supCfgCurrentModule = '';
@@ -1147,12 +1015,20 @@
     const poolMeasureDomainAnimations = {};
     const upgradeReconnectFetchTimeoutMs = 1400;
     const upgradeConfigFieldDefs = [
-      { key: 'update_host', input: updateHost, button: applyUpdateHostBtn, successMessage: 'Serveur HTTP enregistré.' },
-      { key: 'flowio_path', input: flowPath, button: applyFlowPathBtn, successMessage: 'Chemin Flow.io enregistré.' },
-      { key: 'nextion_path', input: nextionPath, button: applyNextionPathBtn, successMessage: 'Chemin Nextion enregistré.' },
-      { key: 'supervisor_path', input: supervisorPath, button: applySupervisorPathBtn, successMessage: 'Chemin Supervisor enregistré.' },
-      { key: 'spiffs_path', input: spiffsPath, button: applySpiffsPathBtn, successMessage: 'Chemin SPIFFS enregistré.' }
+      {
+        key: 'update_server_path',
+        input: updateServerPath,
+        button: applyUpdateServerPathBtn,
+        successMessage: 'Serveur d’upgrade enregistré.'
+      }
     ];
+    const upgradeTargetDefs = {
+      flowio: { manifestKey: 'flowio', target: 'flowio', endpoint: '/fwupdate/flowio', label: 'Flow.io', order: 10 },
+      supervisor: { manifestKey: 'supervisor', target: 'supervisor', endpoint: '/fwupdate/supervisor', label: 'Supervisor', order: 20 },
+      nextion: { manifestKey: 'nextion', target: 'nextion', endpoint: '/fwupdate/nextion', label: 'Nextion 800x480', order: 30 },
+      spiffs: { manifestKey: 'spiffs', target: 'spiffs', endpoint: '/fwupdate/spiffs', label: 'Assets Supervisor', order: 40 },
+      cfgdocs: { manifestKey: 'cfgdocs', target: 'spiffs', endpoint: '/fwupdate/spiffs', label: 'Assets Supervisor', order: 41 }
+    };
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     let logSource = 'flow';
@@ -1339,8 +1215,10 @@
 
     function setUpgradeProgress(value) {
       const p = Math.max(0, Math.min(100, Number(value) || 0));
-      upgradeProgressBar.style.width = p + '%';
-      upgradeProgressBar.classList.toggle('is-complete', p >= 100);
+      if (upgradeProgressBar) {
+        upgradeProgressBar.style.width = p + '%';
+        upgradeProgressBar.classList.toggle('is-complete', p >= 100);
+      }
       if (upgradePct) {
         upgradePct.textContent = p + '%';
       }
@@ -1393,12 +1271,11 @@
 
     function upgradeStepDefinitions(target) {
       return [
-        { id: 'target', label: 'Sélection de la cible ' + upgradeTargetLabel(target) },
-        { id: 'download', label: 'Connexion au serveur' },
+        { id: 'target', label: 'Initialisation' },
+        { id: 'download', label: 'Connexion' },
         { id: 'flash', label: 'Mise à jour' },
         { id: 'reboot', label: 'Redémarrage' },
-        { id: 'reconnect', label: 'Attente de Reconnection' },
-        { id: 'done', label: 'Mise à jour terminée' }
+        { id: 'reconnect', label: 'Reconnexion' }
       ];
     }
 
@@ -1444,11 +1321,14 @@
     }
 
     function upgradeStepStatusLabel(stepId, state, session) {
-      if (state === 'done') return 'OK';
+      if (state === 'done') return 'Terminé';
       const progress = upgradeStepProgress(stepId, state, session);
-      if (progress !== null) return progress + '%';
-      if (state === 'error') return 'erreur';
-      return '';
+      if (state === 'active') {
+        return progress !== null ? ('En cours (' + progress + '%)') : 'En cours';
+      }
+      if (state === 'pending') return 'En attente';
+      if (state === 'error') return 'Erreur';
+      return 'En attente';
     }
 
     function upgradeStepState(stepId, session) {
@@ -1481,28 +1361,45 @@
         const icon = document.createElement('span');
         icon.className = 'step-ic ' + state;
         if (state === 'active') {
-          const refreshIcon = document.createElement('span');
-          refreshIcon.className = 'step-refresh-icon';
-          refreshIcon.setAttribute('aria-hidden', 'true');
-          icon.appendChild(refreshIcon);
+          const activeDot = document.createElement('span');
+          activeDot.className = 'step-active-dot';
+          activeDot.setAttribute('aria-hidden', 'true');
+          icon.appendChild(activeDot);
         } else if (state === 'done') {
-          icon.textContent = iconCheckText();
+          const doneIcon = document.createElement('span');
+          doneIcon.className = 'ui-msr';
+          doneIcon.setAttribute('aria-hidden', 'true');
+          doneIcon.textContent = 'check';
+          icon.appendChild(doneIcon);
         } else if (state === 'error') {
-          icon.textContent = '!';
+          const errIcon = document.createElement('span');
+          errIcon.className = 'ui-msr';
+          errIcon.setAttribute('aria-hidden', 'true');
+          errIcon.textContent = 'close';
+          icon.appendChild(errIcon);
         } else {
-          icon.textContent = '○';
+          const pendingIcon = document.createElement('span');
+          pendingIcon.className = 'ui-msr';
+          pendingIcon.setAttribute('aria-hidden', 'true');
+          pendingIcon.textContent = 'radio_button_unchecked';
+          icon.appendChild(pendingIcon);
         }
         row.appendChild(icon);
+
+        const meta = document.createElement('span');
+        meta.className = 'step-meta';
 
         const label = document.createElement('span');
         label.className = 'step-lbl ' + state;
         label.textContent = step.label;
-        row.appendChild(label);
+        meta.appendChild(label);
 
-        const trailing = document.createElement('span');
-        trailing.className = 'step-t';
-        trailing.textContent = upgradeStepStatusLabel(step.id, state, session);
-        row.appendChild(trailing);
+        const sub = document.createElement('span');
+        sub.className = 'step-sub ' + state;
+        sub.textContent = upgradeStepStatusLabel(step.id, state, session);
+        meta.appendChild(sub);
+
+        row.appendChild(meta);
 
         upgradeSteps.appendChild(row);
       });
@@ -1530,7 +1427,9 @@
                     : 'Erreur';
 
       if (upgradeJourneyLabel) {
-        upgradeJourneyLabel.textContent = safeSession.target ? ('Upgrade ' + targetLabel) : 'Upgrade firmware';
+        upgradeJourneyLabel.textContent = safeSession.target
+          ? ('Statut de l’upgrade · ' + targetLabel)
+          : 'Statut de l’upgrade';
       }
       setUpgradeProgress(upgradePhasePercent(safeSession));
       setUpgradeMessage(detail || (phase === 'idle' ? 'Aucune opération en cours.' : stateLabel));
@@ -1821,32 +1720,351 @@
     async function loadUpgradeConfig() {
       try {
         const data = await fetchOkJson('/api/fwupdate/config', { cache: 'no-store' }, 'configuration firmware indisponible');
-        updateHost.value = data.update_host || '';
-        flowPath.value = data.flowio_path || '';
-        supervisorPath.value = data.supervisor_path || '';
-        nextionPath.value = data.nextion_path || '';
-        spiffsPath.value = data.spiffs_path || data.cfgdocs_path || '';
+        if (updateServerPath) {
+          updateServerPath.value = composeUpgradeServerPath(data.update_host || '', data.update_path || '');
+        }
+        resetUpgradeManifestSelections('Cliquez sur « Rechercher les mises à jour ».');
         syncUpgradeConfigFieldInitialValues();
       } catch (err) {
         setUpgradeMessage('Échec du chargement de la configuration : ' + err);
       }
     }
 
+    function composeUpgradeServerPath(hostRaw, pathRaw) {
+      const host = String(hostRaw || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      let path = String(pathRaw || '').trim();
+      if (path && !path.startsWith('/')) path = '/' + path;
+      if (!host) return path.replace(/^\/+/, '');
+      return host + path;
+    }
+
+    function splitUpgradeServerPath(rawValue) {
+      const raw = String(rawValue || '').trim().replace(/^https?:\/\//i, '');
+      if (!raw) return { host: '', path: '' };
+      const slashIndex = raw.indexOf('/');
+      if (slashIndex < 0) {
+        return { host: raw.replace(/\/+$/, ''), path: '' };
+      }
+      const host = raw.slice(0, slashIndex).trim().replace(/\/+$/, '');
+      let path = raw.slice(slashIndex).trim();
+      if (path && !path.startsWith('/')) path = '/' + path;
+      return { host: host, path: path };
+    }
+
     function buildUpgradeConfigPayload() {
+      const parts = splitUpgradeServerPath(updateServerPath ? updateServerPath.value : '');
       return {
-        update_host: updateHost.value.trim(),
-        flowio_path: flowPath.value.trim(),
-        supervisor_path: supervisorPath.value.trim(),
-        nextion_path: nextionPath.value.trim(),
-        spiffs_path: spiffsPath.value.trim()
+        update_host: parts.host,
+        update_path: parts.path
       };
+    }
+
+    function normalizeFirmwareVersionForCompare(value) {
+      return String(value || '').trim().split('+')[0].replace(/^v/i, '');
+    }
+
+    function compareFirmwareVersions(a, b) {
+      const left = normalizeFirmwareVersionForCompare(a).split(/[.-]/).map((part) => Number.parseInt(part, 10));
+      const right = normalizeFirmwareVersionForCompare(b).split(/[.-]/).map((part) => Number.parseInt(part, 10));
+      const len = Math.max(left.length, right.length);
+      for (let i = 0; i < len; ++i) {
+        const av = Number.isFinite(left[i]) ? left[i] : 0;
+        const bv = Number.isFinite(right[i]) ? right[i] : 0;
+        if (av > bv) return 1;
+        if (av < bv) return -1;
+      }
+      return 0;
+    }
+
+    function manifestArtifactList(manifest, key) {
+      if (!manifest || typeof manifest !== 'object') return [];
+      const artifacts = (manifest.artifacts && typeof manifest.artifacts === 'object') ? manifest.artifacts : manifest;
+      const artifact = artifacts[key];
+      if (Array.isArray(artifact)) {
+        return artifact.filter((entry) => entry && typeof entry === 'object');
+      }
+      if (artifact && typeof artifact === 'object' && Array.isArray(artifact.versions)) {
+        return artifact.versions
+          .filter((entry) => entry && typeof entry === 'object')
+          .map((entry) => Object.assign({}, artifact, entry, { versions: undefined }));
+      }
+      if (artifact && typeof artifact === 'object' && (artifact.version || artifact.path || artifact.url)) {
+        return [artifact];
+      }
+      if (artifact && typeof artifact === 'object') {
+        return Object.keys(artifact)
+          .map((version) => {
+            const entry = artifact[version];
+            return entry && typeof entry === 'object' ? Object.assign({ version: version }, entry) : null;
+          })
+          .filter(Boolean);
+      }
+      return [];
+    }
+
+    function manifestBaseUrl(manifestUrl) {
+      const url = String(manifestUrl || '').trim();
+      const idx = url.lastIndexOf('/');
+      return idx >= 0 ? url.slice(0, idx + 1) : '';
+    }
+
+    function joinManifestArtifactUrl(baseUrl, artifact) {
+      if (!artifact || typeof artifact !== 'object') return '';
+      const raw = String(artifact.url || artifact.path || '').trim();
+      if (!raw) return '';
+      if (/^https?:\/\//i.test(raw)) return raw;
+      return String(baseUrl || '') + raw.replace(/^\/+/, '');
+    }
+
+    function formatManifestBuildDate(artifact) {
+      if (!artifact || typeof artifact !== 'object') return '';
+      return String(artifact.build_date || artifact.built_at || artifact.date || '').trim();
+    }
+
+    function endpointForUpgradeTarget(target) {
+      const key = String(target || '').trim().toLowerCase();
+      if (key === 'flowio') return '/fwupdate/flowio';
+      if (key === 'supervisor') return '/fwupdate/supervisor';
+      if (key === 'nextion') return '/fwupdate/nextion';
+      if (key === 'spiffs' || key === 'cfgdocs') return '/fwupdate/spiffs';
+      return '';
+    }
+
+    function manifestTargetDef(key) {
+      return upgradeTargetDefs[String(key || '').trim().toLowerCase()] || null;
+    }
+
+    function resolveArtifactTarget(category, artifact) {
+      const explicit = String(artifact && (artifact.target || artifact.update_target) ? (artifact.target || artifact.update_target) : '').trim().toLowerCase();
+      if (explicit) return explicit;
+      const def = manifestTargetDef(category);
+      return def && def.target ? def.target : String(category || '').trim().toLowerCase();
+    }
+
+    function resolveArtifactEndpoint(category, artifact, target) {
+      const explicit = String(artifact && (artifact.route || artifact.endpoint || artifact.update_route) ? (artifact.route || artifact.endpoint || artifact.update_route) : '').trim();
+      if (explicit) {
+        if (/^\/fwupdate\//.test(explicit)) return explicit;
+        if (/^fwupdate\//.test(explicit)) return '/' + explicit;
+        return endpointForUpgradeTarget(explicit);
+      }
+      const def = manifestTargetDef(category);
+      return def && def.endpoint ? def.endpoint : endpointForUpgradeTarget(target);
+    }
+
+    function formatManifestArtifactTitle(category, artifact) {
+      const def = manifestTargetDef(category);
+      const title = String(artifact && (artifact.title || artifact.name) ? (artifact.title || artifact.name) : '').trim();
+      if (title) return title;
+      const label = String(artifact && artifact.label ? artifact.label : '').trim();
+      if (label) return label;
+      return def && def.label ? def.label : String(category || 'Firmware');
+    }
+
+    function manifestArtifactEntries(manifest, manifestUrl) {
+      if (!manifest || typeof manifest !== 'object') return [];
+      const baseUrl = manifestBaseUrl(manifestUrl);
+      const artifacts = (manifest.artifacts && typeof manifest.artifacts === 'object') ? manifest.artifacts : manifest;
+      return Object.keys(artifacts)
+        .reduce((entries, category) => {
+          const def = manifestTargetDef(category);
+          const orderBase = def && Number.isFinite(def.order) ? def.order : 1000;
+          manifestArtifactList(manifest, category)
+            .filter((artifact) => joinManifestArtifactUrl(baseUrl, artifact))
+            .sort((a, b) => compareFirmwareVersions(String(b.version || ''), String(a.version || '')))
+            .forEach((artifact, index) => {
+              const target = resolveArtifactTarget(category, artifact);
+              entries.push({
+                category: category,
+                artifact: artifact,
+                title: formatManifestArtifactTitle(category, artifact),
+                version: String(artifact.version || '').trim() || 'version inconnue',
+                buildDate: formatManifestBuildDate(artifact) || '-',
+                notes: String(artifact.notes || artifact.release_notes || '').trim() || 'Notes de version indisponibles.',
+                url: joinManifestArtifactUrl(baseUrl, artifact),
+                target: target,
+                endpoint: resolveArtifactEndpoint(category, artifact, target),
+                order: orderBase + index / 100
+              });
+            });
+          return entries;
+        }, [])
+        .sort((a, b) => {
+          if (a.order !== b.order) return a.order - b.order;
+          return compareFirmwareVersions(String(b.version || ''), String(a.version || ''));
+        });
+    }
+
+    function setUpgradeCardsEmpty(text) {
+      if (!upgradeCards) return;
+      upgradeCards.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'upgrade-empty';
+      empty.textContent = text || 'Cliquez sur « Rechercher les mises à jour ».';
+      upgradeCards.appendChild(empty);
+    }
+
+    function appendUpgradeCardField(parent, iconName, value) {
+      const field = document.createElement('div');
+      field.className = 'upgrade-card-field';
+
+      const icon = document.createElement('span');
+      icon.className = 'ui-msr upgrade-card-field-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = iconName || 'info';
+
+      const span = document.createElement('span');
+      span.textContent = value || '-';
+      field.appendChild(icon);
+      field.appendChild(span);
+      parent.appendChild(field);
+    }
+
+    function renderUpgradeCards(entries) {
+      if (!upgradeCards) return;
+      upgradeCards.innerHTML = '';
+      if (!Array.isArray(entries) || entries.length === 0) {
+        setUpgradeCardsEmpty('Aucune mise à jour disponible dans le manifest.');
+        return;
+      }
+      entries.forEach((entry) => {
+        const card = document.createElement('article');
+        card.className = 'upgrade-card';
+
+        const head = document.createElement('div');
+        head.className = 'upgrade-card-head';
+
+        const title = document.createElement('h3');
+        title.textContent = entry.title;
+        head.appendChild(title);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'upgrade-card-install';
+        button.setAttribute('aria-label', 'Installer ' + entry.title + ' ' + entry.version);
+        button.title = 'Installer ' + entry.title + ' ' + entry.version;
+        button.disabled = !entry.endpoint || !entry.url;
+        if (button.disabled) button.title = 'Route de mise à jour indisponible';
+        const icon = document.createElement('span');
+        icon.className = 'ui-msr';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'upload';
+        button.appendChild(icon);
+        bindClickAction(button, () => {
+          if (!confirmUpgradeLaunch(entry)) return;
+          return startUpgrade(entry.target, entry.url, entry.endpoint);
+        });
+        head.appendChild(button);
+        card.appendChild(head);
+
+        const fields = document.createElement('div');
+        fields.className = 'upgrade-card-fields';
+        appendUpgradeCardField(fields, 'deployed_code', 'Version ' + entry.version);
+        appendUpgradeCardField(fields, 'event', entry.buildDate);
+        appendUpgradeCardField(fields, 'description', entry.notes);
+        card.appendChild(fields);
+
+        upgradeCards.appendChild(card);
+      });
+    }
+
+    function resetUpgradeManifestSelections(text) {
+      upgradeManifestState = { manifest: null, manifestUrl: '', baseUrl: '' };
+      setUpgradeCardsEmpty(text || 'Cliquez sur « Rechercher les mises à jour ».');
+    }
+
+    function confirmUpgradeLaunch(entry) {
+      const title = String(entry && entry.title ? entry.title : 'firmware').trim();
+      const version = String(entry && entry.version ? entry.version : '').trim();
+      const target = upgradeTargetLabel(entry && entry.target ? entry.target : '');
+      const suffix = version ? (' ' + version) : '';
+      return confirm(
+        'Confirmer le lancement de la mise à jour ' + title + suffix + ' vers ' + target + ' ?'
+      );
+    }
+
+    function confirmRebootLaunch(selectedAction) {
+      const action = String(selectedAction || 'supervisor');
+      const messages = {
+        supervisor: isMicronovaProfile()
+          ? 'Confirmer le redémarrage de Micronova ?'
+          : 'Confirmer le redémarrage du Supervisor ?',
+        flow_soft: 'Confirmer le redémarrage logiciel de Flow.io ?',
+        flow_hard: 'Confirmer le redémarrage matériel de Flow.io ?',
+        nextion: 'Confirmer le redémarrage de Nextion ?',
+        factory_reset: 'Confirmer l\'initialisation usine de Flow.io ? Cette action efface la configuration distante.'
+      };
+      return confirm(messages[action] || messages.supervisor);
+    }
+
+    function populateUpgradeManifestSelections(data) {
+      const manifest = data && data.manifest && typeof data.manifest === 'object' ? data.manifest : null;
+      const manifestUrl = String(data && data.manifest_url ? data.manifest_url : '').trim();
+      upgradeManifestState = { manifest: manifest, manifestUrl: manifestUrl, baseUrl: manifestBaseUrl(manifestUrl) };
+      renderUpgradeCards(manifestArtifactEntries(manifest, manifestUrl));
+    }
+
+    function describeManifestUpdates(data) {
+      const manifest = data && data.manifest && typeof data.manifest === 'object' ? data.manifest : null;
+      if (!manifest) return 'Manifest indisponible.';
+      const manifestUrl = String(data && data.manifest_url ? data.manifest_url : '').trim();
+      const entries = manifestArtifactEntries(manifest, manifestUrl);
+      const currentByTarget = {
+        supervisor: supervisorFirmwareVersion,
+        flowio: window.__flowIoFirmwareVersion || '-',
+        nextion: '-',
+        spiffs: '-'
+      };
+      const available = [];
+      const listed = [];
+      entries.forEach((entry) => {
+        const version = String(entry.version || '').trim();
+        if (!version) return;
+        const current = currentByTarget[entry.target] || '-';
+        listed.push(entry.title + ' ' + version);
+        if (current && current !== '-' && compareFirmwareVersions(version, current) > 0) {
+          available.push(entry.title + ' ' + current + ' -> ' + version);
+        }
+      });
+      if (available.length > 0) {
+        return 'Mise(s) à jour disponible(s) : ' + available.join(', ') + '.';
+      }
+      if (listed.length > 0) {
+        return 'Manifest vérifié. Versions disponibles : ' + listed.join(', ') + '.';
+      }
+      return 'Manifest vérifié, aucun firmware listé.';
+    }
+
+    async function checkFirmwareUpdates() {
+      if (checkUpdatesBtn) {
+        checkUpdatesBtn.disabled = true;
+        checkUpdatesBtn.classList.add('is-pending');
+      }
+      try {
+        await saveUpgradeConfig();
+        setUpgradeMessage('Vérification du manifest...');
+        const data = await fetchOkJson('/api/fwupdate/check', { cache: 'no-store' }, 'échec vérification');
+        populateUpgradeManifestSelections(data);
+        setUpgradeMessage(describeManifestUpdates(data));
+      } catch (err) {
+        setUpgradeMessage('Échec de la vérification : ' + err);
+      } finally {
+        if (checkUpdatesBtn) {
+          checkUpdatesBtn.disabled = false;
+          checkUpdatesBtn.classList.remove('is-pending');
+        }
+      }
     }
 
     function syncUpgradeConfigFieldInitialValues(keys) {
       const changedKeys = Array.isArray(keys) ? new Set(keys) : null;
       upgradeConfigFieldDefs.forEach((def) => {
         if (!def || !def.input || !def.button) return;
-        if (changedKeys && !changedKeys.has(def.key)) return;
+        if (changedKeys) {
+          const isCombinedUpgradeField = def.key === 'update_server_path'
+            && (changedKeys.has('update_host') || changedKeys.has('update_path'));
+          if (!changedKeys.has(def.key) && !isCombinedUpgradeField) return;
+        }
         def.input.dataset.initialValue = def.input.value.trim();
         updateUpgradeConfigFieldApplyState(def);
       });
@@ -1882,10 +2100,12 @@
       def.button.disabled = true;
       def.button.classList.add('is-pending');
       try {
-        let success = def.successMessage;
-        if (isMicronovaProfile() && def.key === 'supervisor_path') success = 'Chemin Micronova enregistré.';
-        if (isMicronovaProfile() && def.key === 'spiffs_path') success = 'Chemin assets Micronova enregistré.';
-        await saveUpgradeConfig({ [def.key]: def.input.value.trim() }, success);
+        const success = def.successMessage;
+        if (def.key === 'update_server_path') {
+          await saveUpgradeConfig(buildUpgradeConfigPayload(), success);
+        } else {
+          await saveUpgradeConfig({ [def.key]: def.input.value.trim() }, success);
+        }
       } finally {
         updateUpgradeConfigFieldApplyState(def);
       }
@@ -1904,16 +2124,20 @@
       }
     }
 
-    async function startUpgrade(target) {
+    async function startUpgrade(target, url, endpoint) {
       try {
         startUpgradeUiSession(target);
         startUpgradeStatusPolling(true);
         await saveUpgradeConfig();
-        let endpoint = '/fwupdate/nextion';
-        if (target === 'supervisor') endpoint = '/fwupdate/supervisor';
-        else if (target === 'flowio') endpoint = '/fwupdate/flowio';
-        else if (target === 'spiffs') endpoint = '/fwupdate/spiffs';
-        await fetchOkJson(endpoint, { method: 'POST' }, 'échec démarrage');
+        const selectedUrl = String(url || '').trim();
+        if (!selectedUrl) {
+          throw new Error('aucune image sélectionnée, lancez Vérifier');
+        }
+        const route = String(endpoint || endpointForUpgradeTarget(target)).trim();
+        if (!route) {
+          throw new Error('route de mise à jour indisponible');
+        }
+        await fetchOkJson(route, createFormPostOptions({ url: selectedUrl }), 'échec démarrage');
         await refreshUpgradeStatus();
       } catch (err) {
         stopUpgradeReconnectFlow();
@@ -2681,6 +2905,7 @@
       const heap = (data && data.heap && typeof data.heap === 'object') ? data.heap : {};
       const i2c = (data && data.i2c && typeof data.i2c === 'object') ? data.i2c : {};
       const firmware = fmtFlowStatusVal(data.fw);
+      window.__flowIoFirmwareVersion = firmware;
       const uptimeMs = Number(data.upms) || 0;
       const wifiReady = !!wifi.rdy;
       const wifiIp = normalizeIpValue(wifi.ip);
@@ -7361,10 +7586,7 @@
           }
         });
       });
-      bindClickAction(upSupervisorBtn, () => startUpgrade('supervisor'));
-      bindClickAction(upFlowBtn, () => startUpgrade('flowio'));
-      bindClickAction(upNextionBtn, () => startUpgrade('nextion'));
-      bindClickAction(upSpiffsBtn, () => startUpgrade('spiffs'));
+      bindClickAction(checkUpdatesBtn, () => checkFirmwareUpdates());
     }
 
     function initStatusBindings() {
@@ -7441,46 +7663,44 @@
     }
 
     function initSystemBindings() {
-      bindClickAction(rebootSupervisorBtn, () => {
-        const label = isMicronovaProfile() ? 'Micronova' : 'superviseur';
+      bindClickAction(rebootDeviceActionBtn, () => {
+        if (!rebootDeviceTargetSelect || !rebootDeviceActionBtn) return;
+        const selected = String(rebootDeviceTargetSelect.value || 'supervisor');
+        if (!confirmRebootLaunch(selected)) return;
+        const actionMap = {
+          supervisor: {
+            countdown: isMicronovaProfile() ? 'Reboot Micronova' : 'Reboot Supervisor',
+            failure: isMicronovaProfile() ? 'Reboot Micronova échoué' : 'Reboot Supervisor échoué',
+            runner: () => callSystemAction('supervisor', 'reboot')
+          },
+          flow_soft: {
+            countdown: 'Reboot Flow.io',
+            failure: 'Reboot Flow.io échoué',
+            runner: () => callSystemAction('flow', 'reboot')
+          },
+          flow_hard: {
+            countdown: 'Reset matériel Flow.io',
+            failure: 'Reset matériel Flow.io échoué',
+            runner: () => callSystemAction('flow', 'hardware_reboot')
+          },
+          nextion: {
+            countdown: 'Reboot Nextion',
+            failure: 'Reboot Nextion échoué',
+            runner: () => callSystemAction('nextion', 'reboot')
+          },
+          factory_reset: {
+            countdown: 'Init usine Flow.io',
+            failure: 'Init usine Flow.io échouée',
+            runner: () => callSystemAction('flow', 'factory_reset')
+          }
+        };
+        const chosen = actionMap[selected] || actionMap.supervisor;
         startDelayedSystemAction(
-          rebootSupervisorBtn,
-          'Reboot ' + label,
-          () => callSystemAction('supervisor', 'reboot'),
-          'Reboot ' + label + ' échoué'
+          rebootDeviceActionBtn,
+          chosen.countdown,
+          chosen.runner,
+          chosen.failure
         );
-      });
-      bindClickAction(rebootFlowBtn, () => {
-        startDelayedSystemAction(
-          rebootFlowBtn,
-          'Reboot Flow.io',
-          () => callSystemAction('flow', 'reboot'),
-          'Reboot Flow.io échoué'
-        );
-      });
-      bindClickAction(rebootFlowHardwareBtn, () => {
-        startDelayedSystemAction(
-          rebootFlowHardwareBtn,
-          'Reset matériel Flow.io',
-          () => callSystemAction('flow', 'hardware_reboot'),
-          'Reset matériel Flow.io échoué'
-        );
-      });
-      bindClickAction(rebootNextionBtn, () => {
-        startDelayedSystemAction(
-          rebootNextionBtn,
-          'Reboot Nextion',
-          () => callSystemAction('nextion', 'reboot'),
-          'Reboot Nextion échoué'
-        );
-      });
-      bindClickAction(flowFactoryResetBtn, async () => {
-        if (!confirm('Confirmer la réinitialisation usine de Flow.io ? Cette action efface la configuration distante.')) return;
-        try {
-          await callSystemAction('flow', 'factory_reset');
-        } catch (err) {
-          systemStatusText.textContent = 'Reset Flow.io échoué';
-        }
       });
     }
 
