@@ -13,6 +13,8 @@
 #include "Core/ModuleLog.h"
 
 namespace {
+constexpr float kHeaterHysteresisC = 0.5f;
+
 const char* poolDeviceSvcStatusStr_(PoolDeviceSvcStatus st)
 {
     switch (st) {
@@ -424,6 +426,7 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     syncDeviceState_(fillingDeviceSlot_, fillingFsm_, nowMs, unusedStart, unusedStop);
     syncDeviceState_(phPumpDeviceSlot_, phPumpFsm_, nowMs, unusedStart, unusedStop);
     syncDeviceState_(orpPumpDeviceSlot_, orpPumpFsm_, nowMs, unusedStart, unusedStop);
+    syncDeviceState_(heaterDeviceSlot_, heaterFsm_, nowMs, unusedStart, unusedStop);
 
     if (filtrationStarted) {
         phPidEnabled_ = false;
@@ -590,9 +593,6 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
             }
         }
     }
-    if (swgDesired) {
-        swgProductionPct = ElectrolysisProtocol::MaxProductionPct;
-    }
 
     // Chemical dosing is computed last because it depends on the resolved
     // filtration state, alarm state, and sensor freshness.
@@ -683,10 +683,6 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     applyDeviceControl_(phPumpDeviceSlot_, "pH Pump", phPumpFsm_, phPumpDesired, nowMs);
     applyDeviceControl_(orpPumpDeviceSlot_, "Chlorine Pump", orpPumpFsm_, orpPumpDesired, nowMs);
     applyDeviceControl_(robotDeviceSlot_, "Robot Pump", robotFsm_, robotDesired, nowMs);
-    const bool remoteElectrolysis = electrolysisServiceAvailable_(electrolysisSvc_);
-    if (remoteElectrolysis) {
-        (void)writeElectrolysisRequest_(swgDesired, swgProductionPct, nowMs);
-    }
-    applyDeviceControl_(swgDeviceSlot_, "SWG Pump", swgFsm_, remoteElectrolysis ? false : swgDesired, nowMs);
+    applyDeviceControl_(swgDeviceSlot_, "SWG Pump", swgFsm_, swgDesired, nowMs);
     applyDeviceControl_(fillingDeviceSlot_, "Filling Pump", fillingFsm_, fillingDesired, nowMs);
 }

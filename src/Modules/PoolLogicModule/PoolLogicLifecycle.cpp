@@ -108,6 +108,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     winterModeVar_.moduleName = kCfgModuleMode;
     phAutoModeVar_.moduleName = kCfgModuleMode;
     orpAutoModeVar_.moduleName = kCfgModuleMode;
+    heaterAutoModeVar_.moduleName = kCfgModuleMode;
     phDosePlusVar_.moduleName = kCfgModuleMode;
     electrolyseModeVar_.moduleName = kCfgModuleMode;
     electroRunModeVar_.moduleName = kCfgModuleMode;
@@ -135,6 +136,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     secureElectroVar_.moduleName = kCfgModulePid;
     phSetpointVar_.moduleName = kCfgModulePid;
     orpSetpointVar_.moduleName = kCfgModulePid;
+    heaterSetpointVar_.moduleName = kCfgModulePid;
     phKpVar_.moduleName = kCfgModulePid;
     phKiVar_.moduleName = kCfgModulePid;
     phKdVar_.moduleName = kCfgModulePid;
@@ -159,6 +161,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     fillingDeviceVar_.moduleName = kCfgModuleDevice;
     phPumpDeviceVar_.moduleName = kCfgModuleDevice;
     orpPumpDeviceVar_.moduleName = kCfgModuleDevice;
+    heaterDeviceVar_.moduleName = kCfgModuleDevice;
 
     // Registration order mirrors the published config branches so init remains
     // easy to diff against the generated cfgdocs and MQTT routes.
@@ -168,6 +171,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(winterModeVar_, kCfgModuleId, kCfgBranchMode);
     cfg.registerVar(phAutoModeVar_, kCfgModuleId, kCfgBranchMode);
     cfg.registerVar(orpAutoModeVar_, kCfgModuleId, kCfgBranchMode);
+    cfg.registerVar(heaterAutoModeVar_, kCfgModuleId, kCfgBranchMode);
     cfg.registerVar(phDosePlusVar_, kCfgModuleId, kCfgBranchMode);
     cfg.registerVar(electrolyseModeVar_, kCfgModuleId, kCfgBranchMode);
     cfg.registerVar(electroRunModeVar_, kCfgModuleId, kCfgBranchMode);
@@ -195,6 +199,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(secureElectroVar_, kCfgModuleId, kCfgBranchPid);
     cfg.registerVar(phSetpointVar_, kCfgModuleId, kCfgBranchPid);
     cfg.registerVar(orpSetpointVar_, kCfgModuleId, kCfgBranchPid);
+    cfg.registerVar(heaterSetpointVar_, kCfgModuleId, kCfgBranchPid);
     cfg.registerVar(phKpVar_, kCfgModuleId, kCfgBranchPid);
     cfg.registerVar(phKiVar_, kCfgModuleId, kCfgBranchPid);
     cfg.registerVar(phKdVar_, kCfgModuleId, kCfgBranchPid);
@@ -219,6 +224,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(fillingDeviceVar_, kCfgModuleId, kCfgBranchDevice);
     cfg.registerVar(phPumpDeviceVar_, kCfgModuleId, kCfgBranchDevice);
     cfg.registerVar(orpPumpDeviceVar_, kCfgModuleId, kCfgBranchDevice);
+    cfg.registerVar(heaterDeviceVar_, kCfgModuleId, kCfgBranchDevice);
 
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
     const EventBusService* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
@@ -290,6 +296,18 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "mdi:water-check-outline",
             "config"
         };
+        const HASwitchEntry heaterAutoModeSwitch{
+            "poollogic",
+            "pl_heater_auto",
+            "Heater Auto-regulation",
+            "cfg/poollogic/mode",
+            "{% if value_json.heater_auto_mode %}ON{% else %}OFF{% endif %}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic/mode\\\":{\\\"heater_auto_mode\\\":true}}",
+            "{\\\"poollogic/mode\\\":{\\\"heater_auto_mode\\\":false}}",
+            "mdi:radiator",
+            "config"
+        };
         const HASwitchEntry phDosePlusSwitch{
             "poollogic",
             "pl_ph_plus",
@@ -306,6 +324,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         (void)haSvc_->addSwitch(haSvc_->ctx, &winterModeSwitch);
         (void)haSvc_->addSwitch(haSvc_->ctx, &phAutoModeSwitch);
         (void)haSvc_->addSwitch(haSvc_->ctx, &orpAutoModeSwitch);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &heaterAutoModeSwitch);
         (void)haSvc_->addSwitch(haSvc_->ctx, &phDosePlusSwitch);
     }
     if (haSvc_ && haSvc_->addSensor) {
@@ -429,6 +448,22 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "mdi:water-outline",
             "mV"
         };
+        const HANumberEntry heaterSetpoint{
+            "poollogic",
+            "pl_heater_sp",
+            "Water Heater Setpoint",
+            "cfg/poollogic/pid",
+            "{{ value_json.heater_setpoint | float(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic/pid\\\":{\\\"heater_setpoint\\\":{{ value | float(0) }}}}",
+            10.0f,
+            35.0f,
+            0.1f,
+            "slider",
+            "config",
+            "mdi:thermometer-water",
+            "C"
+        };
         const HANumberEntry phWindowMin{
             "poollogic",
             "pl_ph_win",
@@ -499,6 +534,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         (void)haSvc_->addNumber(haSvc_->ctx, &fillMinUptime);
         (void)haSvc_->addNumber(haSvc_->ctx, &phSetpoint);
         (void)haSvc_->addNumber(haSvc_->ctx, &orpSetpoint);
+        (void)haSvc_->addNumber(haSvc_->ctx, &heaterSetpoint);
         (void)haSvc_->addNumber(haSvc_->ctx, &phWindowMin);
         (void)haSvc_->addNumber(haSvc_->ctx, &orpWindowMin);
         (void)haSvc_->addNumber(haSvc_->ctx, &psiLowThreshold);
@@ -526,6 +562,8 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "poollogic.ph_auto_mode.toggle",
             "poollogic.orp_auto_mode.set",
             "poollogic.orp_auto_mode.toggle",
+            "poollogic.heater_auto_mode.set",
+            "poollogic.heater_auto_mode.toggle",
             "poollogic.winter_mode.set",
             "poollogic.winter_mode.toggle",
             "poollogic.filtration.toggle",
@@ -786,6 +824,12 @@ void PoolLogicModule::onEvent_(const Event& e)
                          (unsigned)orpPumpDeviceSlot_);
                 }
                 resetTemporalPidState_(orpPidState_, millis());
+            } else if (strcmp(p->nvsKey, NvsKeys::PoolLogic::HeaterAutoMode) == 0 && heaterAutoMode_) {
+                // Entering heater auto starts from a safe stopped heater relay.
+                if (!writeDeviceDesired_(heaterDeviceSlot_, false)) {
+                    LOGW("PoolLogic failed to stop heater on heater_auto_mode enable (slot=%u)",
+                         (unsigned)heaterDeviceSlot_);
+                }
             }
         }
         return;
@@ -850,17 +894,19 @@ void PoolLogicModule::normalizeDeviceSlots_()
     normalize(fillingDeviceSlot_, PoolBinding::kDeviceSlotFillPump, fillingDeviceVar_, "filling");
     normalize(phPumpDeviceSlot_, PoolBinding::kDeviceSlotPhPump, phPumpDeviceVar_, "ph_pump");
     normalize(orpPumpDeviceSlot_, PoolBinding::kDeviceSlotChlorinePump, orpPumpDeviceVar_, "orp_pump");
+    normalize(heaterDeviceSlot_, PoolBinding::kDeviceSlotWaterHeater, heaterDeviceVar_, "heater");
 }
 
 void PoolLogicModule::logDeviceSlotConfig_() const
 {
-    LOGI("PoolLogic slots filtr=%u swg=%u robot=%u fill=%u ph=%u orp=%u",
+    LOGI("PoolLogic slots filtr=%u swg=%u robot=%u fill=%u ph=%u orp=%u heater=%u",
          (unsigned)filtrationDeviceSlot_,
          (unsigned)swgDeviceSlot_,
          (unsigned)robotDeviceSlot_,
          (unsigned)fillingDeviceSlot_,
          (unsigned)phPumpDeviceSlot_,
-         (unsigned)orpPumpDeviceSlot_);
+         (unsigned)orpPumpDeviceSlot_,
+         (unsigned)heaterDeviceSlot_);
 
     logDeviceSlotBinding_("filtration", filtrationDeviceSlot_, 0);
     logDeviceSlotBinding_("swg", swgDeviceSlot_, -1);
@@ -868,6 +914,7 @@ void PoolLogicModule::logDeviceSlotConfig_() const
     logDeviceSlotBinding_("filling", fillingDeviceSlot_, -1);
     logDeviceSlotBinding_("ph_pump", phPumpDeviceSlot_, 1);
     logDeviceSlotBinding_("orp_pump", orpPumpDeviceSlot_, 1);
+    logDeviceSlotBinding_("heater", heaterDeviceSlot_, -1);
 }
 
 void PoolLogicModule::logDeviceSlotBinding_(const char* role, uint8_t slot, int8_t expectedType) const
